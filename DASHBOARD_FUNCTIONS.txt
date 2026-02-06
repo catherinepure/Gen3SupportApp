@@ -1,0 +1,138 @@
+# Copy/Paste Edge Functions for Supabase Dashboard
+
+Deploy URL: https://supabase.com/dashboard/project/hhpxmlrpdharhhzwjxuc/functions
+
+---
+
+## IMPORTANT: Change FROM_EMAIL
+
+Before deploying, update the FROM_EMAIL in these files to your verified SendGrid sender:
+- register-user
+- register-distributor
+- resend-verification
+
+Change `noreply@pureelectric.com` to your actual verified email.
+
+---
+
+## Instructions
+
+1. Go to Edge Functions in dashboard
+2. Click "Create a new function"
+3. Enter function name EXACTLY as shown
+4. Copy ENTIRE code from the files in `supabase/functions/FUNCTION_NAME/index.ts`
+5. Click Deploy
+
+---
+
+## Functions to Deploy (in order):
+
+### 1. register-user
+File: `supabase/functions/register-user/index.ts`
+- User registration with scooter connection
+- Captures telemetry data
+- Sends verification email
+
+### 2. register-distributor
+File: `supabase/functions/register-distributor/index.ts`
+- Distributor registration with activation code
+- No scooter required
+- Sends verification email
+
+### 3. login
+File: `supabase/functions/login/index.ts`
+- User/distributor login
+- Returns session token
+- Returns user's scooters
+
+### 4. verify
+File: `supabase/functions/verify/index.ts`
+- Email verification via click link
+- Handles both GET (email link) and POST
+- Returns HTML success page
+
+### 5. validate-session
+File: `supabase/functions/validate-session/index.ts`
+- Validates session tokens
+- Checks expiration
+- Returns user info
+
+### 6. resend-verification
+File: `supabase/functions/resend-verification/index.ts`
+- Resends verification email
+- Generates new token
+- 24-hour expiration
+
+---
+
+## Quick Copy Commands
+
+To view each function code in terminal:
+
+```bash
+# Function 1
+cat supabase/functions/register-user/index.ts
+
+# Function 2
+cat supabase/functions/register-distributor/index.ts
+
+# Function 3
+cat supabase/functions/login/index.ts
+
+# Function 4
+cat supabase/functions/verify/index.ts
+
+# Function 5
+cat supabase/functions/validate-session/index.ts
+
+# Function 6
+cat supabase/functions/resend-verification/index.ts
+```
+
+---
+
+## After Deployment
+
+Test with:
+
+```bash
+# Test user registration
+curl -X POST https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1/register-user \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email":"test@example.com",
+    "password":"test1234",
+    "scooter_serial":"ZYD-TEST-001"
+  }'
+
+# Test distributor registration
+curl -X POST https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1/register-distributor \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email":"dist@example.com",
+    "password":"dist1234",
+    "activation_code":"TEST-2024"
+  }'
+```
+
+---
+
+## SendGrid Configuration
+
+1. Go to: https://app.sendgrid.com/settings/sender_auth
+2. Click "Verify a Single Sender"
+3. Enter your sender email
+4. Check email and verify
+5. Update FROM_EMAIL in the 3 functions above
+6. Redeploy those 3 functions
+
+---
+
+## Environment Variables
+
+These are automatically available in Edge Functions:
+- `SUPABASE_URL` - Your project URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Service key
+- `SUPABASE_ANON_KEY` - Anonymous key
+
+No manual configuration needed!

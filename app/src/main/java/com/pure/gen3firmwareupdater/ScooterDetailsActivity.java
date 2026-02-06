@@ -1,0 +1,307 @@
+package com.pure.gen3firmwareupdater;
+
+import android.os.Bundle;
+import android.util.Log;
+import android.view.View;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.google.android.material.button.MaterialButton;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Activity to show scooter details and update history
+ */
+public class ScooterDetailsActivity extends AppCompatActivity {
+
+    private static final String TAG = "ScooterDetails";
+
+    private TextView tvScooterSerial;
+    private TextView tvCustomerInfo;
+    private TextView tvCurrentFirmware;
+    private TextView tvCurrentTelemetry;
+    private TextView tvHistoryStatus;
+    private RecyclerView rvHistory;
+    private ProgressBar progressBar;
+    private MaterialButton btnClose;
+    private MaterialButton btnViewCustomer;
+
+    private SupabaseClient supabase;
+    private String scooterSerial;
+    private UpdateHistoryAdapter historyAdapter;
+    private List<TelemetryRecord> updateHistory;
+
+    // Current connection data
+    private boolean isConnectedMode;
+    private boolean isRegistered;
+    private String ownerName;
+    private String ownerEmail;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_scooter_details);
+
+        // Get scooter serial from intent
+        scooterSerial = getIntent().getStringExtra("scooter_serial");
+        if (scooterSerial == null) {
+            Toast.makeText(this, "Scooter serial not provided", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        // Get data from intent
+        isConnectedMode = getIntent().getBooleanExtra("connected_mode", false);
+        isRegistered = getIntent().getBooleanExtra("is_registered", false);
+        ownerName = getIntent().getStringExtra("owner_name");
+        ownerEmail = getIntent().getStringExtra("owner_email");
+
+        // Initialize views
+        tvScooterSerial = findViewById(R.id.tvScooterSerial);
+        tvCustomerInfo = findViewById(R.id.tvCustomerInfo);
+        tvCurrentFirmware = findViewById(R.id.tvCurrentFirmware);
+        tvCurrentTelemetry = findViewById(R.id.tvCurrentTelemetry);
+        tvHistoryStatus = findViewById(R.id.tvHistoryStatus);
+        rvHistory = findViewById(R.id.rvHistory);
+        progressBar = findViewById(R.id.progressBar);
+        btnClose = findViewById(R.id.btnClose);
+        btnViewCustomer = findViewById(R.id.btnViewCustomer);
+
+        tvScooterSerial.setText("Scooter: " + scooterSerial);
+
+        // Initialize RecyclerView
+        updateHistory = new ArrayList<>();
+        historyAdapter = new UpdateHistoryAdapter(updateHistory);
+        historyAdapter.setOnRecordClickListener(record -> showRecordDetails(record));
+        rvHistory.setLayoutManager(new LinearLayoutManager(this));
+        rvHistory.setAdapter(historyAdapter);
+
+        btnClose.setOnClickListener(v -> finish());
+
+        // Customer button only visible if registered
+        if (isRegistered && ownerName != null) {
+            btnViewCustomer.setVisibility(View.VISIBLE);
+            btnViewCustomer.setOnClickListener(v -> showCustomerDetails());
+        } else {
+            btnViewCustomer.setVisibility(View.GONE);
+        }
+
+        // Initialize Supabase client
+        com.pure.gen3firmwareupdater.services.ServiceFactory.init(this);
+        supabase = com.pure.gen3firmwareupdater.services.ServiceFactory.getSupabaseClient();
+
+        // Load scooter details and history
+        displayCurrentData();
+        loadUpdateHistory();
+    }
+
+    private void displayCurrentData() {
+        // Display registration status
+        if (isRegistered && ownerName != null) {
+            tvCustomerInfo.setText("Registered to: " + ownerName + " (" + ownerEmail + ")");
+        } else {
+            tvCustomerInfo.setText("Not registered to any customer");
+        }
+
+        // Display current firmware from intent
+        String hwVersion = getIntent().getStringExtra("hw_version");
+        String swVersion = getIntent().getStringExtra("sw_version");
+        if (swVersion != null) {
+            String firmwareText = "Firmware: " + swVersion;
+            if (hwVersion != null) {
+                firmwareText += " (HW: " + hwVersion + ")";
+            }
+            tvCurrentFirmware.setText(firmwareText);
+        } else {
+            tvCurrentFirmware.setText("Firmware: Unknown");
+        }
+
+        // Display current telemetry if in connected mode
+        if (isConnectedMode) {
+            StringBuilder telemetry = new StringBuilder("CURRENT TELEMETRY:\n");
+
+            Double voltage = getIntent().hasExtra("voltage") ? getIntent().getDoubleExtra("voltage", 0) : null;
+            Double current = getIntent().hasExtra("current") ? getIntent().getDoubleExtra("current", 0) : null;
+            Integer batteryPercent = getIntent().hasExtra("battery_percent") ? getIntent().getIntExtra("battery_percent", 0) : null;
+            Integer odometer = getIntent().hasExtra("odometer") ? getIntent().getIntExtra("odometer", 0) : null;
+            Integer batterySOC = getIntent().hasExtra("battery_soc") ? getIntent().getIntExtra("battery_soc", 0) : null;
+            Integer batteryHealth = getIntent().hasExtra("battery_health") ? getIntent().getIntExtra("battery_health", 0) : null;
+            Integer chargeCycles = getIntent().hasExtra("charge_cycles") ? getIntent().getIntExtra("charge_cycles", 0) : null;
+            Integer dischargeCycles = getIntent().hasExtra("discharge_cycles") ? getIntent().getIntExtra("discharge_cycles", 0) : null;
+
+            if (voltage != null) telemetry.append(String.format("Voltage: %.1f V\n", voltage));
+            if (current != null) telemetry.append(String.format("Current: %.2f A\n", current));
+            if (batteryPercent != null) telemetry.append("Battery: " + batteryPercent + "%\n");
+            if (odometer != null) telemetry.append("Odometer: " + odometer + " km\n");
+            if (batterySOC != null) telemetry.append("Battery SOC: " + batterySOC + "%\n");
+            if (batteryHealth != null) telemetry.append("Battery Health: " + batteryHealth + "%\n");
+            if (chargeCycles != null) telemetry.append("Charge Cycles: " + chargeCycles + "\n");
+            if (dischargeCycles != null) telemetry.append("Discharge Cycles: " + dischargeCycles + "\n");
+
+            tvCurrentTelemetry.setText(telemetry.toString());
+            tvCurrentTelemetry.setVisibility(View.VISIBLE);
+        } else {
+            tvCurrentTelemetry.setVisibility(View.GONE);
+        }
+    }
+
+    private void showCustomerDetails() {
+        if (!isRegistered || ownerName == null) return;
+
+        StringBuilder details = new StringBuilder();
+        details.append("CUSTOMER INFORMATION\n\n");
+        details.append("Name: ").append(ownerName).append("\n");
+        details.append("Email: ").append(ownerEmail).append("\n\n");
+
+        String registeredDate = getIntent().getStringExtra("registered_date");
+        if (registeredDate != null) {
+            details.append("Registered: ").append(registeredDate).append("\n");
+        }
+
+        boolean isPrimary = getIntent().getBooleanExtra("is_primary", false);
+        details.append("Primary Owner: ").append(isPrimary ? "Yes" : "No").append("\n");
+
+        String nickname = getIntent().getStringExtra("nickname");
+        if (nickname != null) {
+            details.append("Nickname: ").append(nickname).append("\n");
+        }
+
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Customer Details")
+                .setMessage(details.toString())
+                .setPositiveButton("OK", null)
+                .show();
+    }
+
+    private void loadUpdateHistory() {
+        progressBar.setVisibility(View.VISIBLE);
+        tvHistoryStatus.setText("Loading telemetry history...");
+
+        supabase.getScooterTelemetry(scooterSerial, 50, 0,
+            new SupabaseClient.Callback<List<TelemetryRecord>>() {
+                @Override
+                public void onSuccess(List<TelemetryRecord> telemetryRecords) {
+                    runOnUiThread(() -> {
+                        progressBar.setVisibility(View.GONE);
+                        updateHistory.clear();
+                        updateHistory.addAll(telemetryRecords);
+                        historyAdapter.notifyDataSetChanged();
+
+                        if (telemetryRecords.isEmpty()) {
+                            tvHistoryStatus.setText("No previous scans found for this scooter");
+                        } else {
+                            tvHistoryStatus.setText("Telemetry History (" + telemetryRecords.size() + " records):");
+                        }
+                    });
+                }
+
+                @Override
+                public void onError(String error) {
+                    runOnUiThread(() -> {
+                        progressBar.setVisibility(View.GONE);
+
+                        if (error.contains("Scooter not found")) {
+                            tvHistoryStatus.setText("No previous scans (scooter not in inventory)");
+                            Log.d(TAG, "Scooter not in database yet: " + scooterSerial);
+                        } else {
+                            tvHistoryStatus.setText("Could not load telemetry history");
+                            Toast.makeText(ScooterDetailsActivity.this,
+                                    "Failed to load history: " + error,
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            });
+    }
+
+    private void showRecordDetails(TelemetryRecord record) {
+        StringBuilder details = new StringBuilder();
+        details.append("Record Details\n\n");
+
+        String displayStatus = record.status != null ? record.status :
+                               record.scanType != null ? record.getScanTypeDisplay() : "Unknown";
+        details.append("Status: ").append(displayStatus.toUpperCase()).append("\n\n");
+        details.append("Date/Time: ").append(record.getFormattedDate()).append("\n\n");
+
+        // Version Information
+        details.append("=== VERSION INFO ===\n");
+        if (record.hwVersion != null && !record.hwVersion.equals("Unknown")) {
+            details.append("Hardware Version: ").append(record.hwVersion).append("\n");
+        }
+        if (record.swVersion != null) {
+            details.append("Software Version: ").append(record.swVersion).append("\n");
+        }
+        if (record.embeddedSerial != null && !record.embeddedSerial.isEmpty()) {
+            details.append("Embedded Serial: ").append(record.embeddedSerial).append("\n");
+        }
+        if (record.newVersion != null && !"scanned".equals(record.status)) {
+            details.append("Target Version: ").append(record.newVersion).append("\n");
+        }
+
+        // Battery Information
+        if (record.batterySOC != null || record.voltage != null || record.batteryHealth != null) {
+            details.append("\n=== BATTERY INFO ===\n");
+            if (record.voltage != null) {
+                details.append("Voltage: ").append(String.format("%.1f V", record.voltage)).append("\n");
+            }
+            if (record.current != null) {
+                details.append("Current: ").append(String.format("%.2f A", record.current)).append("\n");
+            }
+            if (record.batterySOC != null) {
+                details.append("Battery SOC: ").append(record.batterySOC).append("%\n");
+            }
+            if (record.batteryHealth != null) {
+                details.append("Battery Health: ").append(record.batteryHealth).append("%\n");
+            }
+            if (record.batteryChargeCycles != null) {
+                details.append("Charge Cycles: ").append(record.batteryChargeCycles).append("\n");
+            }
+            if (record.batteryDischargeCycles != null) {
+                details.append("Discharge Cycles: ").append(record.batteryDischargeCycles).append("\n");
+            }
+            if (record.remainingCapacityMah != null && record.fullCapacityMah != null) {
+                details.append("Capacity: ").append(record.remainingCapacityMah)
+                        .append(" / ").append(record.fullCapacityMah).append(" mAh\n");
+            }
+        }
+
+        // Telemetry Information
+        if (record.speedKmh != null || record.odometerKm != null || record.motorTemp != null) {
+            details.append("\n=== TELEMETRY ===\n");
+            if (record.speedKmh != null) {
+                details.append("Speed: ").append(String.format("%.1f km/h", record.speedKmh)).append("\n");
+            }
+            if (record.odometerKm != null) {
+                details.append("Odometer: ").append(record.odometerKm).append(" km\n");
+            }
+            if (record.motorTemp != null) {
+                details.append("Motor Temp: ").append(record.motorTemp).append("\u00B0C\n");
+            }
+            if (record.batteryTemp != null) {
+                details.append("Battery Temp: ").append(record.batteryTemp).append("\u00B0C\n");
+            }
+        }
+
+        // Update Status
+        if (record.completedAt != null) {
+            details.append("\nCompleted: ").append(record.completedAt).append("\n");
+        }
+
+        if (record.errorMessage != null && !record.errorMessage.isEmpty()) {
+            details.append("\nError: ").append(record.errorMessage).append("\n");
+        }
+
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Scan/Update Details")
+                .setMessage(details.toString())
+                .setPositiveButton("OK", null)
+                .show();
+    }
+}
