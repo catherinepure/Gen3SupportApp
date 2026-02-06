@@ -448,6 +448,424 @@ def workshop_add_address(name, line1, line2, city, region, postcode, country):
 
 
 # ===========================================================================
+# USERS
+# ===========================================================================
+
+@cli.group()
+def user():
+    """Search, view, and edit users."""
+    pass
+
+
+def _resolve_fk(row, fk_field, name_field="name"):
+    """Safely extract a name from a Supabase foreign-key join object."""
+    obj = row.get(fk_field)
+    if isinstance(obj, dict):
+        return obj.get(name_field, "-")
+    return "-"
+
+
+def _print_user_table(rows, title="Users"):
+    """Render a list of user rows as a Rich table."""
+    table = Table(title=title)
+    table.add_column("Email", style="cyan")
+    table.add_column("Name", style="white")
+    table.add_column("Level", style="magenta")
+    table.add_column("Roles", style="green")
+    table.add_column("Country", style="yellow")
+    table.add_column("Distributor", style="yellow")
+    table.add_column("Workshop", style="yellow")
+    table.add_column("Verified", style="dim")
+    table.add_column("Active", style="dim")
+    table.add_column("Created", style="dim")
+    table.add_column("ID", style="dim")
+
+    for row in rows:
+        name_parts = []
+        if row.get("first_name"):
+            name_parts.append(row["first_name"])
+        if row.get("last_name"):
+            name_parts.append(row["last_name"])
+        full_name = " ".join(name_parts) or "-"
+
+        roles = row.get("roles") or []
+        roles_str = ", ".join(roles) if roles else "-"
+
+        table.add_row(
+            row["email"],
+            full_name,
+            row.get("user_level") or "-",
+            roles_str,
+            row.get("home_country") or "-",
+            _resolve_fk(row, "distributors"),
+            _resolve_fk(row, "workshops"),
+            "Yes" if row.get("is_verified") else "No",
+            "Yes" if row.get("is_active") else "No",
+            row["created_at"][:10],
+            row["id"][:8] + "...",
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(rows)} users")
+
+
+USER_SELECT = (
+    "*, distributors(name), workshops(name)"
+)
+
+
+@user.command("list")
+@click.option("--level", "-l", default=None,
+              type=click.Choice(["user", "distributor", "maintenance", "admin"]),
+              help="Filter by user_level")
+@click.option("--role", "-r", default=None, help="Filter by role (e.g. customer, workshop_staff)")
+@click.option("--country", "-c", default=None, help="Filter by home_country (ISO alpha-2)")
+@click.option("--active/--inactive", default=None, help="Filter by active status")
+@click.option("--limit", "-n", default=100, help="Max results")
+def user_list(level, role, country, active, limit):
+    """List users with optional filters.
+
+    Examples:
+        python admin.py user list
+        python admin.py user list --level distributor
+        python admin.py user list --role workshop_staff --country GB
+    """
+    sb = get_client()
+
+    query = sb.table("users").select(USER_SELECT)
+
+    if level:
+        query = query.eq("user_level", level)
+    if role:
+        query = query.contains("roles", [role])
+    if country:
+        query = query.eq("home_country", country.upper())
+    if active is not None:
+        query = query.eq("is_active", active)
+
+    result = query.order("created_at", desc=True).limit(limit).execute()
+    _print_user_table(result.data)
+
+
+@user.command("search")
+@click.argument("query")
+@click.option("--limit", "-n", default=50, help="Max results")
+def user_search(query, limit):
+    """Search users by email, name, or ID.
+
+    Searches across email, first_name, and last_name fields using
+    case-insensitive partial matching.
+
+    Examples:
+        python admin.py user search colin
+        python admin.py user search @icloud.com
+        python admin.py user search "John Smith"
+    """
+    sb = get_client()
+    q = query.strip().lower()
+
+    # If it looks like a UUID prefix, search by ID
+    if len(q) >= 8 and all(c in "0123456789abcdef-" for c in q):
+        result = sb.table("users").select(USER_SELECT).ilike("id", f"{q}%").limit(limit).execute()
+        if result.data:
+            _print_user_table(result.data, title=f"Users matching ID '{query}'")
+            return
+
+    # Search across email, first_name, last_name using OR
+    results = []
+    seen_ids = set()
+
+    for field in ["email", "first_name", "last_name"]:
+        result = sb.table("users").select(USER_SELECT).ilike(field, f"%{q}%").limit(limit).execute()
+        for row in result.data:
+            if row["id"] not in seen_ids:
+                seen_ids.add(row["id"])
+                results.append(row)
+
+    if not results:
+        console.print(f"[yellow]No users found matching:[/yellow] {query}")
+        return
+
+    _print_user_table(results, title=f"Users matching '{query}'")
+
+
+@user.command("get")
+@click.argument("email_or_id")
+def user_get(email_or_id):
+    """Show detailed info for a user, including their scooters.
+
+    Look up by email address or UUID (or UUID prefix).
+
+    Examples:
+        python admin.py user get colin@example.com
+        python admin.py user get 3a5f...
+    """
+    sb = get_client()
+    q = email_or_id.strip()
+
+    # Try email first, then ID prefix
+    result = sb.table("users").select(USER_SELECT).eq("email", q.lower()).execute()
+    if not result.data:
+        result = sb.table("users").select(USER_SELECT).ilike("id", f"{q}%").execute()
+    if not result.data:
+        console.print(f"[red]User not found:[/red] {email_or_id}")
+        return
+
+    u = result.data[0]
+
+    # Build detail panel
+    name_parts = []
+    if u.get("first_name"):
+        name_parts.append(u["first_name"])
+    if u.get("last_name"):
+        name_parts.append(u["last_name"])
+    full_name = " ".join(name_parts) or "-"
+
+    roles = u.get("roles") or []
+    roles_str = ", ".join(roles) if roles else "-"
+
+    lines = [
+        f"  [bold]Email:[/bold]          {u['email']}",
+        f"  [bold]Name:[/bold]           {full_name}",
+        f"  [bold]User Level:[/bold]     {u.get('user_level', '-')}",
+        f"  [bold]Roles:[/bold]          {roles_str}",
+        f"  [bold]Home Country:[/bold]   {u.get('home_country') or '-'}",
+        f"  [bold]Current Country:[/bold]{u.get('current_country') or '-'}",
+        f"  [bold]Distributor:[/bold]    {_resolve_fk(u, 'distributors')}",
+        f"  [bold]Workshop:[/bold]       {_resolve_fk(u, 'workshops')}",
+        f"  [bold]Verified:[/bold]       {'Yes' if u.get('is_verified') else 'No'}",
+        f"  [bold]Active:[/bold]         {'Yes' if u.get('is_active') else 'No'}",
+        f"  [bold]Age Range:[/bold]      {u.get('age_range') or '-'}",
+        f"  [bold]Gender:[/bold]         {u.get('gender') or '-'}",
+        f"  [bold]Scooter Use:[/bold]    {u.get('scooter_use_type') or '-'}",
+        f"  [bold]Registered:[/bold]     {u['created_at'][:16]}",
+        f"  [bold]Last Login:[/bold]     {(u.get('last_login') or '-')[:16] if u.get('last_login') else '-'}",
+        f"  [bold]ID:[/bold]             {u['id']}",
+    ]
+    console.print(Panel("\n".join(lines), title=f"User: {u['email']}"))
+
+    # Fetch linked scooters
+    scooter_links = sb.table("user_scooters").select(
+        "*, scooters(zyd_serial, model, hw_version, status, firmware_version, distributor_id, distributors(name))"
+    ).eq("user_id", u["id"]).order("registered_at", desc=True).execute()
+
+    if scooter_links.data:
+        st = Table(title="Linked Scooters")
+        st.add_column("ZYD Serial", style="cyan")
+        st.add_column("Model", style="green")
+        st.add_column("Status", style="yellow")
+        st.add_column("HW Ver", style="magenta")
+        st.add_column("FW Ver", style="magenta")
+        st.add_column("Distributor", style="yellow")
+        st.add_column("Primary", style="dim")
+        st.add_column("Registered", style="dim")
+
+        for link in scooter_links.data:
+            sc = link.get("scooters") or {}
+            if not isinstance(sc, dict):
+                sc = {}
+            dist_name = "-"
+            dist_obj = sc.get("distributors")
+            if isinstance(dist_obj, dict):
+                dist_name = dist_obj.get("name", "-")
+
+            status = sc.get("status") or "-"
+            status_style = {"active": "[green]active[/green]",
+                            "in_service": "[yellow]in_service[/yellow]",
+                            "stolen": "[red]stolen[/red]",
+                            "decommissioned": "[dim]decommissioned[/dim]"}.get(status, status)
+
+            st.add_row(
+                sc.get("zyd_serial") or link.get("zyd_serial", "?"),
+                sc.get("model") or "-",
+                status_style,
+                sc.get("hw_version") or "-",
+                sc.get("firmware_version") or "-",
+                dist_name,
+                "Yes" if link.get("is_primary") else "No",
+                link["registered_at"][:10],
+            )
+
+        console.print(st)
+    else:
+        console.print("[dim]No scooters linked to this user.[/dim]")
+
+
+@user.command("edit")
+@click.argument("email_or_id")
+@click.option("--first-name", default=None, help="First name")
+@click.option("--last-name", default=None, help="Last name")
+@click.option("--level", default=None,
+              type=click.Choice(["user", "distributor", "maintenance", "admin"]),
+              help="User level")
+@click.option("--add-role", multiple=True, help="Add a role (repeatable)")
+@click.option("--remove-role", multiple=True, help="Remove a role (repeatable)")
+@click.option("--home-country", default=None, help="Home country (ISO alpha-2)")
+@click.option("--current-country", default=None, help="Current country (ISO alpha-2)")
+@click.option("--distributor", default=None, help="Assign to distributor by name (use 'none' to clear)")
+@click.option("--workshop", default=None, help="Assign to workshop by name (use 'none' to clear)")
+@click.option("--active/--inactive", default=None, help="Set active status")
+@click.option("--verified/--unverified", default=None, help="Set verified status")
+def user_edit(email_or_id, first_name, last_name, level, add_role, remove_role,
+              home_country, current_country, distributor, workshop, active, verified):
+    """Edit a user's fields.
+
+    Examples:
+        python admin.py user edit colin@example.com --level distributor --home-country GB
+        python admin.py user edit colin@example.com --add-role workshop_staff --workshop "London SC"
+        python admin.py user edit colin@example.com --active
+    """
+    sb = get_client()
+    q = email_or_id.strip()
+
+    # Find user
+    result = sb.table("users").select("id, email, roles, distributor_id, workshop_id").eq("email", q.lower()).execute()
+    if not result.data:
+        result = sb.table("users").select("id, email, roles, distributor_id, workshop_id").ilike("id", f"{q}%").execute()
+    if not result.data:
+        console.print(f"[red]User not found:[/red] {email_or_id}")
+        return
+
+    u = result.data[0]
+    updates = {}
+
+    if first_name is not None:
+        updates["first_name"] = first_name
+    if last_name is not None:
+        updates["last_name"] = last_name
+    if level is not None:
+        updates["user_level"] = level
+    if home_country is not None:
+        updates["home_country"] = home_country.upper()
+    if current_country is not None:
+        updates["current_country"] = current_country.upper()
+    if active is not None:
+        updates["is_active"] = active
+    if verified is not None:
+        updates["is_verified"] = verified
+
+    # Handle role changes
+    if add_role or remove_role:
+        current_roles = list(u.get("roles") or [])
+        for r in add_role:
+            if r not in current_roles:
+                current_roles.append(r)
+        for r in remove_role:
+            if r in current_roles:
+                current_roles.remove(r)
+        updates["roles"] = current_roles
+
+    # Handle distributor assignment
+    if distributor is not None:
+        if distributor.lower() == "none":
+            updates["distributor_id"] = None
+        else:
+            dist = sb.table("distributors").select("id").eq("name", distributor).execute()
+            if not dist.data:
+                console.print(f"[red]Distributor not found:[/red] {distributor}")
+                return
+            updates["distributor_id"] = dist.data[0]["id"]
+
+    # Handle workshop assignment
+    if workshop is not None:
+        if workshop.lower() == "none":
+            updates["workshop_id"] = None
+        else:
+            ws = sb.table("workshops").select("id").eq("name", workshop).execute()
+            if not ws.data:
+                console.print(f"[red]Workshop not found:[/red] {workshop}")
+                return
+            updates["workshop_id"] = ws.data[0]["id"]
+
+    if not updates:
+        console.print("[yellow]No changes specified. Use --help to see available options.[/yellow]")
+        return
+
+    # Show what will change
+    console.print(f"\n[bold]Updating user:[/bold] {u['email']}")
+    for key, val in updates.items():
+        console.print(f"  {key}: {val}")
+
+    if not Confirm.ask("\nApply these changes?"):
+        return
+
+    sb.table("users").update(updates).eq("id", u["id"]).execute()
+    console.print(f"[green]User '{u['email']}' updated.[/green]")
+
+
+@user.command("scooters")
+@click.argument("email_or_id")
+def user_scooters(email_or_id):
+    """List scooters linked to a user.
+
+    Example: python admin.py user scooters colin@example.com
+    """
+    sb = get_client()
+    q = email_or_id.strip()
+
+    # Find user
+    result = sb.table("users").select("id, email").eq("email", q.lower()).execute()
+    if not result.data:
+        result = sb.table("users").select("id, email").ilike("id", f"{q}%").execute()
+    if not result.data:
+        console.print(f"[red]User not found:[/red] {email_or_id}")
+        return
+
+    u = result.data[0]
+
+    links = sb.table("user_scooters").select(
+        "*, scooters(zyd_serial, model, hw_version, status, firmware_version, notes, distributors(name))"
+    ).eq("user_id", u["id"]).order("registered_at", desc=True).execute()
+
+    if not links.data:
+        console.print(f"[dim]No scooters linked to {u['email']}.[/dim]")
+        return
+
+    table = Table(title=f"Scooters for {u['email']}")
+    table.add_column("ZYD Serial", style="cyan")
+    table.add_column("Model", style="green")
+    table.add_column("Status", style="yellow")
+    table.add_column("HW", style="magenta")
+    table.add_column("FW", style="magenta")
+    table.add_column("Distributor", style="yellow")
+    table.add_column("Odometer", style="blue")
+    table.add_column("Battery %", style="blue")
+    table.add_column("Primary", style="dim")
+    table.add_column("Linked", style="dim")
+
+    for link in links.data:
+        sc = link.get("scooters") or {}
+        if not isinstance(sc, dict):
+            sc = {}
+
+        dist_name = "-"
+        dist_obj = sc.get("distributors")
+        if isinstance(dist_obj, dict):
+            dist_name = dist_obj.get("name", "-")
+
+        odo = link.get("initial_odometer_km")
+        odo_str = f"{float(odo):.1f}" if odo is not None else "-"
+        soc = link.get("initial_battery_soc")
+        soc_str = f"{soc}%" if soc is not None else "-"
+
+        table.add_row(
+            sc.get("zyd_serial") or link.get("zyd_serial", "?"),
+            sc.get("model") or "-",
+            sc.get("status") or "-",
+            sc.get("hw_version") or "-",
+            sc.get("firmware_version") or "-",
+            dist_name,
+            odo_str,
+            soc_str,
+            "Yes" if link.get("is_primary") else "No",
+            link["registered_at"][:10],
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(links.data)} scooters")
+
+
+# ===========================================================================
 # SCOOTERS
 # ===========================================================================
 
@@ -459,46 +877,353 @@ def scooter():
 
 @scooter.command("list")
 @click.option("--distributor", "-d", default=None, help="Filter by distributor name")
-def scooter_list(distributor):
-    """List all scooters, optionally filtered by distributor."""
+@click.option("--status", "-s", default=None,
+              type=click.Choice(["active", "in_service", "stolen", "decommissioned"]),
+              help="Filter by status")
+@click.option("--country", "-c", default=None, help="Filter by country_of_registration")
+@click.option("--limit", "-n", default=100, help="Max results")
+def scooter_list(distributor, status, country, limit):
+    """List scooters with optional filters."""
     sb = get_client()
 
     query = sb.table("scooters").select("*, distributors(name)")
     if distributor:
-        # Get distributor ID first
         dist = sb.table("distributors").select("id").eq("name", distributor).execute()
         if not dist.data:
             console.print(f"[red]Distributor not found:[/red] {distributor}")
             return
         query = query.eq("distributor_id", dist.data[0]["id"])
+    if status:
+        query = query.eq("status", status)
+    if country:
+        query = query.eq("country_of_registration", country.upper())
 
-    result = query.order("created_at").execute()
+    result = query.order("created_at", desc=True).limit(limit).execute()
 
     table = Table(title="Scooters")
     table.add_column("ZYD Serial", style="cyan")
     table.add_column("Model", style="green")
+    table.add_column("Status", style="yellow")
     table.add_column("HW Ver", style="magenta")
+    table.add_column("FW Ver", style="magenta")
+    table.add_column("Country", style="yellow")
     table.add_column("Distributor", style="yellow")
-    table.add_column("Notes", style="dim")
     table.add_column("Created", style="dim")
 
     for row in result.data:
-        dist_name = row.get("distributors", {})
-        if isinstance(dist_name, dict):
-            dist_name = dist_name.get("name", "?")
-        else:
-            dist_name = "?"
+        dist_name = _resolve_fk(row, "distributors")
+
+        status_val = row.get("status") or "-"
+        status_style = {"active": "[green]active[/green]",
+                        "in_service": "[yellow]in_service[/yellow]",
+                        "stolen": "[red]stolen[/red]",
+                        "decommissioned": "[dim]decommissioned[/dim]"}.get(status_val, status_val)
+
         table.add_row(
             row["zyd_serial"],
-            row.get("model") or "",
+            row.get("model") or "-",
+            status_style,
             row.get("hw_version") or "-",
+            row.get("firmware_version") or "-",
+            row.get("country_of_registration") or "-",
             dist_name,
-            row.get("notes") or "",
             row["created_at"][:10],
         )
 
     console.print(table)
     console.print(f"\nTotal: {len(result.data)} scooters")
+
+
+@scooter.command("search")
+@click.argument("query")
+@click.option("--limit", "-n", default=50, help="Max results")
+def scooter_search(query, limit):
+    """Search scooters by serial number, model, or ID.
+
+    Examples:
+        python admin.py scooter search ZYD
+        python admin.py scooter search "Pure Air"
+    """
+    sb = get_client()
+    q = query.strip()
+
+    results = []
+    seen_ids = set()
+
+    # Search by serial
+    r = sb.table("scooters").select("*, distributors(name)").ilike("zyd_serial", f"%{q}%").limit(limit).execute()
+    for row in r.data:
+        if row["id"] not in seen_ids:
+            seen_ids.add(row["id"])
+            results.append(row)
+
+    # Search by model
+    r = sb.table("scooters").select("*, distributors(name)").ilike("model", f"%{q}%").limit(limit).execute()
+    for row in r.data:
+        if row["id"] not in seen_ids:
+            seen_ids.add(row["id"])
+            results.append(row)
+
+    if not results:
+        console.print(f"[yellow]No scooters found matching:[/yellow] {query}")
+        return
+
+    table = Table(title=f"Scooters matching '{query}'")
+    table.add_column("ZYD Serial", style="cyan")
+    table.add_column("Model", style="green")
+    table.add_column("Status", style="yellow")
+    table.add_column("HW Ver", style="magenta")
+    table.add_column("FW Ver", style="magenta")
+    table.add_column("Country", style="yellow")
+    table.add_column("Distributor", style="yellow")
+    table.add_column("Created", style="dim")
+
+    for row in results:
+        dist_name = _resolve_fk(row, "distributors")
+        table.add_row(
+            row["zyd_serial"],
+            row.get("model") or "-",
+            row.get("status") or "-",
+            row.get("hw_version") or "-",
+            row.get("firmware_version") or "-",
+            row.get("country_of_registration") or "-",
+            dist_name,
+            row["created_at"][:10],
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(results)} matches")
+
+
+@scooter.command("get")
+@click.argument("zyd_serial")
+def scooter_get(zyd_serial):
+    """Show detailed info for a scooter, including its owner(s).
+
+    Example: python admin.py scooter get ZYD12345
+    """
+    sb = get_client()
+
+    result = sb.table("scooters").select("*, distributors(name)").eq("zyd_serial", zyd_serial).execute()
+    if not result.data:
+        # Try partial match
+        result = sb.table("scooters").select("*, distributors(name)").ilike("zyd_serial", f"%{zyd_serial}%").execute()
+    if not result.data:
+        console.print(f"[red]Scooter not found:[/red] {zyd_serial}")
+        return
+
+    if len(result.data) > 1:
+        console.print(f"[yellow]Multiple matches found. Showing first.[/yellow]")
+
+    sc = result.data[0]
+    dist_name = _resolve_fk(sc, "distributors")
+
+    status_val = sc.get("status") or "-"
+    status_style = {"active": "[green]active[/green]",
+                    "in_service": "[yellow]in_service[/yellow]",
+                    "stolen": "[red]stolen[/red]",
+                    "decommissioned": "[dim]decommissioned[/dim]"}.get(status_val, status_val)
+
+    lines = [
+        f"  [bold]ZYD Serial:[/bold]     {sc['zyd_serial']}",
+        f"  [bold]Model:[/bold]          {sc.get('model') or '-'}",
+        f"  [bold]Status:[/bold]         {status_style}",
+        f"  [bold]HW Version:[/bold]     {sc.get('hw_version') or '-'}",
+        f"  [bold]FW Version:[/bold]     {sc.get('firmware_version') or '-'}",
+        f"  [bold]Country:[/bold]        {sc.get('country_of_registration') or '-'}",
+        f"  [bold]Distributor:[/bold]    {dist_name}",
+        f"  [bold]Notes:[/bold]          {sc.get('notes') or '-'}",
+        f"  [bold]Created:[/bold]        {sc['created_at'][:16]}",
+        f"  [bold]ID:[/bold]             {sc['id']}",
+    ]
+    console.print(Panel("\n".join(lines), title=f"Scooter: {sc['zyd_serial']}"))
+
+    # Fetch owners via user_scooters
+    owners = sb.table("user_scooters").select(
+        "*, users(id, email, first_name, last_name, user_level, roles, home_country, is_active)"
+    ).eq("scooter_id", sc["id"]).order("registered_at", desc=True).execute()
+
+    if owners.data:
+        ot = Table(title="Registered Owners")
+        ot.add_column("Email", style="cyan")
+        ot.add_column("Name", style="white")
+        ot.add_column("Level", style="magenta")
+        ot.add_column("Country", style="yellow")
+        ot.add_column("Active", style="dim")
+        ot.add_column("Primary", style="dim")
+        ot.add_column("Linked", style="dim")
+
+        for link in owners.data:
+            usr = link.get("users") or {}
+            if not isinstance(usr, dict):
+                usr = {}
+
+            name_parts = []
+            if usr.get("first_name"):
+                name_parts.append(usr["first_name"])
+            if usr.get("last_name"):
+                name_parts.append(usr["last_name"])
+
+            ot.add_row(
+                usr.get("email") or "?",
+                " ".join(name_parts) or "-",
+                usr.get("user_level") or "-",
+                usr.get("home_country") or "-",
+                "Yes" if usr.get("is_active") else "No",
+                "Yes" if link.get("is_primary") else "No",
+                link["registered_at"][:10],
+            )
+
+        console.print(ot)
+    else:
+        console.print("[dim]No users linked to this scooter.[/dim]")
+
+    # Fetch recent service jobs
+    jobs = sb.table("service_jobs").select(
+        "id, status, issue_description, booked_date, completed_date, workshops(name)"
+    ).eq("scooter_id", sc["id"]).order("booked_date", desc=True).limit(5).execute()
+
+    if jobs.data:
+        jt = Table(title="Recent Service Jobs")
+        jt.add_column("Status", style="yellow")
+        jt.add_column("Workshop", style="cyan")
+        jt.add_column("Issue", style="white")
+        jt.add_column("Booked", style="dim")
+        jt.add_column("Completed", style="dim")
+
+        for job in jobs.data:
+            ws_name = _resolve_fk(job, "workshops")
+            jt.add_row(
+                job["status"],
+                ws_name,
+                (job.get("issue_description") or "")[:50],
+                (job.get("booked_date") or "")[:10],
+                (job.get("completed_date") or "-")[:10],
+            )
+
+        console.print(jt)
+
+
+@scooter.command("edit")
+@click.argument("zyd_serial")
+@click.option("--model", default=None, help="Scooter model")
+@click.option("--hw-version", default=None, help="Hardware version")
+@click.option("--status", default=None,
+              type=click.Choice(["active", "in_service", "stolen", "decommissioned"]),
+              help="Scooter status")
+@click.option("--country", default=None, help="Country of registration (ISO alpha-2)")
+@click.option("--notes", default=None, help="Notes")
+@click.option("--distributor", default=None, help="Reassign to distributor by name")
+def scooter_edit(zyd_serial, model, hw_version, status, country, notes, distributor):
+    """Edit scooter fields.
+
+    Examples:
+        python admin.py scooter edit ZYD12345 --status stolen
+        python admin.py scooter edit ZYD12345 --model "Pure Air Pro" --country GB
+    """
+    sb = get_client()
+
+    result = sb.table("scooters").select("id, zyd_serial").eq("zyd_serial", zyd_serial).execute()
+    if not result.data:
+        console.print(f"[red]Scooter not found:[/red] {zyd_serial}")
+        return
+
+    sc = result.data[0]
+    updates = {}
+
+    if model is not None:
+        updates["model"] = model
+    if hw_version is not None:
+        updates["hw_version"] = hw_version
+    if status is not None:
+        updates["status"] = status
+    if country is not None:
+        updates["country_of_registration"] = country.upper()
+    if notes is not None:
+        updates["notes"] = notes
+    if distributor is not None:
+        dist = sb.table("distributors").select("id").eq("name", distributor).execute()
+        if not dist.data:
+            console.print(f"[red]Distributor not found:[/red] {distributor}")
+            return
+        updates["distributor_id"] = dist.data[0]["id"]
+
+    if not updates:
+        console.print("[yellow]No changes specified. Use --help to see available options.[/yellow]")
+        return
+
+    console.print(f"\n[bold]Updating scooter:[/bold] {sc['zyd_serial']}")
+    for key, val in updates.items():
+        console.print(f"  {key}: {val}")
+
+    if not Confirm.ask("\nApply these changes?"):
+        return
+
+    sb.table("scooters").update(updates).eq("id", sc["id"]).execute()
+    console.print(f"[green]Scooter '{sc['zyd_serial']}' updated.[/green]")
+
+
+@scooter.command("owner")
+@click.argument("zyd_serial")
+def scooter_owner(zyd_serial):
+    """Find the owner(s) of a scooter by serial number.
+
+    Example: python admin.py scooter owner ZYD12345
+    """
+    sb = get_client()
+
+    result = sb.table("scooters").select("id, zyd_serial").eq("zyd_serial", zyd_serial).execute()
+    if not result.data:
+        console.print(f"[red]Scooter not found:[/red] {zyd_serial}")
+        return
+
+    sc = result.data[0]
+
+    links = sb.table("user_scooters").select(
+        "*, users(id, email, first_name, last_name, user_level, home_country, is_active, last_login)"
+    ).eq("scooter_id", sc["id"]).order("registered_at", desc=True).execute()
+
+    if not links.data:
+        console.print(f"[dim]No users linked to scooter {zyd_serial}.[/dim]")
+        return
+
+    table = Table(title=f"Owners of {zyd_serial}")
+    table.add_column("Email", style="cyan")
+    table.add_column("Name", style="white")
+    table.add_column("Level", style="magenta")
+    table.add_column("Country", style="yellow")
+    table.add_column("Active", style="dim")
+    table.add_column("Last Login", style="dim")
+    table.add_column("Primary", style="dim")
+    table.add_column("Linked", style="dim")
+
+    for link in links.data:
+        usr = link.get("users") or {}
+        if not isinstance(usr, dict):
+            usr = {}
+
+        name_parts = []
+        if usr.get("first_name"):
+            name_parts.append(usr["first_name"])
+        if usr.get("last_name"):
+            name_parts.append(usr["last_name"])
+
+        last_login = usr.get("last_login")
+        last_login_str = last_login[:16] if last_login else "-"
+
+        table.add_row(
+            usr.get("email") or "?",
+            " ".join(name_parts) or "-",
+            usr.get("user_level") or "-",
+            usr.get("home_country") or "-",
+            "Yes" if usr.get("is_active") else "No",
+            last_login_str,
+            "Yes" if link.get("is_primary") else "No",
+            link["registered_at"][:10],
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(links.data)} owners")
 
 
 @scooter.command("add")
