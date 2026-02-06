@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Gen3 Firmware Updater — Admin Tool
-Manages distributors, scooters, firmware versions, and upload logs
+Manages distributors, workshops, scooters, firmware versions, and upload logs
 in the Supabase backend.
 
 Usage:
@@ -82,14 +82,17 @@ def distributor_list():
     table = Table(title="Distributors")
     table.add_column("Name", style="cyan")
     table.add_column("Activation Code", style="green")
+    table.add_column("Countries", style="magenta")
     table.add_column("Active", style="yellow")
     table.add_column("Created", style="dim")
     table.add_column("ID", style="dim")
 
     for row in result.data:
+        countries = row.get("countries") or []
         table.add_row(
             row["name"],
             row["activation_code"],
+            ", ".join(countries) if countries else "-",
             "Yes" if row["is_active"] else "No",
             row["created_at"][:10],
             row["id"][:8] + "...",
@@ -203,6 +206,245 @@ def distributor_regenerate(name):
     }).eq("id", row["id"]).execute()
 
     console.print(f"New activation code for '{name}': [bold yellow]{new_code}[/bold yellow]")
+
+
+@distributor.command("set-countries")
+@click.argument("name")
+@click.argument("countries", nargs=-1)
+def distributor_set_countries(name, countries):
+    """Set the territory countries for a distributor (ISO 3166-1 alpha-2).
+
+    Example: python admin.py distributor set-countries "UK Bikes" GB IE
+    """
+    sb = get_client()
+
+    result = sb.table("distributors").select("id, name").eq("name", name).execute()
+    if not result.data:
+        console.print(f"[red]Distributor not found:[/red] {name}")
+        return
+
+    codes = [c.upper() for c in countries]
+    sb.table("distributors").update({
+        "countries": codes,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", result.data[0]["id"]).execute()
+
+    console.print(f"[green]Territory set for '{name}':[/green] {', '.join(codes)}")
+
+
+@distributor.command("set-contact")
+@click.argument("name")
+@click.option("--phone", default=None, help="Phone number with country code")
+@click.option("--email", default=None, help="Contact email")
+def distributor_set_contact(name, phone, email):
+    """Set contact details for a distributor.
+
+    Example: python admin.py distributor set-contact "UK Bikes" --phone +44123456 --email info@ukbikes.com
+    """
+    sb = get_client()
+
+    result = sb.table("distributors").select("id, name").eq("name", name).execute()
+    if not result.data:
+        console.print(f"[red]Distributor not found:[/red] {name}")
+        return
+
+    updates = {"updated_at": datetime.utcnow().isoformat()}
+    if phone is not None:
+        updates["phone"] = phone
+    if email is not None:
+        updates["email"] = email
+
+    if len(updates) == 1:
+        console.print("[yellow]Provide at least --phone or --email[/yellow]")
+        return
+
+    sb.table("distributors").update(updates).eq("id", result.data[0]["id"]).execute()
+    console.print(f"[green]Contact updated for '{name}'[/green]")
+
+
+# ===========================================================================
+# WORKSHOPS
+# ===========================================================================
+
+@cli.group()
+def workshop():
+    """Manage service workshops."""
+    pass
+
+
+@workshop.command("list")
+@click.option("--distributor", "-d", default=None, help="Filter by parent distributor name")
+def workshop_list(distributor):
+    """List all workshops."""
+    sb = get_client()
+
+    query = sb.table("workshops").select("*, distributors(name)")
+    if distributor:
+        dist = sb.table("distributors").select("id").eq("name", distributor).execute()
+        if not dist.data:
+            console.print(f"[red]Distributor not found:[/red] {distributor}")
+            return
+        query = query.eq("parent_distributor_id", dist.data[0]["id"])
+
+    result = query.order("name").execute()
+
+    table = Table(title="Workshops")
+    table.add_column("Name", style="cyan")
+    table.add_column("Parent Distributor", style="yellow")
+    table.add_column("Countries", style="magenta")
+    table.add_column("Phone", style="dim")
+    table.add_column("Email", style="dim")
+    table.add_column("Active", style="green")
+    table.add_column("ID", style="dim")
+
+    for row in result.data:
+        dist_name = row.get("distributors", {})
+        if isinstance(dist_name, dict):
+            dist_name = dist_name.get("name", "-")
+        else:
+            dist_name = "-"
+
+        countries = row.get("service_area_countries") or []
+        table.add_row(
+            row["name"],
+            dist_name,
+            ", ".join(countries) if countries else "-",
+            row.get("phone") or "-",
+            row.get("email") or "-",
+            "Yes" if row["is_active"] else "No",
+            row["id"][:8] + "...",
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(result.data)} workshops")
+
+
+@workshop.command("add")
+@click.argument("name")
+@click.option("--distributor", "-d", default=None, help="Parent distributor name")
+@click.option("--countries", "-c", default=None, help="Comma-separated ISO 3166-1 alpha-2 codes")
+@click.option("--phone", default=None, help="Phone number")
+@click.option("--email", default=None, help="Email address")
+def workshop_add(name, distributor, countries, phone, email):
+    """Add a new workshop.
+
+    Example: python admin.py workshop add "London Service Centre" -d "UK Bikes" -c GB,IE
+    """
+    sb = get_client()
+
+    distributor_id = None
+    if distributor:
+        dist = sb.table("distributors").select("id").eq("name", distributor).execute()
+        if not dist.data:
+            console.print(f"[red]Distributor not found:[/red] {distributor}")
+            return
+        distributor_id = dist.data[0]["id"]
+
+    country_list = []
+    if countries:
+        country_list = [c.strip().upper() for c in countries.split(",")]
+
+    result = sb.table("workshops").insert({
+        "name": name,
+        "parent_distributor_id": distributor_id,
+        "service_area_countries": country_list,
+        "phone": phone,
+        "email": email,
+        "is_active": True,
+    }).execute()
+
+    if result.data:
+        row = result.data[0]
+        console.print(Panel(
+            f"[bold green]Workshop created[/bold green]\n\n"
+            f"  Name:         {row['name']}\n"
+            f"  Countries:    {', '.join(country_list) if country_list else 'None set'}\n"
+            f"  Distributor:  {distributor or 'Independent'}\n"
+            f"  ID:           {row['id']}",
+            title="New Workshop",
+        ))
+    else:
+        console.print("[red]Failed to create workshop.[/red]")
+
+
+@workshop.command("set-countries")
+@click.argument("name")
+@click.argument("countries", nargs=-1)
+def workshop_set_countries(name, countries):
+    """Set service area countries for a workshop (ISO 3166-1 alpha-2).
+
+    Example: python admin.py workshop set-countries "London Service Centre" GB IE
+    """
+    sb = get_client()
+
+    result = sb.table("workshops").select("id, name").eq("name", name).execute()
+    if not result.data:
+        console.print(f"[red]Workshop not found:[/red] {name}")
+        return
+
+    codes = [c.upper() for c in countries]
+    sb.table("workshops").update({
+        "service_area_countries": codes,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", result.data[0]["id"]).execute()
+
+    console.print(f"[green]Service area set for '{name}':[/green] {', '.join(codes)}")
+
+
+@workshop.command("deactivate")
+@click.argument("name")
+def workshop_deactivate(name):
+    """Deactivate a workshop."""
+    sb = get_client()
+
+    result = sb.table("workshops").select("*").eq("name", name).execute()
+    if not result.data:
+        console.print(f"[red]Workshop not found:[/red] {name}")
+        return
+
+    row = result.data[0]
+    if not Confirm.ask(f"Deactivate workshop '{row['name']}'?"):
+        return
+
+    sb.table("workshops").update({
+        "is_active": False,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", row["id"]).execute()
+    console.print(f"[yellow]Workshop '{row['name']}' deactivated.[/yellow]")
+
+
+@workshop.command("add-address")
+@click.argument("name")
+@click.option("--line1", required=True, help="Address line 1")
+@click.option("--line2", default=None, help="Address line 2")
+@click.option("--city", required=True, help="City")
+@click.option("--region", default=None, help="State/region/county")
+@click.option("--postcode", required=True, help="Postcode/ZIP")
+@click.option("--country", required=True, help="ISO 3166-1 alpha-2 country code")
+def workshop_add_address(name, line1, line2, city, region, postcode, country):
+    """Add an address to a workshop.
+
+    Example: python admin.py workshop add-address "London SC" --line1 "123 High St" --city London --postcode "SW1A 1AA" --country GB
+    """
+    sb = get_client()
+
+    result = sb.table("workshops").select("id").eq("name", name).execute()
+    if not result.data:
+        console.print(f"[red]Workshop not found:[/red] {name}")
+        return
+
+    sb.table("addresses").insert({
+        "entity_type": "workshop",
+        "entity_id": result.data[0]["id"],
+        "line_1": line1,
+        "line_2": line2,
+        "city": city,
+        "region": region,
+        "postcode": postcode,
+        "country": country.upper(),
+    }).execute()
+
+    console.print(f"[green]Address added to '{name}'[/green]")
 
 
 # ===========================================================================
