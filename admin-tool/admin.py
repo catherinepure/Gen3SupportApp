@@ -1814,6 +1814,994 @@ def logs_stats():
 
 
 # ===========================================================================
+# SERVICE JOBS
+# ===========================================================================
+
+@cli.group("service-job")
+def service_job():
+    """Manage service jobs."""
+    pass
+
+
+SERVICE_JOB_SELECT = (
+    "*, scooters(zyd_serial, model), workshops(name), "
+    "users!service_jobs_customer_id_fkey(email, first_name, last_name)"
+)
+
+STATUS_STYLES = {
+    "booked": "[cyan]booked[/cyan]",
+    "in_progress": "[yellow]in_progress[/yellow]",
+    "awaiting_parts": "[magenta]awaiting_parts[/magenta]",
+    "ready_for_collection": "[blue]ready_for_collection[/blue]",
+    "completed": "[green]completed[/green]",
+    "cancelled": "[dim]cancelled[/dim]",
+}
+
+
+@service_job.command("list")
+@click.option("--status", "-s", default=None,
+              type=click.Choice(["booked", "in_progress", "awaiting_parts",
+                                 "ready_for_collection", "completed", "cancelled"]),
+              help="Filter by status")
+@click.option("--workshop", "-w", default=None, help="Filter by workshop name")
+@click.option("--limit", "-n", default=50, help="Max results")
+def service_job_list(status, workshop, limit):
+    """List service jobs with optional filters.
+
+    Examples:
+        python admin.py service-job list
+        python admin.py service-job list --status in_progress
+        python admin.py service-job list --workshop "London SC"
+    """
+    sb = get_client()
+
+    query = sb.table("service_jobs").select(SERVICE_JOB_SELECT)
+
+    if status:
+        query = query.eq("status", status)
+    if workshop:
+        ws = sb.table("workshops").select("id").eq("name", workshop).execute()
+        if not ws.data:
+            console.print(f"[red]Workshop not found:[/red] {workshop}")
+            return
+        query = query.eq("workshop_id", ws.data[0]["id"])
+
+    result = query.order("booked_date", desc=True).limit(limit).execute()
+
+    table = Table(title="Service Jobs")
+    table.add_column("Status", style="yellow")
+    table.add_column("Scooter", style="cyan")
+    table.add_column("Customer", style="white")
+    table.add_column("Workshop", style="yellow")
+    table.add_column("Issue", style="dim")
+    table.add_column("Booked", style="dim")
+    table.add_column("Completed", style="dim")
+    table.add_column("ID", style="dim")
+
+    for row in result.data:
+        scooter_serial = _resolve_fk(row, "scooters", "zyd_serial")
+        ws_name = _resolve_fk(row, "workshops")
+        cust = row.get("users") or {}
+        if isinstance(cust, dict):
+            cust_str = cust.get("email") or "-"
+        else:
+            cust_str = "-"
+
+        table.add_row(
+            STATUS_STYLES.get(row["status"], row["status"]),
+            scooter_serial,
+            cust_str,
+            ws_name,
+            (row.get("issue_description") or "")[:40],
+            (row.get("booked_date") or "")[:10],
+            (row.get("completed_date") or "-")[:10],
+            row["id"][:8] + "...",
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(result.data)} jobs")
+
+
+@service_job.command("get")
+@click.argument("job_id")
+def service_job_get(job_id):
+    """Show detailed info for a service job.
+
+    Example: python admin.py service-job get 3a5f...
+    """
+    sb = get_client()
+
+    result = sb.table("service_jobs").select(
+        "*, scooters(zyd_serial, model, hw_version, status, firmware_version), "
+        "workshops(name, phone, email), "
+        "users!service_jobs_customer_id_fkey(email, first_name, last_name, home_country)"
+    ).ilike("id", f"{job_id}%").execute()
+
+    if not result.data:
+        console.print(f"[red]Service job not found:[/red] {job_id}")
+        return
+
+    j = result.data[0]
+    scooter = j.get("scooters") or {}
+    if not isinstance(scooter, dict):
+        scooter = {}
+    ws = j.get("workshops") or {}
+    if not isinstance(ws, dict):
+        ws = {}
+    cust = j.get("users") or {}
+    if not isinstance(cust, dict):
+        cust = {}
+
+    cust_name = " ".join(filter(None, [cust.get("first_name"), cust.get("last_name")])) or "-"
+
+    lines = [
+        f"  [bold]Status:[/bold]           {STATUS_STYLES.get(j['status'], j['status'])}",
+        f"  [bold]Scooter:[/bold]          {scooter.get('zyd_serial', '-')} ({scooter.get('model', '-')})",
+        f"  [bold]Customer:[/bold]         {cust.get('email', '-')} ({cust_name})",
+        f"  [bold]Workshop:[/bold]         {ws.get('name', '-')}",
+        f"  [bold]Issue:[/bold]            {j.get('issue_description') or '-'}",
+        f"  [bold]Tech Notes:[/bold]       {j.get('technician_notes') or '-'}",
+        f"  [bold]Parts Used:[/bold]       {j.get('parts_used') or '-'}",
+        f"  [bold]FW Updated:[/bold]       {'Yes' if j.get('firmware_updated') else 'No'}",
+    ]
+    if j.get("firmware_updated"):
+        lines.append(f"  [bold]FW Before:[/bold]        {j.get('firmware_version_before') or '-'}")
+        lines.append(f"  [bold]FW After:[/bold]         {j.get('firmware_version_after') or '-'}")
+    lines += [
+        f"  [bold]Booked:[/bold]           {(j.get('booked_date') or '-')[:16]}",
+        f"  [bold]Started:[/bold]          {(j.get('started_date') or '-')[:16]}",
+        f"  [bold]Completed:[/bold]        {(j.get('completed_date') or '-')[:16]}",
+        f"  [bold]ID:[/bold]               {j['id']}",
+    ]
+    console.print(Panel("\n".join(lines), title=f"Service Job"))
+
+
+@service_job.command("create")
+@click.argument("scooter_serial")
+@click.argument("workshop_name")
+@click.argument("issue")
+@click.option("--customer", default=None, help="Customer email (auto-resolved from scooter if omitted)")
+def service_job_create(scooter_serial, workshop_name, issue, customer):
+    """Create a new service job.
+
+    Example: python admin.py service-job create ZYD12345 "London SC" "Battery not charging"
+    """
+    sb = get_client()
+
+    # Find scooter
+    sc = sb.table("scooters").select("id").eq("zyd_serial", scooter_serial).execute()
+    if not sc.data:
+        console.print(f"[red]Scooter not found:[/red] {scooter_serial}")
+        return
+    scooter_id = sc.data[0]["id"]
+
+    # Find workshop
+    ws = sb.table("workshops").select("id").eq("name", workshop_name).execute()
+    if not ws.data:
+        console.print(f"[red]Workshop not found:[/red] {workshop_name}")
+        return
+    workshop_id = ws.data[0]["id"]
+
+    # Find customer
+    customer_id = None
+    if customer:
+        cu = sb.table("users").select("id").eq("email", customer.lower()).execute()
+        if not cu.data:
+            console.print(f"[red]Customer not found:[/red] {customer}")
+            return
+        customer_id = cu.data[0]["id"]
+    else:
+        # Auto-resolve from user_scooters
+        link = sb.table("user_scooters").select("user_id").eq("scooter_id", scooter_id).order(
+            "registered_at", desc=True).limit(1).execute()
+        if link.data:
+            customer_id = link.data[0]["user_id"]
+
+    if not customer_id:
+        console.print("[red]Could not determine scooter owner. Use --customer to specify.[/red]")
+        return
+
+    result = sb.table("service_jobs").insert({
+        "scooter_id": scooter_id,
+        "workshop_id": workshop_id,
+        "customer_id": customer_id,
+        "issue_description": issue,
+        "status": "booked",
+        "booked_date": datetime.utcnow().isoformat(),
+    }).select().single().execute()
+
+    if result.data:
+        # Update scooter status
+        sb.table("scooters").update({"status": "in_service"}).eq("id", scooter_id).execute()
+        console.print(f"[green]Service job created:[/green] {result.data['id'][:8]}...")
+        console.print(f"  Scooter {scooter_serial} status set to [yellow]in_service[/yellow]")
+    else:
+        console.print("[red]Failed to create service job.[/red]")
+
+
+@service_job.command("update")
+@click.argument("job_id")
+@click.option("--status", "-s", default=None,
+              type=click.Choice(["in_progress", "awaiting_parts", "ready_for_collection", "completed"]),
+              help="New status")
+@click.option("--notes", default=None, help="Technician notes")
+@click.option("--parts", default=None, help="Parts used")
+@click.option("--fw-updated", is_flag=True, default=False, help="Mark firmware as updated")
+@click.option("--fw-before", default=None, help="Firmware version before update")
+@click.option("--fw-after", default=None, help="Firmware version after update")
+def service_job_update(job_id, status, notes, parts, fw_updated, fw_before, fw_after):
+    """Update a service job.
+
+    Examples:
+        python admin.py service-job update 3a5f --status in_progress
+        python admin.py service-job update 3a5f --status completed --notes "Replaced battery"
+    """
+    sb = get_client()
+
+    result = sb.table("service_jobs").select("id, status, scooter_id").ilike("id", f"{job_id}%").execute()
+    if not result.data:
+        console.print(f"[red]Service job not found:[/red] {job_id}")
+        return
+
+    job = result.data[0]
+    updates = {"updated_at": datetime.utcnow().isoformat()}
+
+    if status:
+        valid_transitions = {
+            "booked": ["in_progress", "cancelled"],
+            "in_progress": ["awaiting_parts", "ready_for_collection", "completed", "cancelled"],
+            "awaiting_parts": ["in_progress", "cancelled"],
+            "ready_for_collection": ["completed", "cancelled"],
+        }
+        allowed = valid_transitions.get(job["status"], [])
+        if status not in allowed:
+            console.print(f"[red]Cannot transition from '{job['status']}' to '{status}'.[/red]")
+            console.print(f"  Allowed: {', '.join(allowed) if allowed else 'none'}")
+            return
+        updates["status"] = status
+        if status == "in_progress":
+            updates["started_date"] = datetime.utcnow().isoformat()
+        if status in ("completed", "cancelled"):
+            updates["completed_date"] = datetime.utcnow().isoformat()
+
+    if notes is not None:
+        updates["technician_notes"] = notes
+    if parts is not None:
+        updates["parts_used"] = parts
+    if fw_updated:
+        updates["firmware_updated"] = True
+        if fw_before:
+            updates["firmware_version_before"] = fw_before
+        if fw_after:
+            updates["firmware_version_after"] = fw_after
+
+    if len(updates) == 1:
+        console.print("[yellow]No changes specified.[/yellow]")
+        return
+
+    sb.table("service_jobs").update(updates).eq("id", job["id"]).execute()
+    console.print(f"[green]Service job updated.[/green]")
+
+    # Restore scooter status if job completed/cancelled
+    if status in ("completed", "cancelled"):
+        sb.table("scooters").update({"status": "active"}).eq("id", job["scooter_id"]).execute()
+        console.print(f"  Scooter status restored to [green]active[/green]")
+
+
+@service_job.command("cancel")
+@click.argument("job_id")
+def service_job_cancel(job_id):
+    """Cancel a service job.
+
+    Example: python admin.py service-job cancel 3a5f
+    """
+    sb = get_client()
+
+    result = sb.table("service_jobs").select("id, status, scooter_id").ilike("id", f"{job_id}%").execute()
+    if not result.data:
+        console.print(f"[red]Service job not found:[/red] {job_id}")
+        return
+
+    job = result.data[0]
+    if job["status"] in ("completed", "cancelled"):
+        console.print(f"[yellow]Cannot cancel a job that is already '{job['status']}'[/yellow]")
+        return
+
+    if not Confirm.ask(f"Cancel service job {job['id'][:8]}... (currently '{job['status']}')?"):
+        return
+
+    sb.table("service_jobs").update({
+        "status": "cancelled",
+        "completed_date": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", job["id"]).execute()
+
+    sb.table("scooters").update({"status": "active"}).eq("id", job["scooter_id"]).execute()
+    console.print(f"[yellow]Service job cancelled. Scooter status restored to active.[/yellow]")
+
+
+# ===========================================================================
+# ACTIVITY EVENTS
+# ===========================================================================
+
+@cli.group("events")
+def events():
+    """View activity events (audit trail)."""
+    pass
+
+
+@events.command("list")
+@click.option("--type", "-t", "event_type", default=None, help="Filter by event type")
+@click.option("--scooter", "-s", default=None, help="Filter by scooter serial")
+@click.option("--user", "-u", default=None, help="Filter by user email")
+@click.option("--country", "-c", default=None, help="Filter by country")
+@click.option("--from", "from_date", default=None, help="From date (YYYY-MM-DD)")
+@click.option("--to", "to_date", default=None, help="To date (YYYY-MM-DD)")
+@click.option("--limit", "-n", default=50, help="Max results")
+def events_list(event_type, scooter, user, country, from_date, to_date, limit):
+    """List activity events with optional filters.
+
+    Examples:
+        python admin.py events list
+        python admin.py events list --type firmware_updated --from 2026-02-01
+        python admin.py events list --scooter ZYD12345
+    """
+    sb = get_client()
+
+    query = sb.table("activity_events").select("*")
+
+    if event_type:
+        query = query.eq("event_type", event_type)
+    if country:
+        query = query.eq("country", country.upper())
+    if from_date:
+        query = query.gte("timestamp", from_date)
+    if to_date:
+        query = query.lte("timestamp", to_date + "T23:59:59")
+
+    if scooter:
+        sc = sb.table("scooters").select("id").eq("zyd_serial", scooter).execute()
+        if not sc.data:
+            console.print(f"[red]Scooter not found:[/red] {scooter}")
+            return
+        query = query.eq("scooter_id", sc.data[0]["id"])
+
+    if user:
+        u = sb.table("users").select("id").eq("email", user.lower()).execute()
+        if not u.data:
+            console.print(f"[red]User not found:[/red] {user}")
+            return
+        query = query.eq("user_id", u.data[0]["id"])
+
+    result = query.order("timestamp", desc=True).limit(limit).execute()
+
+    table = Table(title="Activity Events")
+    table.add_column("Timestamp", style="dim")
+    table.add_column("Type", style="cyan")
+    table.add_column("Country", style="yellow")
+    table.add_column("Device", style="dim")
+    table.add_column("Payload", style="dim")
+    table.add_column("ID", style="dim")
+
+    for row in result.data:
+        payload = row.get("payload") or {}
+        payload_str = str(payload)[:50] if payload else "-"
+
+        table.add_row(
+            (row.get("timestamp") or "")[:16].replace("T", " "),
+            row["event_type"],
+            row.get("country") or "-",
+            row.get("device_type") or "-",
+            payload_str,
+            row["id"][:8] + "...",
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(result.data)} events")
+
+
+@events.command("types")
+def events_types():
+    """Show available event types and their counts."""
+    sb = get_client()
+
+    result = sb.table("activity_events").select("event_type").execute()
+
+    counts = {}
+    for row in result.data:
+        et = row["event_type"]
+        counts[et] = counts.get(et, 0) + 1
+
+    if not counts:
+        console.print("[dim]No activity events recorded yet.[/dim]")
+        return
+
+    table = Table(title="Event Types")
+    table.add_column("Event Type", style="cyan")
+    table.add_column("Count", style="green", justify="right")
+
+    for et in sorted(counts.keys()):
+        table.add_row(et, str(counts[et]))
+
+    console.print(table)
+    console.print(f"\nTotal: {sum(counts.values())} events across {len(counts)} types")
+
+
+@events.command("stats")
+@click.option("--days", "-d", default=30, help="Number of days to look back")
+def events_stats(days):
+    """Show activity event statistics.
+
+    Example: python admin.py events stats --days 7
+    """
+    sb = get_client()
+
+    from_date = datetime.utcnow()
+    from_date = from_date.replace(hour=0, minute=0, second=0)
+    from_date = from_date.__class__(from_date.year, from_date.month, from_date.day)
+    import datetime as dt_module
+    from_date = datetime.utcnow() - dt_module.timedelta(days=days)
+
+    result = sb.table("activity_events").select(
+        "event_type, country, device_type, timestamp"
+    ).gte("timestamp", from_date.isoformat()).execute()
+
+    if not result.data:
+        console.print(f"[dim]No events in the last {days} days.[/dim]")
+        return
+
+    type_counts = {}
+    country_counts = {}
+    device_counts = {}
+    daily_counts = {}
+
+    for row in result.data:
+        et = row["event_type"]
+        type_counts[et] = type_counts.get(et, 0) + 1
+
+        c = row.get("country") or "Unknown"
+        country_counts[c] = country_counts.get(c, 0) + 1
+
+        d = row.get("device_type") or "Unknown"
+        device_counts[d] = device_counts.get(d, 0) + 1
+
+        day = (row.get("timestamp") or "")[:10]
+        if day:
+            daily_counts[day] = daily_counts.get(day, 0) + 1
+
+    lines = [
+        f"  [bold]Total events:[/bold]    {len(result.data)}",
+        f"  [bold]Period:[/bold]           Last {days} days",
+        f"  [bold]Event types:[/bold]      {len(type_counts)}",
+        "",
+        "  [bold]Top event types:[/bold]",
+    ]
+    for et, count in sorted(type_counts.items(), key=lambda x: -x[1])[:10]:
+        lines.append(f"    {et}: {count}")
+
+    lines += ["", "  [bold]By country:[/bold]"]
+    for c, count in sorted(country_counts.items(), key=lambda x: -x[1])[:10]:
+        lines.append(f"    {c}: {count}")
+
+    lines += ["", "  [bold]By device:[/bold]"]
+    for d, count in sorted(device_counts.items(), key=lambda x: -x[1]):
+        lines.append(f"    {d}: {count}")
+
+    console.print(Panel("\n".join(lines), title="Activity Event Statistics"))
+
+
+# ===========================================================================
+# USER SESSION MANAGEMENT (extensions to user group)
+# ===========================================================================
+
+@user.command("sessions")
+@click.argument("email_or_id")
+def user_sessions_cmd(email_or_id):
+    """View active sessions for a user.
+
+    Example: python admin.py user sessions colin@example.com
+    """
+    sb = get_client()
+    q = email_or_id.strip()
+
+    result = sb.table("users").select("id, email").eq("email", q.lower()).execute()
+    if not result.data:
+        result = sb.table("users").select("id, email").ilike("id", f"{q}%").execute()
+    if not result.data:
+        console.print(f"[red]User not found:[/red] {email_or_id}")
+        return
+
+    u = result.data[0]
+    sessions = sb.table("user_sessions").select("*").eq("user_id", u["id"]).order(
+        "created_at", desc=True).execute()
+
+    if not sessions.data:
+        console.print(f"[dim]No sessions for {u['email']}.[/dim]")
+        return
+
+    now = datetime.utcnow()
+    table = Table(title=f"Sessions for {u['email']}")
+    table.add_column("Created", style="dim")
+    table.add_column("Last Activity", style="dim")
+    table.add_column("Expires", style="dim")
+    table.add_column("Status", style="yellow")
+    table.add_column("Device", style="dim")
+    table.add_column("Token", style="dim")
+
+    for s in sessions.data:
+        expires = s.get("expires_at", "")
+        is_expired = expires and datetime.fromisoformat(expires.replace("Z", "+00:00")).replace(
+            tzinfo=None) < now
+        status = "[red]expired[/red]" if is_expired else "[green]active[/green]"
+
+        table.add_row(
+            (s.get("created_at") or "")[:16],
+            (s.get("last_activity") or "-")[:16],
+            expires[:16] if expires else "-",
+            status,
+            s.get("device_info") or "-",
+            s.get("session_token", "")[:12] + "...",
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(sessions.data)} sessions")
+
+
+@user.command("logout")
+@click.argument("email_or_id")
+@click.option("--all", "logout_all", is_flag=True, default=False, help="Terminate all sessions")
+def user_logout(email_or_id, logout_all):
+    """Force logout a user by invalidating their sessions.
+
+    Examples:
+        python admin.py user logout colin@example.com        # most recent session
+        python admin.py user logout colin@example.com --all  # all sessions
+    """
+    sb = get_client()
+    q = email_or_id.strip()
+
+    result = sb.table("users").select("id, email").eq("email", q.lower()).execute()
+    if not result.data:
+        result = sb.table("users").select("id, email").ilike("id", f"{q}%").execute()
+    if not result.data:
+        console.print(f"[red]User not found:[/red] {email_or_id}")
+        return
+
+    u = result.data[0]
+
+    if logout_all:
+        sessions = sb.table("user_sessions").select("id").eq("user_id", u["id"]).execute()
+        count = len(sessions.data)
+        if count == 0:
+            console.print(f"[dim]No sessions for {u['email']}.[/dim]")
+            return
+        if not Confirm.ask(f"Terminate all {count} sessions for {u['email']}?"):
+            return
+        sb.table("user_sessions").delete().eq("user_id", u["id"]).execute()
+        console.print(f"[yellow]{count} sessions terminated for {u['email']}.[/yellow]")
+    else:
+        sessions = sb.table("user_sessions").select("id").eq("user_id", u["id"]).order(
+            "created_at", desc=True).limit(1).execute()
+        if not sessions.data:
+            console.print(f"[dim]No sessions for {u['email']}.[/dim]")
+            return
+        sb.table("user_sessions").delete().eq("id", sessions.data[0]["id"]).execute()
+        console.print(f"[yellow]Most recent session terminated for {u['email']}.[/yellow]")
+
+
+@user.command("force-verify")
+@click.argument("email_or_id")
+def user_force_verify(email_or_id):
+    """Mark a user as verified without email confirmation.
+
+    Example: python admin.py user force-verify colin@example.com
+    """
+    sb = get_client()
+    q = email_or_id.strip()
+
+    result = sb.table("users").select("id, email, is_verified").eq("email", q.lower()).execute()
+    if not result.data:
+        result = sb.table("users").select("id, email, is_verified").ilike("id", f"{q}%").execute()
+    if not result.data:
+        console.print(f"[red]User not found:[/red] {email_or_id}")
+        return
+
+    u = result.data[0]
+    if u.get("is_verified"):
+        console.print(f"[yellow]{u['email']} is already verified.[/yellow]")
+        return
+
+    sb.table("users").update({"is_verified": True}).eq("id", u["id"]).execute()
+    console.print(f"[green]{u['email']} marked as verified.[/green]")
+
+
+# ===========================================================================
+# WORKSHOP ENHANCEMENTS (get, edit, reactivate)
+# ===========================================================================
+
+@workshop.command("get")
+@click.argument("name")
+def workshop_get(name):
+    """Show detailed info for a workshop.
+
+    Example: python admin.py workshop get "London SC"
+    """
+    sb = get_client()
+
+    result = sb.table("workshops").select("*, distributors(name)").eq("name", name).execute()
+    if not result.data:
+        result = sb.table("workshops").select("*, distributors(name)").ilike("name", f"%{name}%").execute()
+    if not result.data:
+        console.print(f"[red]Workshop not found:[/red] {name}")
+        return
+
+    w = result.data[0]
+    countries = w.get("service_area_countries") or []
+
+    lines = [
+        f"  [bold]Name:[/bold]            {w['name']}",
+        f"  [bold]Distributor:[/bold]     {_resolve_fk(w, 'distributors')}",
+        f"  [bold]Countries:[/bold]       {', '.join(countries) if countries else '-'}",
+        f"  [bold]Phone:[/bold]           {w.get('phone') or '-'}",
+        f"  [bold]Email:[/bold]           {w.get('email') or '-'}",
+        f"  [bold]Active:[/bold]          {'Yes' if w.get('is_active') else 'No'}",
+        f"  [bold]Created:[/bold]         {w['created_at'][:16]}",
+        f"  [bold]ID:[/bold]              {w['id']}",
+    ]
+    console.print(Panel("\n".join(lines), title=f"Workshop: {w['name']}"))
+
+    # Addresses
+    addrs = sb.table("addresses").select("*").eq("entity_type", "workshop").eq(
+        "entity_id", w["id"]).execute()
+    if addrs.data:
+        at = Table(title="Addresses")
+        at.add_column("Line 1", style="white")
+        at.add_column("Line 2", style="dim")
+        at.add_column("City", style="cyan")
+        at.add_column("Region", style="dim")
+        at.add_column("Postcode", style="yellow")
+        at.add_column("Country", style="green")
+        at.add_column("ID", style="dim")
+
+        for a in addrs.data:
+            at.add_row(
+                a.get("line_1") or "-",
+                a.get("line_2") or "-",
+                a.get("city") or "-",
+                a.get("region") or "-",
+                a.get("postcode") or "-",
+                a.get("country") or "-",
+                a["id"][:8] + "...",
+            )
+        console.print(at)
+
+    # Active service jobs
+    jobs = sb.table("service_jobs").select(
+        "id, status, issue_description, booked_date, scooters(zyd_serial)"
+    ).eq("workshop_id", w["id"]).neq("status", "completed").neq(
+        "status", "cancelled").order("booked_date", desc=True).limit(10).execute()
+    if jobs.data:
+        jt = Table(title="Active Service Jobs")
+        jt.add_column("Status", style="yellow")
+        jt.add_column("Scooter", style="cyan")
+        jt.add_column("Issue", style="dim")
+        jt.add_column("Booked", style="dim")
+        for j in jobs.data:
+            jt.add_row(
+                j["status"],
+                _resolve_fk(j, "scooters", "zyd_serial"),
+                (j.get("issue_description") or "")[:40],
+                (j.get("booked_date") or "")[:10],
+            )
+        console.print(jt)
+
+
+@workshop.command("edit")
+@click.argument("name")
+@click.option("--new-name", default=None, help="Rename workshop")
+@click.option("--phone", default=None, help="Phone number")
+@click.option("--email", default=None, help="Email address")
+@click.option("--distributor", default=None, help="Reassign to distributor by name (use 'none' to clear)")
+def workshop_edit(name, new_name, phone, email, distributor):
+    """Edit workshop fields.
+
+    Examples:
+        python admin.py workshop edit "London SC" --phone "+44 20 1234 5678"
+        python admin.py workshop edit "London SC" --new-name "London Service Centre"
+    """
+    sb = get_client()
+
+    result = sb.table("workshops").select("id, name").eq("name", name).execute()
+    if not result.data:
+        console.print(f"[red]Workshop not found:[/red] {name}")
+        return
+
+    w = result.data[0]
+    updates = {"updated_at": datetime.utcnow().isoformat()}
+
+    if new_name is not None:
+        updates["name"] = new_name
+    if phone is not None:
+        updates["phone"] = phone
+    if email is not None:
+        updates["email"] = email
+    if distributor is not None:
+        if distributor.lower() == "none":
+            updates["parent_distributor_id"] = None
+        else:
+            dist = sb.table("distributors").select("id").eq("name", distributor).execute()
+            if not dist.data:
+                console.print(f"[red]Distributor not found:[/red] {distributor}")
+                return
+            updates["parent_distributor_id"] = dist.data[0]["id"]
+
+    if len(updates) == 1:
+        console.print("[yellow]No changes specified.[/yellow]")
+        return
+
+    sb.table("workshops").update(updates).eq("id", w["id"]).execute()
+    console.print(f"[green]Workshop '{w['name']}' updated.[/green]")
+
+
+@workshop.command("reactivate")
+@click.argument("name")
+def workshop_reactivate(name):
+    """Reactivate a deactivated workshop."""
+    sb = get_client()
+
+    result = sb.table("workshops").select("*").eq("name", name).execute()
+    if not result.data:
+        console.print(f"[red]Workshop not found:[/red] {name}")
+        return
+
+    w = result.data[0]
+    if w.get("is_active"):
+        console.print(f"[yellow]Workshop '{name}' is already active.[/yellow]")
+        return
+
+    sb.table("workshops").update({
+        "is_active": True,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", w["id"]).execute()
+    console.print(f"[green]Workshop '{name}' reactivated.[/green]")
+
+
+# ===========================================================================
+# DISTRIBUTOR ENHANCEMENTS (get, add-address, list-addresses)
+# ===========================================================================
+
+@distributor.command("get")
+@click.argument("name_or_code")
+def distributor_get(name_or_code):
+    """Show detailed info for a distributor.
+
+    Example: python admin.py distributor get "UK Bikes"
+    """
+    sb = get_client()
+
+    result = sb.table("distributors").select("*").eq("activation_code", name_or_code).execute()
+    if not result.data:
+        result = sb.table("distributors").select("*").eq("name", name_or_code).execute()
+    if not result.data:
+        result = sb.table("distributors").select("*").ilike("name", f"%{name_or_code}%").execute()
+    if not result.data:
+        console.print(f"[red]Distributor not found:[/red] {name_or_code}")
+        return
+
+    d = result.data[0]
+    countries = d.get("countries") or []
+
+    lines = [
+        f"  [bold]Name:[/bold]            {d['name']}",
+        f"  [bold]Activation Code:[/bold] [yellow]{d['activation_code']}[/yellow]",
+        f"  [bold]Countries:[/bold]       {', '.join(countries) if countries else '-'}",
+        f"  [bold]Phone:[/bold]           {d.get('phone') or '-'}",
+        f"  [bold]Email:[/bold]           {d.get('email') or '-'}",
+        f"  [bold]Active:[/bold]          {'Yes' if d.get('is_active') else 'No'}",
+        f"  [bold]Created:[/bold]         {d['created_at'][:16]}",
+        f"  [bold]ID:[/bold]              {d['id']}",
+    ]
+    console.print(Panel("\n".join(lines), title=f"Distributor: {d['name']}"))
+
+    # Addresses
+    addrs = sb.table("addresses").select("*").eq("entity_type", "distributor").eq(
+        "entity_id", d["id"]).execute()
+    if addrs.data:
+        at = Table(title="Addresses")
+        at.add_column("Line 1", style="white")
+        at.add_column("City", style="cyan")
+        at.add_column("Postcode", style="yellow")
+        at.add_column("Country", style="green")
+        for a in addrs.data:
+            at.add_row(
+                a.get("line_1") or "-", a.get("city") or "-",
+                a.get("postcode") or "-", a.get("country") or "-",
+            )
+        console.print(at)
+
+    # Workshops
+    workshops = sb.table("workshops").select("name, is_active, service_area_countries").eq(
+        "parent_distributor_id", d["id"]).order("name").execute()
+    if workshops.data:
+        wt = Table(title="Workshops")
+        wt.add_column("Name", style="cyan")
+        wt.add_column("Countries", style="yellow")
+        wt.add_column("Active", style="dim")
+        for w in workshops.data:
+            wc = w.get("service_area_countries") or []
+            wt.add_row(w["name"], ", ".join(wc) if wc else "-",
+                        "Yes" if w["is_active"] else "No")
+        console.print(wt)
+
+    # Scooter count
+    scooters = sb.table("scooters").select("id", count="exact").eq(
+        "distributor_id", d["id"]).execute()
+    console.print(f"\n[bold]Scooters:[/bold] {scooters.count or 0}")
+
+    # Staff users
+    staff = sb.table("users").select("email, user_level, roles, is_active").eq(
+        "distributor_id", d["id"]).execute()
+    if staff.data:
+        st = Table(title="Staff Users")
+        st.add_column("Email", style="cyan")
+        st.add_column("Level", style="magenta")
+        st.add_column("Active", style="dim")
+        for s in staff.data:
+            st.add_row(s["email"], s.get("user_level") or "-",
+                        "Yes" if s["is_active"] else "No")
+        console.print(st)
+
+
+@distributor.command("add-address")
+@click.argument("name")
+@click.option("--line1", required=True, help="Address line 1")
+@click.option("--line2", default=None, help="Address line 2")
+@click.option("--city", required=True, help="City")
+@click.option("--region", default=None, help="State/region/county")
+@click.option("--postcode", required=True, help="Postcode/ZIP")
+@click.option("--country", required=True, help="ISO 3166-1 alpha-2 country code")
+def distributor_add_address(name, line1, line2, city, region, postcode, country):
+    """Add an address to a distributor.
+
+    Example: python admin.py distributor add-address "UK Bikes" --line1 "456 Main Rd" --city Manchester --postcode "M1 1AA" --country GB
+    """
+    sb = get_client()
+
+    result = sb.table("distributors").select("id").eq("name", name).execute()
+    if not result.data:
+        console.print(f"[red]Distributor not found:[/red] {name}")
+        return
+
+    sb.table("addresses").insert({
+        "entity_type": "distributor",
+        "entity_id": result.data[0]["id"],
+        "line_1": line1, "line_2": line2,
+        "city": city, "region": region,
+        "postcode": postcode, "country": country.upper(),
+    }).execute()
+
+    console.print(f"[green]Address added to '{name}'[/green]")
+
+
+# ===========================================================================
+# VALIDATE / MAINTENANCE
+# ===========================================================================
+
+@cli.group()
+def validate():
+    """Data integrity checks and cleanup."""
+    pass
+
+
+@validate.command("orphaned-scooters")
+def validate_orphaned_scooters():
+    """Find scooters not linked to any user."""
+    sb = get_client()
+
+    scooters = sb.table("scooters").select("id, zyd_serial, model, status, distributors(name)").execute()
+    orphaned = []
+
+    for sc in scooters.data:
+        links = sb.table("user_scooters").select("id").eq("scooter_id", sc["id"]).limit(1).execute()
+        if not links.data:
+            orphaned.append(sc)
+
+    if not orphaned:
+        console.print("[green]All scooters are linked to at least one user.[/green]")
+        return
+
+    table = Table(title="Orphaned Scooters (no user linked)")
+    table.add_column("ZYD Serial", style="cyan")
+    table.add_column("Model", style="green")
+    table.add_column("Status", style="yellow")
+    table.add_column("Distributor", style="yellow")
+
+    for sc in orphaned:
+        table.add_row(
+            sc["zyd_serial"], sc.get("model") or "-",
+            sc.get("status") or "-", _resolve_fk(sc, "distributors"),
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(orphaned)} orphaned scooters")
+
+
+@validate.command("expired-sessions")
+@click.option("--cleanup", is_flag=True, default=False, help="Delete expired sessions")
+def validate_expired_sessions(cleanup):
+    """Check for expired sessions. Use --cleanup to delete them.
+
+    Examples:
+        python admin.py validate expired-sessions
+        python admin.py validate expired-sessions --cleanup
+    """
+    sb = get_client()
+
+    now = datetime.utcnow().isoformat()
+    expired = sb.table("user_sessions").select("id, user_id, expires_at, device_info").lt(
+        "expires_at", now).execute()
+
+    if not expired.data:
+        console.print("[green]No expired sessions found.[/green]")
+        return
+
+    console.print(f"[yellow]Found {len(expired.data)} expired sessions.[/yellow]")
+
+    if cleanup:
+        if not Confirm.ask(f"Delete {len(expired.data)} expired sessions?"):
+            return
+        sb.table("user_sessions").delete().lt("expires_at", now).execute()
+        console.print(f"[green]{len(expired.data)} expired sessions deleted.[/green]")
+    else:
+        console.print("  Run with [bold]--cleanup[/bold] to delete them.")
+
+
+@validate.command("stale-jobs")
+def validate_stale_jobs():
+    """Find service jobs stuck in non-terminal states."""
+    sb = get_client()
+
+    result = sb.table("service_jobs").select(
+        "id, status, booked_date, scooters(zyd_serial), workshops(name)"
+    ).not_.in_("status", ["completed", "cancelled"]).order("booked_date").execute()
+
+    if not result.data:
+        console.print("[green]No stale service jobs found.[/green]")
+        return
+
+    table = Table(title="Open Service Jobs")
+    table.add_column("Status", style="yellow")
+    table.add_column("Scooter", style="cyan")
+    table.add_column("Workshop", style="yellow")
+    table.add_column("Booked", style="dim")
+    table.add_column("Age (days)", style="red")
+    table.add_column("ID", style="dim")
+
+    now = datetime.utcnow()
+    for j in result.data:
+        booked = j.get("booked_date", "")
+        age = "-"
+        if booked:
+            try:
+                booked_dt = datetime.fromisoformat(booked.replace("Z", "+00:00")).replace(tzinfo=None)
+                age = str((now - booked_dt).days)
+            except Exception:
+                pass
+
+        table.add_row(
+            j["status"],
+            _resolve_fk(j, "scooters", "zyd_serial"),
+            _resolve_fk(j, "workshops"),
+            booked[:10] if booked else "-",
+            age,
+            j["id"][:8] + "...",
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(result.data)} open jobs")
+
+
+# ===========================================================================
 # QUICK SETUP
 # ===========================================================================
 
