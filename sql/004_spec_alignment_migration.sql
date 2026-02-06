@@ -237,35 +237,56 @@ CREATE INDEX IF NOT EXISTS idx_activity_events_payload ON activity_events USING 
 -- Workshops
 ALTER TABLE workshops ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Service role full access to workshops"
-  ON workshops FOR ALL TO service_role USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  CREATE POLICY "Service role full access to workshops"
+    ON workshops FOR ALL TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Anonymous read active workshops"
-  ON workshops FOR SELECT TO anon USING (is_active = true);
+DO $$ BEGIN
+  CREATE POLICY "Anonymous read active workshops"
+    ON workshops FOR SELECT TO anon USING (is_active = true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Service Jobs
 ALTER TABLE service_jobs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Service role full access to service_jobs"
-  ON service_jobs FOR ALL TO service_role USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  CREATE POLICY "Service role full access to service_jobs"
+    ON service_jobs FOR ALL TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Activity Events (immutable — insert only for non-service roles)
 ALTER TABLE activity_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Service role full access to activity_events"
-  ON activity_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  CREATE POLICY "Service role full access to activity_events"
+    ON activity_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Anonymous insert activity_events"
-  ON activity_events FOR INSERT TO anon WITH CHECK (true);
+DO $$ BEGIN
+  CREATE POLICY "Anonymous insert activity_events"
+    ON activity_events FOR INSERT TO anon WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Addresses
 ALTER TABLE addresses ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Service role full access to addresses"
-  ON addresses FOR ALL TO service_role USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  CREATE POLICY "Service role full access to addresses"
+    ON addresses FOR ALL TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Anonymous read addresses"
-  ON addresses FOR SELECT TO anon USING (true);
+DO $$ BEGIN
+  CREATE POLICY "Anonymous read addresses"
+    ON addresses FOR SELECT TO anon USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ============================================================================
 -- PART 10: Helper function to resolve distributor from country
