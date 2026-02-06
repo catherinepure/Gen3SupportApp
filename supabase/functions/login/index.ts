@@ -55,7 +55,7 @@ serve(async (req) => {
     const passwordHash = await hashPassword(password)
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('id, email, user_level, is_verified, is_active, distributor_id, first_name, last_name')
+      .select('id, email, user_level, roles, is_verified, is_active, distributor_id, workshop_id, first_name, last_name, home_country, current_country')
       .eq('email', email.toLowerCase())
       .eq('password_hash', passwordHash)
       .single()
@@ -123,9 +123,13 @@ serve(async (req) => {
           id: user.id,
           email: user.email,
           role: user.user_level,
+          roles: user.roles || [],
           distributor_id: user.distributor_id,
+          workshop_id: user.workshop_id,
           first_name: user.first_name,
           last_name: user.last_name,
+          home_country: user.home_country,
+          current_country: user.current_country,
           scooters: userScooters || []
         }
       }),

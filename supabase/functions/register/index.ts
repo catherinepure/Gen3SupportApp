@@ -10,6 +10,8 @@ const FROM_EMAIL = Deno.env.get('SENDGRID_FROM_EMAIL') || "noreply@pureelectric.
 interface RegisterRequest {
   email: string
   password: string
+  home_country?: string       // ISO 3166-1 alpha-2
+  current_country?: string    // ISO 3166-1 alpha-2
 }
 
 async function hashPassword(password: string): Promise<string> {
@@ -91,7 +93,7 @@ serve(async (req) => {
   }
 
   try {
-    const { email, password }: RegisterRequest = await req.json()
+    const { email, password, home_country, current_country }: RegisterRequest = await req.json()
 
     // Validation
     if (!email || !password) {
@@ -140,6 +142,9 @@ serve(async (req) => {
         email: email.toLowerCase(),
         password_hash: passwordHash,
         user_level: 'user',
+        roles: ['customer'],
+        home_country: home_country || null,
+        current_country: current_country || null,
         is_verified: false,
         verification_token: verificationToken,
         verification_token_expires: expiresAt.toISOString()

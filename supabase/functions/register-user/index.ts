@@ -15,6 +15,8 @@ interface RegisterUserRequest {
   age_range?: string
   gender?: string
   scooter_use_type?: string
+  home_country?: string       // ISO 3166-1 alpha-2, from country detection
+  current_country?: string    // ISO 3166-1 alpha-2, from GPS/cell
 
   // Scooter information (required for user registration)
   scooter_serial: string
@@ -120,6 +122,8 @@ serve(async (req) => {
       age_range,
       gender,
       scooter_use_type,
+      home_country,
+      current_country,
       scooter_serial,
       scooter_id,
       telemetry
@@ -204,6 +208,9 @@ serve(async (req) => {
         age_range: age_range || null,
         gender: gender || null,
         scooter_use_type: scooter_use_type || null,
+        home_country: home_country || null,
+        current_country: current_country || null,
+        roles: ['customer'],
         user_level: 'user',
         registration_type: 'user',
         is_verified: false,

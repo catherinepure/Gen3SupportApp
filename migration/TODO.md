@@ -14,14 +14,15 @@
 
 ## In Progress
 
-- [ ] Apply `sql/004_spec_alignment_migration.sql` to Supabase (needs DB access)
+- [x] Apply `sql/004_spec_alignment_migration.sql` to Supabase -- DONE (fixed CREATE POLICY syntax error)
 
 ---
 
 ## Blocked / Needs Decision
 
 - **Flutter unavailable until Monday** -- Phase 1 scaffold cannot start yet
-- **Supabase DB access** -- Need to run the migration SQL. Confirm method (Supabase dashboard SQL editor, or CLI?)
+- ~~**Supabase DB access**~~ -- Migration SQL applied successfully via dashboard
+- **Supabase CLI** -- Need Homebrew + CLI to deploy Edge Functions (Monday)
 - **SendGrid API key** -- Old key was exposed in repo. Needs rotation in SendGrid dashboard + set as env var
 
 ---
@@ -140,13 +141,15 @@
 ## Next Up
 
 ### Pre-Phase 1 (this weekend, no Flutter needed)
-- [ ] Run `sql/004_spec_alignment_migration.sql` on Supabase
+- [x] Run `sql/004_spec_alignment_migration.sql` on Supabase
 - [ ] Verify telemetry saving works after schema fix (on-device test)
-- [ ] Build new Supabase Edge Functions for new entities:
-  - [ ] Workshop CRUD
-  - [ ] ServiceJob CRUD
-  - [ ] ActivityEvent ingestion
-- [ ] Update admin tool to manage workshops and territory assignments
+- [x] Build new Supabase Edge Functions for new entities:
+  - [x] Workshop CRUD (`supabase/functions/workshops/index.ts`)
+  - [x] ServiceJob CRUD (`supabase/functions/service-jobs/index.ts`)
+  - [x] ActivityEvent ingestion (`supabase/functions/activity-events/index.ts`)
+- [x] Update admin tool to manage workshops and territory assignments
+- [x] Update existing Edge Functions to return new schema fields (login, validate-session, register, register-user)
+- [ ] Deploy Edge Functions (blocked -- needs Supabase CLI Monday)
 - [ ] Rotate SendGrid API key
 
 ### Phase 1 -- Flutter Scaffold & Feature Parity (Monday+)
@@ -177,6 +180,33 @@ _(unchanged from spec)_
 ---
 
 ## Session Log
+
+### Session 2 -- 2026-02-06 (continued)
+**Model used:** Opus
+**What was accomplished:**
+- Applied `sql/004_spec_alignment_migration.sql` to Supabase (fixed CREATE POLICY IF NOT EXISTS syntax error)
+- Built 3 new Edge Functions: workshops CRUD, service-jobs lifecycle, activity-events ingestion/query
+- Updated 4 existing Edge Functions to return/accept new schema fields (roles[], home_country, current_country, workshop_id)
+- Extended admin tool with workshop management + distributor territory commands
+- Verified Android app still builds (`./gradlew assembleDebug` passes)
+- Full Java codebase audit: 43 files, 14 layouts, 22+ endpoints catalogued
+- Wrote progress doc: `progress/2026-02-06_2345_backend-prep-complete.md`
+
+**Where we stopped:**
+- All pre-Flutter backend work complete
+- Edge Functions written but NOT deployed (no Supabase CLI)
+- Changes committed but need final push
+
+**Issues encountered:**
+- `CREATE POLICY IF NOT EXISTS` not valid PostgreSQL -- wrapped in DO/EXCEPTION blocks
+- No Supabase CLI or Homebrew (no admin rights until Monday)
+
+**Next session should:**
+1. Install Homebrew + Supabase CLI
+2. Deploy all Edge Functions: `supabase functions deploy`
+3. On-device test: verify telemetry saving works with `scooters.status` column
+4. Rotate SendGrid API key
+5. Start Phase 1 Flutter scaffold (if Flutter SDK available)
 
 ### Session 1 -- 2026-02-06
 **Model used:** Opus

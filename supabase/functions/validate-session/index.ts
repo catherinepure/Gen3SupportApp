@@ -67,7 +67,7 @@ serve(async (req) => {
     // Get user info
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('id, email, user_level, is_active, distributor_id')
+      .select('id, email, user_level, roles, is_active, distributor_id, workshop_id, home_country, current_country')
       .eq('id', session.user_id)
       .single()
 
@@ -91,7 +91,11 @@ serve(async (req) => {
           id: user.id,
           email: user.email,
           role: user.user_level,
-          distributor_id: user.distributor_id
+          roles: user.roles || [],
+          distributor_id: user.distributor_id,
+          workshop_id: user.workshop_id,
+          home_country: user.home_country,
+          current_country: user.current_country
         }
       }),
       { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
