@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connection Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+        button { padding: 10px 20px; margin: 10px 0; cursor: pointer; }
+        pre { background: #2a2a2a; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .success { color: #4caf50; }
+        .error { color: #f44336; }
+    </style>
+</head>
+<body>
+    <h1>Supabase Connection Test</h1>
+
+    <button onclick="testLogin()">Test Login Endpoint</button>
+    <button onclick="testAdmin()">Test Admin Endpoint</button>
+
+    <div id="output"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://hhpxmlrpdharhhzwjxuc.supabase.co';
+        const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocHhtbHJwZGhhcmhoendqeHVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMDgwNTQsImV4cCI6MjA4NTc4NDA1NH0.w_9rkrz6Mw12asETIAk7jenY-yjVVxrLeWz642k3PVM';
+
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.innerHTML = `<h3>${type.toUpperCase()}: ${new Date().toLocaleTimeString()}</h3><pre>${msg}</pre>`;
+            document.getElementById('output').appendChild(div);
+        }
+
+        async function testLogin() {
+            log('Testing login endpoint...', 'info');
+
+            const email = prompt('Enter email:', 'admin@pure.com');
+            const password = prompt('Enter password:', '');
+
+            if (!email || !password) {
+                log('Cancelled', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${ANON_KEY}`,
+                        'apikey': ANON_KEY,
+                    },
+                    body: JSON.stringify({
+                        email,
+                        password,
+                        device_info: 'Connection Test Tool',
+                    }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    log(`✓ Login successful!\n\nStatus: ${response.status}\nUser: ${data.user.email}\nRole: ${data.user.role}\nToken: ${data.session_token.substring(0, 20)}...`, 'success');
+
+                    // Store token for admin test
+                    sessionStorage.setItem('test_token', data.session_token);
+                } else {
+                    log(`✗ Login failed\n\nStatus: ${response.status}\nError: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                log(`✗ Network error: ${error.message}\n\nThis might be a CORS issue or the endpoint isn't deployed.`, 'error');
+            }
+        }
+
+        async function testAdmin() {
+            const token = sessionStorage.getItem('test_token');
+
+            if (!token) {
+                log('No session token found. Login first!', 'error');
+                return;
+            }
+
+            log('Testing admin endpoint...', 'info');
+
+            try {
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/admin`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${ANON_KEY}`,
+                        'apikey': ANON_KEY,
+                    },
+                    body: JSON.stringify({
+                        session_token: token,
+                        resource: 'dashboard',
+                        action: 'stats',
+                    }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    log(`✓ Admin endpoint working!\n\nStatus: ${response.status}\nData: ${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    log(`✗ Admin call failed\n\nStatus: ${response.status}\nError: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                log(`✗ Network error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test on load
+        window.onload = () => {
+            log('Connection test tool loaded.\n\nClick "Test Login" to test authentication.\nClick "Test Admin" (after login) to test the admin endpoint.', 'info');
+        };
+    </script>
+</body>
+</html>
