@@ -6,8 +6,8 @@
 
 ## Current Phase
 
-**Phase:** Pre-1 -- Backend & Database Prep (Flutter unavailable until Monday)
-**Status:** In progress
+**Phase:** Pre-1 -- Backend & Database Prep + Admin Tooling
+**Status:** Admin tooling complete. Ready for Edge Function deployment + Flutter Phase 1.
 **Spec reference:** Section 9.3 (Phase 2 DB work pulled forward)
 
 ---
@@ -15,6 +15,8 @@
 ## In Progress
 
 - [x] Apply `sql/004_spec_alignment_migration.sql` to Supabase -- DONE (fixed CREATE POLICY syntax error)
+- [x] Admin CLI tool -- 81 commands across 12 groups (4082 lines)
+- [x] Admin GUI -- 11 tabs, modular gui/ package (3700+ lines across 17 files)
 
 ---
 
@@ -149,6 +151,8 @@
   - [x] ActivityEvent ingestion (`supabase/functions/activity-events/index.ts`)
 - [x] Update admin tool to manage workshops and territory assignments
 - [x] Update existing Edge Functions to return new schema fields (login, validate-session, register, register-user)
+- [x] Admin CLI expanded to 81 commands: users, scooters, firmware, telemetry, logs, service-jobs, events, workshops, distributors, addresses, validation, setup
+- [x] Admin GUI refactored into modular gui/ package with 11 tabs matching all CLI features
 - [ ] Deploy Edge Functions (blocked -- needs Supabase CLI Monday)
 - [ ] Rotate SendGrid API key
 
@@ -180,6 +184,55 @@ _(unchanged from spec)_
 ---
 
 ## Session Log
+
+### Session 4 -- 2026-02-07
+**Model used:** Opus
+**What was accomplished:**
+- Expanded admin CLI (`admin-tool/admin.py`) to 81 commands across 12 groups (4082 lines):
+  - Service-jobs: list, get, create, update, cancel, export
+  - Activity events: list, types, stats, get, export
+  - User enhancements: sessions, logout, force-verify, export, deactivate-inactive
+  - Workshop enhancements: get detail, edit, reactivate
+  - Distributor enhancements: get detail, add-address
+  - Validation utilities: orphaned-scooters, expired-sessions, stale-jobs
+  - Firmware: get, edit, reactivate
+  - Scooter: link-user, unlink-user, set-primary, set-status, report-stolen, decommission, export
+  - Telemetry: get, export, health-check
+  - Logs: get, by-scooter, by-firmware, export
+  - Address group: list, add, update, delete
+- Refactored admin GUI (`admin_gui.py`) from monolithic 1665-line file into modular `gui/` package:
+  - 17 files, 3700+ lines total
+  - 11 tabs: Users, Scooters, Distributors, Workshops, Service Jobs, Firmware, Telemetry, Upload Logs, Events, Validation, Settings
+  - Reusable components: DetailDialog, FormDialog, helpers (threading, CSV export, FK resolution)
+  - Every CLI feature accessible through desktop GUI
+  - NEW tabs: Users (search/edit/detail/export), Workshops, Service Jobs, Events, Validation
+  - Enhanced: Scooters (search/status/link-user/export), Distributors (detail with addresses/staff), Firmware (detail/reactivate), Telemetry (health-check/export), Logs (detail/by-scooter/export)
+- Discussed web admin tool options — deferred pending potential Azure database migration
+
+**Where we stopped:**
+- All admin tooling complete (CLI + GUI at feature parity)
+- Ready for Edge Function deployment and Flutter Phase 1
+
+**Issues encountered:**
+- None — all code compiles and imports verified
+
+**Next session should:**
+1. Install Homebrew + Supabase CLI
+2. Deploy all Edge Functions
+3. On-device test: verify telemetry with scooters.status column
+4. Rotate SendGrid API key
+5. Start Phase 1 Flutter scaffold
+
+### Session 3 -- 2026-02-07
+**Model used:** Opus
+**What was accomplished:**
+- Added comprehensive user commands to admin CLI: search, list, get (detail with linked scooters), edit (all fields), scooters
+- Enhanced scooter CLI commands: search, get (detail with owners + service jobs), edit, owner, list with filters
+- Committed and pushed (cd162a0)
+
+**Where we stopped:**
+- User and scooter admin features implemented in CLI
+- Discussion about web admin tool vs Python GUI — user decided to defer web dashboard
 
 ### Session 2 -- 2026-02-06 (continued)
 **Model used:** Opus
