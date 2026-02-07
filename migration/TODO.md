@@ -7,13 +7,21 @@
 ## Current Phase
 
 **Phase:** Pre-1 -- Backend, Database Prep, Admin Tooling & Web Admin
-**Status:** Security hardened + web admin built. Ready for Edge Function deployment + Flutter Phase 1.
+**Status:** CORS fixes applied, admin user created. Edge Functions need deployment to unblock web admin testing.
 **Spec reference:** Section 9.3 (Phase 2 DB work pulled forward)
 
 ---
 
 ## In Progress
 
+- [ ] Deploy Edge Functions with CORS fixes (blocked: needs Supabase CLI or manual dashboard deployment)
+- [ ] Web admin testing and functionality enhancements (blocked: needs Edge Function deployment)
+
+## Recently Completed
+
+- [x] CORS fixes: All 12 Edge Functions updated to allow `apikey` header
+- [x] Admin user created: `catherine.ives@pureelectric.com` with `manufacturer_admin` role
+- [x] Web admin testing tools: `serve.sh` and `test-connection.html`
 - [x] Apply `sql/004_spec_alignment_migration.sql` to Supabase -- DONE (fixed CREATE POLICY syntax error)
 - [x] Admin CLI tool -- 81 commands across 12 groups (4082 lines)
 - [x] Admin GUI -- 11 tabs, modular gui/ package (3700+ lines across 17 files)
@@ -26,12 +34,21 @@
 
 ## Blocked / Needs Decision
 
-- **Flutter unavailable until Monday** -- Phase 1 scaffold cannot start yet
-- ~~**Supabase DB access**~~ -- Migration SQL applied successfully via dashboard
-- **Supabase CLI** -- Need Homebrew + CLI to deploy Edge Functions including new admin function (Monday)
-- **SendGrid API key** -- Old key was exposed in repo. Needs rotation in SendGrid dashboard + set as env var
+### Critical (Blocks Web Admin Testing)
+- **Edge Function Deployment** -- CORS fixes need deployment to Supabase
+  - **Option A (Now):** Manual deployment via Supabase dashboard → Functions → Edit
+  - **Option B (Monday):** Install Homebrew + Supabase CLI → `supabase functions deploy`
+  - Priority: `login` and `admin` functions (2 functions minimum for web admin)
+
+### High Priority (Security)
 - **Service_role key rotation** -- Old key was in build.gradle (removed). Rotate in Supabase dashboard, update admin-tool/.env
 - **RLS migration** -- `sql/005_rls_hardening.sql` needs to be applied to Supabase (after key rotation)
+- **SendGrid API key** -- Old key was exposed in repo. Needs rotation in SendGrid dashboard + set as env var
+- **Admin password change** -- Current password `admin123` is temporary
+
+### Medium Priority (Development)
+- **Flutter unavailable until Monday** -- Phase 1 scaffold cannot start yet
+- **Web admin hosting** -- Deploy to HostingUK after testing complete
 
 ---
 
@@ -163,11 +180,171 @@
 - [x] RLS hardening migration written (`sql/005_rls_hardening.sql`)
 - [x] Admin Edge Function built (`supabase/functions/admin/index.ts`) -- 13 resources, 50+ actions
 - [x] Web admin SPA built (`web-admin/`) -- static site for shared hosting deployment
+- [x] CORS fixes applied to all 12 Edge Functions
+- [x] Admin user created (`catherine.ives@pureelectric.com`)
+- [x] Web admin testing infrastructure (`serve.sh`, `test-connection.html`)
+- [ ] Deploy Edge Functions with CORS fixes (blocked -- needs Supabase CLI Monday or manual dashboard)
+- [ ] Test web admin login and basic functionality
 - [ ] Apply `sql/005_rls_hardening.sql` to Supabase (after key rotation)
 - [ ] Rotate service_role key in Supabase dashboard + update admin-tool/.env
-- [ ] Deploy Edge Functions including admin (blocked -- needs Supabase CLI Monday)
-- [ ] Deploy web-admin/ to HostingUK shared hosting
 - [ ] Rotate SendGrid API key
+- [ ] Change admin password from `admin123`
+- [ ] Deploy web-admin/ to HostingUK shared hosting
+
+### Web Admin Enhancement Tasks (after basic functionality working)
+**Goal:** Increase usefulness and functionality of each page in the web admin
+
+#### Dashboard Page Enhancements
+- [ ] Add real-time metric cards: Total Users, Active Scooters, Pending Service Jobs, Recent Events
+- [ ] Add charts/graphs: User growth over time, scooter registrations by country, service job status breakdown
+- [ ] Add quick actions: "Create User", "Register Scooter", "Create Service Job"
+- [ ] Add recent activity feed: Last 10 events (logins, registrations, service updates)
+- [ ] Add system health indicators: Edge Function status, database connection, storage usage
+
+#### Users Page Enhancements
+- [ ] Add advanced filters: by role, country, verified status, active status, distributor, workshop
+- [ ] Add bulk actions: Export selected, bulk deactivate, bulk verify
+- [ ] Add inline editing: Edit name, role, country without opening modal
+- [ ] Add user activity timeline in detail modal: Recent logins, scooters owned, service jobs
+- [ ] Add linked entities view: Show user's scooters, sessions, audit log in tabs
+- [ ] Add password reset functionality
+- [ ] Add user impersonation (for support)
+
+#### Scooters Page Enhancements
+- [ ] Add map view: Show scooter locations on interactive map (if location data available)
+- [ ] Add advanced filters: by status, model, firmware version, country, owner, last seen date
+- [ ] Add bulk actions: Export selected, bulk status change, bulk firmware update
+- [ ] Add scooter health indicators: Battery health, error codes, last telemetry
+- [ ] Add service history timeline in detail modal
+- [ ] Add firmware update trigger from detail modal
+- [ ] Add telemetry chart: Battery voltage, temperature over time
+- [ ] Add ownership transfer workflow
+
+#### Distributors Page Enhancements
+- [ ] Add territory map: Visual representation of distributor coverage
+- [ ] Add performance metrics per distributor: Scooters sold, active users, service jobs
+- [ ] Add staff management inline: Add/remove staff without separate page
+- [ ] Add address management: Multiple addresses with primary flag
+- [ ] Add workshop assignment interface
+- [ ] Add country coverage heatmap
+- [ ] Add distributor comparison view: Side-by-side metrics
+
+#### Workshops Page Enhancements
+- [ ] Add service queue kanban board: Columns for booked/in-progress/awaiting-parts/ready/completed
+- [ ] Add technician assignment interface
+- [ ] Add parts inventory tracking
+- [ ] Add service job creation form
+- [ ] Add workshop performance metrics: Average turnaround time, jobs completed, parts used
+- [ ] Add capacity planning: Jobs per technician, current workload
+- [ ] Add linked distributor info and quick navigation
+
+#### Service Jobs Page Enhancements
+- [ ] Add kanban board view (alternative to table)
+- [ ] Add timeline view: Service job lifecycle visualization
+- [ ] Add technician assignment and reassignment
+- [ ] Add parts used tracking with inventory impact
+- [ ] Add customer communication log
+- [ ] Add status transition workflow with validation
+- [ ] Add estimated completion date calculator
+- [ ] Add job priority flagging
+- [ ] Add photo upload for diagnostics
+
+#### Firmware Page Enhancements
+- [ ] Add firmware version comparison: Diff between versions
+- [ ] Add rollout planning: Target percentage of fleet, geographic rollout
+- [ ] Add rollout monitoring: Success/failure rates, device compatibility
+- [ ] Add rollback functionality
+- [ ] Add changelog editor
+- [ ] Add hardware target compatibility matrix
+- [ ] Add binary file integrity verification (checksum display)
+- [ ] Add deployment schedule planning
+
+#### Telemetry Page Enhancements
+- [ ] Add real-time telemetry stream (if WebSocket available)
+- [ ] Add telemetry charts: Battery health distribution, temperature ranges, error frequency
+- [ ] Add anomaly detection alerts: Battery degradation, unusual patterns
+- [ ] Add geographic heatmap: Scooter usage by location
+- [ ] Add time-series analysis: Usage patterns over time
+- [ ] Add export with custom date ranges and filters
+- [ ] Add health score calculator: Aggregate metric per scooter
+
+#### Upload Logs Page Enhancements
+- [ ] Add log viewer with syntax highlighting
+- [ ] Add log filtering: by level (error/warning/info), by scooter, by date
+- [ ] Add log search with regex support
+- [ ] Add error pattern detection
+- [ ] Add log aggregation: Common errors, frequency analysis
+- [ ] Add download logs functionality
+- [ ] Add log retention policy management
+
+#### Events (Activity) Page Enhancements
+- [ ] Add event timeline visualization
+- [ ] Add event type filtering with checkboxes
+- [ ] Add user journey reconstruction: All events for a specific user
+- [ ] Add scooter lifecycle view: All events for a specific scooter
+- [ ] Add audit trail export for compliance
+- [ ] Add event correlation: Related events grouped together
+- [ ] Add real-time event stream (WebSocket)
+- [ ] Add event statistics: Most common events, event frequency charts
+
+#### Validation Page Enhancements
+- [ ] Add automated scheduled validation runs
+- [ ] Add validation history: Past runs and results
+- [ ] Add one-click fix actions: Cleanup orphaned records, expire sessions
+- [ ] Add validation rule configuration
+- [ ] Add data quality dashboard: Completeness, consistency metrics
+- [ ] Add email alerts for validation failures
+- [ ] Add custom validation rule builder
+
+#### Settings Page (New)
+- [ ] Add user preferences: Theme (light/dark), language, timezone
+- [ ] Add notification preferences: Email alerts, in-app notifications
+- [ ] Add API key management: View/regenerate API keys
+- [ ] Add session management: View active sessions, force logout
+- [ ] Add audit log export settings
+- [ ] Add data retention policy configuration
+- [ ] Add system configuration: Feature flags, maintenance mode
+
+#### General UI/UX Enhancements
+- [ ] Add keyboard shortcuts: Navigation, quick actions, search
+- [ ] Add dark mode toggle
+- [ ] Add responsive mobile layout (currently desktop-only)
+- [ ] Add accessibility improvements: ARIA labels, keyboard navigation, screen reader support
+- [ ] Add loading skeletons instead of spinners
+- [ ] Add optimistic UI updates: Immediate feedback before server response
+- [ ] Add undo functionality for destructive actions
+- [ ] Add context menu (right-click) for quick actions
+- [ ] Add drag-and-drop for file uploads
+- [ ] Add multi-language support (i18n)
+- [ ] Add help tooltips and onboarding tour
+- [ ] Add notification system: Toast messages, alerts, in-app notifications
+- [ ] Add global search: Search across all entities from header
+- [ ] Add breadcrumb navigation
+- [ ] Add favorites/bookmarks: Pin frequently accessed items
+
+#### Performance & Technical Enhancements
+- [ ] Add client-side caching: Reduce API calls, cache responses
+- [ ] Add pagination virtualization: Render only visible rows for large lists
+- [ ] Add lazy loading: Load images and data on scroll
+- [ ] Add service worker: Offline support, background sync
+- [ ] Add PWA manifest: Install as app on mobile/desktop
+- [ ] Add request debouncing: Reduce API calls during typing
+- [ ] Add error boundary: Graceful error handling and recovery
+- [ ] Add request retry logic: Automatic retry for failed requests
+- [ ] Add WebSocket support: Real-time updates without polling
+- [ ] Add state persistence: Remember filters, sort order, page position
+
+#### Security & Compliance Enhancements
+- [ ] Add two-factor authentication setup
+- [ ] Add session timeout warning
+- [ ] Add activity audit log: Track all admin actions
+- [ ] Add role-based UI hiding: Hide features not available to current role
+- [ ] Add permission management UI
+- [ ] Add GDPR compliance tools: Data export, data deletion, consent management
+- [ ] Add rate limiting indicators: Show remaining API calls
+- [ ] Add IP whitelist management
+- [ ] Add password strength requirements display
+- [ ] Add login history view: Recent logins, suspicious activity detection
 
 ### Phase 1 -- Flutter Scaffold & Feature Parity (Monday+)
 - [ ] Create Flutter project with folder structure (spec section 1.3)
@@ -197,6 +374,46 @@ _(unchanged from spec)_
 ---
 
 ## Session Log
+
+### Session 6 -- 2026-02-07
+**Model used:** Sonnet 4.5
+**What was accomplished:**
+- **CORS fixes** applied to all 12 Edge Functions:
+  - Updated `Access-Control-Allow-Headers` to include `apikey` in addition to `Content-Type, Authorization`
+  - Fixed login, logout, register, register-user, register-distributor, validate-session, verify, resend-verification, service-jobs, workshops, activity-events
+  - Admin Edge Function already had correct CORS headers
+  - Fixes need deployment via Supabase CLI or manual dashboard
+- **Admin user created**:
+  - Created `admin@pure.com` with password `admin123` and `manufacturer_admin` role
+  - Updated email to `catherine.ives@pureelectric.com` per user request
+  - Verified login works via curl: `{"success":true,"session_token":"...","user":{"email":"catherine.ives@pureelectric.com","role":"admin","roles":["manufacturer_admin"],...}}`
+- **Web admin testing infrastructure**:
+  - Created `web-admin/serve.sh` for easy local server launch
+  - Created `web-admin/test-connection.html` diagnostic tool for testing endpoints
+  - Diagnosed "Failed to fetch" issue: CORS preflight blocking `apikey` header
+- **Documentation**:
+  - Created `DEPLOY_EDGE_FUNCTIONS.md` with deployment guide (CLI + manual options)
+  - Created detailed progress doc: `progress/2026-02-07_web-admin-cors-fixes.md`
+  - Updated TODO with 150+ web admin enhancement tasks across all pages
+- Committed and pushed as 74fdebc
+
+**Where we stopped:**
+- CORS fixes applied locally but NOT deployed to Supabase yet
+- Web admin cannot be tested until Edge Functions redeployed
+- Admin user exists and credentials verified
+- Comprehensive enhancement roadmap created for web admin
+
+**Issues encountered:**
+- Web admin "Failed to fetch" due to CORS - diagnosed and fixed (pending deployment)
+- Admin tool `user get` command has bug with UUID filtering - worked around with direct SQL
+
+**Next session should:**
+1. Deploy Edge Functions (manually via dashboard or wait for Monday CLI)
+2. Test web admin login at http://localhost:8000
+3. Verify all 11 pages load and basic CRUD works
+4. Begin web admin enhancements (prioritize dashboard, users, scooters pages)
+5. Apply RLS migration + rotate keys if time permits
+6. Deploy to HostingUK once tested
 
 ### Session 5 -- 2026-02-07
 **Model used:** Opus
