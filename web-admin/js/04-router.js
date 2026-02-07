@@ -7,6 +7,7 @@ const Router = (() => {
     const { $, $$ } = Utils;
 
     function navigate(page) {
+        console.log(`Router.navigate('${page}')`);
         const previousPage = State.get('currentPage');
 
         // Update state
@@ -26,19 +27,27 @@ const Router = (() => {
         const pageEl = $(`#${page}-page`);
         if (pageEl) {
             pageEl.classList.remove('hidden');
+        } else {
+            console.warn(`Page element #${page}-page not found!`);
         }
 
         // Trigger page lifecycle
         if (window.Pages && window.Pages[page]) {
             // Call onLeave on previous page
             if (previousPage && window.Pages[previousPage]?.onLeave) {
+                console.log(`Calling ${previousPage}.onLeave()`);
                 window.Pages[previousPage].onLeave();
             }
 
             // Call onNavigate on current page
             if (window.Pages[page].onNavigate) {
+                console.log(`Calling ${page}.onNavigate()`);
                 window.Pages[page].onNavigate();
+            } else {
+                console.warn(`${page} has no onNavigate method!`);
             }
+        } else {
+            console.error(`Page '${page}' not found in Pages registry!`);
         }
     }
 
