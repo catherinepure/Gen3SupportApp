@@ -1326,6 +1326,238 @@ def scooter_remove(zyd_serial):
     console.print(f"[yellow]Scooter '{zyd_serial}' removed.[/yellow]")
 
 
+@scooter.command("link-user")
+@click.argument("zyd_serial")
+@click.argument("email")
+@click.option("--primary", is_flag=True, default=False, help="Set as user's primary scooter")
+def scooter_link_user(zyd_serial, email, primary):
+    """Link a scooter to a user (register ownership)."""
+    sb = get_client()
+
+    # Find scooter
+    scooter_result = sb.table("scooters").select("id").eq("zyd_serial", zyd_serial).execute()
+    if not scooter_result.data:
+        console.print(f"[red]Scooter not found:[/red] {zyd_serial}")
+        return
+
+    # Find user
+    user_result = sb.table("users").select("id, email").eq("email", email.lower()).execute()
+    if not user_result.data:
+        console.print(f"[red]User not found:[/red] {email}")
+        return
+
+    scooter_id = scooter_result.data[0]["id"]
+    user_id = user_result.data[0]["id"]
+
+    # Check existing link
+    existing = sb.table("user_scooters").select("id") \
+        .eq("user_id", user_id).eq("scooter_id", scooter_id).execute()
+    if existing.data:
+        console.print(f"[yellow]Scooter {zyd_serial} is already linked to {email}[/yellow]")
+        return
+
+    if not Confirm.ask(f"Link scooter {zyd_serial} to user {email}?"):
+        return
+
+    sb.table("user_scooters").insert({
+        "user_id": user_id,
+        "scooter_id": scooter_id,
+        "zyd_serial": zyd_serial,
+        "is_primary": primary,
+    }).execute()
+
+    console.print(f"[green]Scooter {zyd_serial} linked to {email}" +
+                  (" (primary)" if primary else "") + "[/green]")
+
+
+@scooter.command("unlink-user")
+@click.argument("zyd_serial")
+@click.argument("email")
+def scooter_unlink_user(zyd_serial, email):
+    """Unlink a scooter from a user (remove ownership)."""
+    sb = get_client()
+
+    scooter_result = sb.table("scooters").select("id").eq("zyd_serial", zyd_serial).execute()
+    if not scooter_result.data:
+        console.print(f"[red]Scooter not found:[/red] {zyd_serial}")
+        return
+
+    user_result = sb.table("users").select("id").eq("email", email.lower()).execute()
+    if not user_result.data:
+        console.print(f"[red]User not found:[/red] {email}")
+        return
+
+    link = sb.table("user_scooters").select("id") \
+        .eq("user_id", user_result.data[0]["id"]) \
+        .eq("scooter_id", scooter_result.data[0]["id"]).execute()
+
+    if not link.data:
+        console.print(f"[yellow]No link found between {zyd_serial} and {email}[/yellow]")
+        return
+
+    if not Confirm.ask(f"Unlink scooter {zyd_serial} from user {email}?"):
+        return
+
+    sb.table("user_scooters").delete().eq("id", link.data[0]["id"]).execute()
+    console.print(f"[green]Scooter {zyd_serial} unlinked from {email}[/green]")
+
+
+@scooter.command("set-primary")
+@click.argument("zyd_serial")
+@click.argument("email")
+def scooter_set_primary(zyd_serial, email):
+    """Set a scooter as a user's primary scooter."""
+    sb = get_client()
+
+    user_result = sb.table("users").select("id").eq("email", email.lower()).execute()
+    if not user_result.data:
+        console.print(f"[red]User not found:[/red] {email}")
+        return
+
+    user_id = user_result.data[0]["id"]
+
+    scooter_result = sb.table("scooters").select("id").eq("zyd_serial", zyd_serial).execute()
+    if not scooter_result.data:
+        console.print(f"[red]Scooter not found:[/red] {zyd_serial}")
+        return
+
+    link = sb.table("user_scooters").select("id") \
+        .eq("user_id", user_id) \
+        .eq("scooter_id", scooter_result.data[0]["id"]).execute()
+
+    if not link.data:
+        console.print(f"[yellow]Scooter {zyd_serial} is not linked to {email}[/yellow]")
+        return
+
+    # Unset all primary flags for this user
+    all_links = sb.table("user_scooters").select("id").eq("user_id", user_id).execute()
+    for lnk in all_links.data:
+        sb.table("user_scooters").update({"is_primary": False}).eq("id", lnk["id"]).execute()
+
+    # Set this one as primary
+    sb.table("user_scooters").update({"is_primary": True}).eq("id", link.data[0]["id"]).execute()
+    console.print(f"[green]Scooter {zyd_serial} set as primary for {email}[/green]")
+
+
+SCOOTER_STATUSES = ["active", "in_service", "stolen", "decommissioned"]
+
+
+@scooter.command("set-status")
+@click.argument("zyd_serial")
+@click.argument("status", type=click.Choice(SCOOTER_STATUSES))
+def scooter_set_status(zyd_serial, status):
+    """Change a scooter's status (active, in_service, stolen, decommissioned)."""
+    sb = get_client()
+
+    result = sb.table("scooters").select("id, zyd_serial, status").eq("zyd_serial", zyd_serial).execute()
+    if not result.data:
+        console.print(f"[red]Scooter not found:[/red] {zyd_serial}")
+        return
+
+    current = result.data[0].get("status") or "unknown"
+    if current == status:
+        console.print(f"[yellow]Scooter {zyd_serial} is already '{status}'[/yellow]")
+        return
+
+    if not Confirm.ask(f"Change scooter {zyd_serial} status from '{current}' to '{status}'?"):
+        return
+
+    sb.table("scooters").update({"status": status}).eq("id", result.data[0]["id"]).execute()
+    console.print(f"[green]Scooter {zyd_serial} status changed to '{status}'[/green]")
+
+
+@scooter.command("report-stolen")
+@click.argument("zyd_serial")
+def scooter_report_stolen(zyd_serial):
+    """Report a scooter as stolen."""
+    sb = get_client()
+
+    result = sb.table("scooters").select("id, status").eq("zyd_serial", zyd_serial).execute()
+    if not result.data:
+        console.print(f"[red]Scooter not found:[/red] {zyd_serial}")
+        return
+
+    if result.data[0].get("status") == "stolen":
+        console.print(f"[yellow]Scooter {zyd_serial} is already marked stolen[/yellow]")
+        return
+
+    if not Confirm.ask(f"Report scooter {zyd_serial} as stolen?"):
+        return
+
+    sb.table("scooters").update({"status": "stolen"}).eq("id", result.data[0]["id"]).execute()
+    console.print(f"[red]Scooter {zyd_serial} marked as STOLEN[/red]")
+
+
+@scooter.command("decommission")
+@click.argument("zyd_serial")
+def scooter_decommission(zyd_serial):
+    """Mark a scooter as decommissioned."""
+    sb = get_client()
+
+    result = sb.table("scooters").select("id, status").eq("zyd_serial", zyd_serial).execute()
+    if not result.data:
+        console.print(f"[red]Scooter not found:[/red] {zyd_serial}")
+        return
+
+    if result.data[0].get("status") == "decommissioned":
+        console.print(f"[yellow]Scooter {zyd_serial} is already decommissioned[/yellow]")
+        return
+
+    if not Confirm.ask(f"Decommission scooter {zyd_serial}? This scooter will no longer receive updates."):
+        return
+
+    sb.table("scooters").update({"status": "decommissioned"}).eq("id", result.data[0]["id"]).execute()
+    console.print(f"[yellow]Scooter {zyd_serial} decommissioned[/yellow]")
+
+
+@scooter.command("export")
+@click.option("--status", "-s", default=None, help="Filter by status")
+@click.option("--distributor", "-d", default=None, help="Filter by distributor name")
+@click.option("--output", "-o", default="scooters_export.csv", help="Output CSV file")
+def scooter_export(status, distributor, output):
+    """Export scooter data to CSV."""
+    import csv
+
+    sb = get_client()
+    query = sb.table("scooters").select("*, distributors(name)")
+
+    if status:
+        query = query.eq("status", status)
+    if distributor:
+        dist = sb.table("distributors").select("id").eq("name", distributor).execute()
+        if not dist.data:
+            console.print(f"[red]Distributor not found:[/red] {distributor}")
+            return
+        query = query.eq("distributor_id", dist.data[0]["id"])
+
+    result = query.order("created_at", desc=True).execute()
+
+    if not result.data:
+        console.print("[yellow]No scooters to export.[/yellow]")
+        return
+
+    with open(output, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "zyd_serial", "model", "hw_version", "status", "firmware_version",
+            "country_of_registration", "distributor", "notes", "created_at",
+        ])
+        for row in result.data:
+            writer.writerow([
+                row.get("zyd_serial") or "",
+                row.get("model") or "",
+                row.get("hw_version") or "",
+                row.get("status") or "",
+                row.get("firmware_version") or "",
+                row.get("country_of_registration") or "",
+                _resolve_fk(row, "distributors"),
+                row.get("notes") or "",
+                (row.get("created_at") or "")[:16],
+            ])
+
+    console.print(f"[green]Exported {len(result.data)} scooters to {output}[/green]")
+
+
 # ===========================================================================
 # FIRMWARE
 # ===========================================================================
@@ -1605,6 +1837,120 @@ def firmware_set_access(version_label, access_level):
     console.print(f"[green]Firmware '{version_label}' access changed to '{access_level}'[/green]")
 
 
+@firmware.command("get")
+@click.argument("version_label")
+def firmware_get(version_label):
+    """Show detailed info for a firmware version."""
+    sb = get_client()
+
+    result = sb.table("firmware_versions").select("*").eq("version_label", version_label).execute()
+    if not result.data:
+        console.print(f"[red]Firmware version not found:[/red] {version_label}")
+        return
+
+    fw = result.data[0]
+
+    # Get HW targets
+    targets = sb.table("firmware_hw_targets").select("hw_version").eq("firmware_version_id", fw["id"]).execute()
+    hw_list = [t["hw_version"] for t in targets.data] if targets.data else []
+
+    # Get upload stats
+    uploads = sb.table("firmware_uploads").select("status").eq("firmware_version_id", fw["id"]).execute()
+    upload_total = len(uploads.data)
+    upload_completed = sum(1 for u in uploads.data if u["status"] == "completed")
+    upload_failed = sum(1 for u in uploads.data if u["status"] == "failed")
+
+    size = fw.get("file_size_bytes") or 0
+    size_str = f"{size / 1024:.1f} KB ({size} bytes)" if size > 0 else "Unknown"
+
+    info = (
+        f"[bold]{fw['version_label']}[/bold]\n\n"
+        f"  ID:              {fw['id']}\n"
+        f"  File:            {fw.get('file_path') or '-'}\n"
+        f"  Size:            {size_str}\n"
+        f"  Target HW:       {', '.join(hw_list) if hw_list else '-'}\n"
+        f"  Min SW:          {fw.get('min_sw_version') or '-'}\n"
+        f"  Access:          {fw.get('access_level', 'distributor')}\n"
+        f"  Active:          {'Yes' if fw.get('is_active') else 'No'}\n"
+        f"  Release Notes:   {fw.get('release_notes') or '-'}\n"
+        f"  Created:         {fw.get('created_at', '')[:16]}\n"
+    )
+
+    if upload_total > 0:
+        info += (
+            f"\n[bold]Upload Stats:[/bold]\n"
+            f"  Total uploads:   {upload_total}\n"
+            f"  Completed:       [green]{upload_completed}[/green]\n"
+            f"  Failed:          [red]{upload_failed}[/red]\n"
+            f"  Success rate:    {upload_completed / upload_total * 100:.1f}%\n"
+        )
+
+    console.print(Panel(info, title="Firmware Details"))
+
+
+@firmware.command("edit")
+@click.argument("version_label")
+@click.option("--min-sw", default=None, help="Minimum SW version required")
+@click.option("--notes", default=None, help="Release notes")
+@click.option("--label", default=None, help="Rename version label")
+def firmware_edit(version_label, min_sw, notes, label):
+    """Edit firmware version metadata."""
+    sb = get_client()
+
+    result = sb.table("firmware_versions").select("*").eq("version_label", version_label).execute()
+    if not result.data:
+        console.print(f"[red]Firmware version not found:[/red] {version_label}")
+        return
+
+    fw = result.data[0]
+    updates = {}
+
+    if min_sw is not None:
+        updates["min_sw_version"] = min_sw if min_sw != "none" else None
+    if notes is not None:
+        updates["release_notes"] = notes if notes != "none" else None
+    if label is not None:
+        updates["version_label"] = label
+
+    if not updates:
+        console.print("[yellow]No changes specified. Use --min-sw, --notes, or --label.[/yellow]")
+        return
+
+    console.print("[bold]Changes:[/bold]")
+    for key, val in updates.items():
+        old = fw.get(key) or "-"
+        console.print(f"  {key}: {old} -> {val or '-'}")
+
+    if not Confirm.ask("Apply changes?"):
+        return
+
+    sb.table("firmware_versions").update(updates).eq("id", fw["id"]).execute()
+    console.print(f"[green]Firmware '{version_label}' updated.[/green]")
+
+
+@firmware.command("reactivate")
+@click.argument("version_label")
+def firmware_reactivate(version_label):
+    """Reactivate a previously deactivated firmware version."""
+    sb = get_client()
+
+    result = sb.table("firmware_versions").select("*").eq("version_label", version_label).execute()
+    if not result.data:
+        console.print(f"[red]Firmware version not found:[/red] {version_label}")
+        return
+
+    fw = result.data[0]
+    if fw.get("is_active"):
+        console.print(f"[yellow]Firmware '{version_label}' is already active.[/yellow]")
+        return
+
+    if not Confirm.ask(f"Reactivate firmware '{version_label}'?"):
+        return
+
+    sb.table("firmware_versions").update({"is_active": True}).eq("id", fw["id"]).execute()
+    console.print(f"[green]Firmware '{version_label}' reactivated.[/green]")
+
+
 # ===========================================================================
 # TELEMETRY
 # ===========================================================================
@@ -1704,6 +2050,163 @@ def telemetry_stats():
         "\n".join(f"  {sw}: {count}" for sw, count in sorted(sw_versions.items())),
         title="Telemetry Stats",
     ))
+
+
+@telemetry.command("get")
+@click.argument("zyd_serial")
+def telemetry_get(zyd_serial):
+    """Show detailed telemetry history for a specific scooter."""
+    sb = get_client()
+
+    result = sb.table("telemetry_snapshots").select("*") \
+        .eq("zyd_serial", zyd_serial) \
+        .order("captured_at", desc=True) \
+        .limit(50).execute()
+
+    if not result.data:
+        console.print(f"[yellow]No telemetry found for scooter:[/yellow] {zyd_serial}")
+        return
+
+    # Show latest snapshot as a panel
+    latest = result.data[0]
+    info = (
+        f"[bold]Latest Snapshot[/bold]  ({latest['captured_at'][:16]})\n\n"
+        f"  HW Version:      {latest.get('hw_version') or '-'}\n"
+        f"  SW Version:      {latest.get('sw_version') or '-'}\n"
+        f"  Odometer (km):   {latest.get('odometer_km') or '-'}\n"
+        f"  Battery Cycles:  {latest.get('battery_cycles') or '-'}\n"
+        f"  Battery Health:  {latest.get('battery_health') or '-'}\n"
+        f"  Error Codes:     {latest.get('error_codes') or '-'}\n"
+        f"  Notes:           {latest.get('notes') or '-'}\n"
+    )
+    console.print(Panel(info, title=f"Telemetry: {zyd_serial}"))
+
+    # Show history table
+    if len(result.data) > 1:
+        table = Table(title=f"History ({len(result.data)} snapshots)")
+        table.add_column("Captured", style="dim")
+        table.add_column("HW", style="green")
+        table.add_column("SW", style="yellow")
+        table.add_column("Odometer", style="blue")
+        table.add_column("Bat Cycles", style="magenta")
+        table.add_column("Bat Health", style="cyan")
+        table.add_column("Errors", style="red")
+
+        for row in result.data:
+            table.add_row(
+                row["captured_at"][:16].replace("T", " "),
+                row.get("hw_version") or "-",
+                row.get("sw_version") or "-",
+                f"{row['odometer_km']:.1f}" if row.get("odometer_km") else "-",
+                str(row["battery_cycles"]) if row.get("battery_cycles") else "-",
+                str(row["battery_health"]) if row.get("battery_health") else "-",
+                str(row["error_codes"]) if row.get("error_codes") else "-",
+            )
+
+        console.print(table)
+
+
+@telemetry.command("export")
+@click.option("--zyd", default=None, help="Filter by ZYD serial (export all if omitted)")
+@click.option("--output", "-o", default="telemetry_export.csv", help="Output CSV file path")
+def telemetry_export(zyd, output):
+    """Export telemetry data to CSV."""
+    import csv
+
+    sb = get_client()
+    query = sb.table("telemetry_snapshots").select("*")
+    if zyd:
+        query = query.eq("zyd_serial", zyd)
+
+    result = query.order("captured_at", desc=True).execute()
+
+    if not result.data:
+        console.print("[yellow]No telemetry data to export.[/yellow]")
+        return
+
+    fieldnames = [
+        "captured_at", "zyd_serial", "hw_version", "sw_version",
+        "odometer_km", "battery_cycles", "battery_health", "error_codes", "notes",
+    ]
+
+    with open(output, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in result.data:
+            writer.writerow(row)
+
+    console.print(f"[green]Exported {len(result.data)} records to {output}[/green]")
+
+
+@telemetry.command("health-check")
+def telemetry_health_check():
+    """Check for scooters with potential issues based on telemetry."""
+    sb = get_client()
+
+    # Get latest snapshot per scooter
+    all_data = sb.table("telemetry_snapshots").select("*") \
+        .order("captured_at", desc=True).execute()
+
+    if not all_data.data:
+        console.print("[yellow]No telemetry data.[/yellow]")
+        return
+
+    # Group by scooter, keep latest
+    latest_by_scooter = {}
+    for row in all_data.data:
+        serial = row["zyd_serial"]
+        if serial not in latest_by_scooter:
+            latest_by_scooter[serial] = row
+
+    issues = []
+
+    for serial, snap in latest_by_scooter.items():
+        scooter_issues = []
+
+        # High battery cycles
+        cycles = snap.get("battery_cycles")
+        if cycles and int(cycles) > 500:
+            scooter_issues.append(f"High battery cycles: {cycles}")
+
+        # Low battery health
+        health = snap.get("battery_health")
+        if health and float(health) < 70:
+            scooter_issues.append(f"Low battery health: {health}%")
+
+        # Error codes present
+        errors = snap.get("error_codes")
+        if errors and str(errors) not in ("", "0", "None", "null"):
+            scooter_issues.append(f"Error codes: {errors}")
+
+        # Stale data (no snapshot in 90 days)
+        from datetime import datetime, timezone
+        captured = snap.get("captured_at", "")
+        if captured:
+            try:
+                cap_dt = datetime.fromisoformat(captured.replace("Z", "+00:00"))
+                age_days = (datetime.now(timezone.utc) - cap_dt).days
+                if age_days > 90:
+                    scooter_issues.append(f"Stale data: {age_days} days old")
+            except (ValueError, TypeError):
+                pass
+
+        if scooter_issues:
+            issues.append((serial, scooter_issues))
+
+    if not issues:
+        console.print("[green]No health issues detected across {0} scooters.[/green]".format(
+            len(latest_by_scooter)))
+        return
+
+    table = Table(title=f"Health Issues ({len(issues)} scooters)")
+    table.add_column("Scooter", style="cyan")
+    table.add_column("Issues", style="red")
+
+    for serial, issue_list in sorted(issues):
+        table.add_row(serial, "; ".join(issue_list))
+
+    console.print(table)
+    console.print(f"\n{len(issues)} of {len(latest_by_scooter)} scooters have potential issues")
 
 
 # ===========================================================================
@@ -1811,6 +2314,209 @@ def logs_stats():
         f"  Success rate:    {completed / total * 100:.1f}%" if total > 0 else "N/A",
         title="Stats",
     ))
+
+
+@logs.command("get")
+@click.argument("log_id")
+def logs_get(log_id):
+    """Show detailed info for a firmware upload log entry."""
+    sb = get_client()
+
+    result = sb.table("firmware_uploads").select(
+        "*, scooters(zyd_serial, model, hw_version), "
+        "firmware_versions(version_label, file_path), distributors(name)"
+    ).eq("id", log_id).execute()
+
+    if not result.data:
+        # Try prefix match
+        result = sb.table("firmware_uploads").select(
+            "*, scooters(zyd_serial, model, hw_version), "
+            "firmware_versions(version_label, file_path), distributors(name)"
+        ).ilike("id", f"{log_id}%").execute()
+
+    if not result.data:
+        console.print(f"[red]Upload log not found:[/red] {log_id}")
+        return
+
+    row = result.data[0]
+    scooter = row.get("scooters") or {}
+    if not isinstance(scooter, dict):
+        scooter = {}
+    fw = row.get("firmware_versions") or {}
+    if not isinstance(fw, dict):
+        fw = {}
+    dist = row.get("distributors") or {}
+    if not isinstance(dist, dict):
+        dist = {}
+
+    status_val = row.get("status", "?")
+    status_color = {"completed": "green", "failed": "red"}.get(status_val, "yellow")
+
+    info = (
+        f"[bold]Upload Log[/bold]\n\n"
+        f"  ID:              {row['id']}\n"
+        f"  Status:          [{status_color}]{status_val}[/{status_color}]\n"
+        f"  Scooter:         {scooter.get('zyd_serial', '-')} ({scooter.get('model', '-')})\n"
+        f"  Scooter HW:      {scooter.get('hw_version', '-')}\n"
+        f"  Firmware:        {fw.get('version_label', '-')}\n"
+        f"  Old HW Version:  {row.get('old_hw_version') or '-'}\n"
+        f"  Old SW Version:  {row.get('old_sw_version') or '-'}\n"
+        f"  New Version:     {row.get('new_version') or '-'}\n"
+        f"  Distributor:     {dist.get('name', '-')}\n"
+        f"  Started:         {(row.get('started_at') or '-')[:16]}\n"
+        f"  Completed:       {(row.get('completed_at') or '-')[:16]}\n"
+    )
+
+    if row.get("error_message"):
+        info += f"\n  [red]Error:[/red] {row['error_message']}\n"
+
+    console.print(Panel(info, title="Upload Log Details"))
+
+
+@logs.command("by-scooter")
+@click.argument("zyd_serial")
+@click.option("--limit", "-n", default=20, help="Max results")
+def logs_by_scooter(zyd_serial, limit):
+    """Show all upload attempts for a specific scooter."""
+    sb = get_client()
+
+    # Find scooter ID
+    scooter = sb.table("scooters").select("id").eq("zyd_serial", zyd_serial).execute()
+    if not scooter.data:
+        console.print(f"[red]Scooter not found:[/red] {zyd_serial}")
+        return
+
+    result = sb.table("firmware_uploads").select(
+        "*, firmware_versions(version_label), distributors(name)"
+    ).eq("scooter_id", scooter.data[0]["id"]) \
+        .order("started_at", desc=True).limit(limit).execute()
+
+    if not result.data:
+        console.print(f"[yellow]No upload logs for scooter:[/yellow] {zyd_serial}")
+        return
+
+    table = Table(title=f"Upload Logs for {zyd_serial}")
+    table.add_column("Date", style="dim")
+    table.add_column("Firmware", style="green")
+    table.add_column("Old SW", style="dim")
+    table.add_column("Distributor", style="yellow")
+    table.add_column("Status")
+    table.add_column("Error", style="red")
+
+    for row in result.data:
+        fw = _resolve_fk(row, "firmware_versions", "version_label")
+        dist_name = _resolve_fk(row, "distributors")
+        status_val = row.get("status", "?")
+        status_color = {"completed": "green", "failed": "red"}.get(status_val, "yellow")
+
+        table.add_row(
+            (row.get("started_at") or "")[:16],
+            fw,
+            row.get("old_sw_version") or "-",
+            dist_name,
+            f"[{status_color}]{status_val}[/{status_color}]",
+            (row.get("error_message") or "")[:40],
+        )
+
+    console.print(table)
+
+
+@logs.command("by-firmware")
+@click.argument("version_label")
+@click.option("--limit", "-n", default=50, help="Max results")
+def logs_by_firmware(version_label, limit):
+    """Show all uploads of a specific firmware version."""
+    sb = get_client()
+
+    fw = sb.table("firmware_versions").select("id").eq("version_label", version_label).execute()
+    if not fw.data:
+        console.print(f"[red]Firmware version not found:[/red] {version_label}")
+        return
+
+    result = sb.table("firmware_uploads").select(
+        "*, scooters(zyd_serial), distributors(name)"
+    ).eq("firmware_version_id", fw.data[0]["id"]) \
+        .order("started_at", desc=True).limit(limit).execute()
+
+    if not result.data:
+        console.print(f"[yellow]No upload logs for firmware:[/yellow] {version_label}")
+        return
+
+    table = Table(title=f"Upload Logs for Firmware {version_label}")
+    table.add_column("Date", style="dim")
+    table.add_column("Scooter", style="cyan")
+    table.add_column("Distributor", style="yellow")
+    table.add_column("Status")
+    table.add_column("Error", style="red")
+
+    completed = 0
+    failed = 0
+    for row in result.data:
+        serial = _resolve_fk(row, "scooters", "zyd_serial")
+        dist_name = _resolve_fk(row, "distributors")
+        status_val = row.get("status", "?")
+        status_color = {"completed": "green", "failed": "red"}.get(status_val, "yellow")
+        if status_val == "completed":
+            completed += 1
+        elif status_val == "failed":
+            failed += 1
+
+        table.add_row(
+            (row.get("started_at") or "")[:16],
+            serial,
+            dist_name,
+            f"[{status_color}]{status_val}[/{status_color}]",
+            (row.get("error_message") or "")[:40],
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(result.data)} | Completed: {completed} | Failed: {failed}")
+
+
+@logs.command("export")
+@click.option("--status", "-s", default=None, help="Filter by status")
+@click.option("--output", "-o", default="upload_logs_export.csv", help="Output CSV file")
+def logs_export(status, output):
+    """Export firmware upload logs to CSV."""
+    import csv
+
+    sb = get_client()
+    query = sb.table("firmware_uploads").select(
+        "*, scooters(zyd_serial), firmware_versions(version_label), distributors(name)"
+    )
+
+    if status:
+        query = query.eq("status", status)
+
+    result = query.order("started_at", desc=True).execute()
+
+    if not result.data:
+        console.print("[yellow]No upload logs to export.[/yellow]")
+        return
+
+    with open(output, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "id", "started_at", "completed_at", "scooter_serial", "firmware_version",
+            "distributor", "old_hw_version", "old_sw_version", "new_version",
+            "status", "error_message",
+        ])
+        for row in result.data:
+            writer.writerow([
+                row["id"],
+                row.get("started_at") or "",
+                row.get("completed_at") or "",
+                _resolve_fk(row, "scooters", "zyd_serial"),
+                _resolve_fk(row, "firmware_versions", "version_label"),
+                _resolve_fk(row, "distributors"),
+                row.get("old_hw_version") or "",
+                row.get("old_sw_version") or "",
+                row.get("new_version") or "",
+                row.get("status") or "",
+                row.get("error_message") or "",
+            ])
+
+    console.print(f"[green]Exported {len(result.data)} logs to {output}[/green]")
 
 
 # ===========================================================================
@@ -2120,6 +2826,58 @@ def service_job_cancel(job_id):
     console.print(f"[yellow]Service job cancelled. Scooter status restored to active.[/yellow]")
 
 
+@service_job.command("export")
+@click.option("--status", "-s", default=None, help="Filter by status")
+@click.option("--output", "-o", default="service_jobs_export.csv", help="Output CSV file")
+def service_job_export(status, output):
+    """Export service jobs to CSV."""
+    import csv
+
+    sb = get_client()
+    query = sb.table("service_jobs").select(SERVICE_JOB_SELECT)
+
+    if status:
+        query = query.eq("status", status)
+
+    result = query.order("booked_date", desc=True).execute()
+
+    if not result.data:
+        console.print("[yellow]No service jobs to export.[/yellow]")
+        return
+
+    with open(output, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "id", "status", "scooter_serial", "workshop", "customer_email",
+            "issue_description", "technician_notes", "parts_used",
+            "firmware_updated", "firmware_before", "firmware_after",
+            "booked_date", "completed_date",
+        ])
+        for row in result.data:
+            scooter_serial = _resolve_fk(row, "scooters", "zyd_serial")
+            ws_name = _resolve_fk(row, "workshops")
+            cust = row.get("users") or {}
+            cust_email = cust.get("email", "-") if isinstance(cust, dict) else "-"
+
+            writer.writerow([
+                row["id"],
+                row.get("status") or "",
+                scooter_serial,
+                ws_name,
+                cust_email,
+                row.get("issue_description") or "",
+                row.get("technician_notes") or "",
+                row.get("parts_used") or "",
+                "Yes" if row.get("firmware_updated") else "No",
+                row.get("firmware_version_before") or "",
+                row.get("firmware_version_after") or "",
+                row.get("booked_date") or "",
+                row.get("completed_date") or "",
+            ])
+
+    console.print(f"[green]Exported {len(result.data)} service jobs to {output}[/green]")
+
+
 # ===========================================================================
 # ACTIVITY EVENTS
 # ===========================================================================
@@ -2288,6 +3046,404 @@ def events_stats(days):
         lines.append(f"    {d}: {count}")
 
     console.print(Panel("\n".join(lines), title="Activity Event Statistics"))
+
+
+@events.command("export")
+@click.option("--type", "-t", "event_type", default=None, help="Filter by event type")
+@click.option("--from", "from_date", default=None, help="From date (YYYY-MM-DD)")
+@click.option("--to", "to_date", default=None, help="To date (YYYY-MM-DD)")
+@click.option("--output", "-o", default="events_export.csv", help="Output CSV file")
+def events_export(event_type, from_date, to_date, output):
+    """Export activity events to CSV."""
+    import csv
+
+    sb = get_client()
+    query = sb.table("activity_events").select("*")
+
+    if event_type:
+        query = query.eq("event_type", event_type)
+    if from_date:
+        query = query.gte("created_at", from_date)
+    if to_date:
+        query = query.lte("created_at", to_date + "T23:59:59")
+
+    result = query.order("created_at", desc=True).execute()
+
+    if not result.data:
+        console.print("[yellow]No events to export.[/yellow]")
+        return
+
+    with open(output, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "id", "event_type", "zyd_serial", "user_id", "country",
+            "device_info", "metadata", "created_at",
+        ])
+        for row in result.data:
+            import json
+            writer.writerow([
+                row.get("id") or "",
+                row.get("event_type") or "",
+                row.get("zyd_serial") or "",
+                row.get("user_id") or "",
+                row.get("country") or "",
+                row.get("device_info") or "",
+                json.dumps(row.get("metadata")) if row.get("metadata") else "",
+                row.get("created_at") or "",
+            ])
+
+    console.print(f"[green]Exported {len(result.data)} events to {output}[/green]")
+
+
+@events.command("get")
+@click.argument("event_id")
+def events_get(event_id):
+    """Show detailed info for an activity event."""
+    import json
+
+    sb = get_client()
+
+    result = sb.table("activity_events").select("*").eq("id", event_id).execute()
+    if not result.data:
+        result = sb.table("activity_events").select("*").ilike("id", f"{event_id}%").execute()
+
+    if not result.data:
+        console.print(f"[red]Event not found:[/red] {event_id}")
+        return
+
+    ev = result.data[0]
+    metadata_str = json.dumps(ev.get("metadata"), indent=2) if ev.get("metadata") else "-"
+
+    info = (
+        f"[bold]Activity Event[/bold]\n\n"
+        f"  ID:            {ev['id']}\n"
+        f"  Type:          {ev.get('event_type') or '-'}\n"
+        f"  Scooter:       {ev.get('zyd_serial') or '-'}\n"
+        f"  User:          {ev.get('user_id') or '-'}\n"
+        f"  Country:       {ev.get('country') or '-'}\n"
+        f"  Device:        {ev.get('device_info') or '-'}\n"
+        f"  Created:       {(ev.get('created_at') or '')[:16]}\n"
+        f"\n[bold]Metadata:[/bold]\n{metadata_str}\n"
+    )
+
+    console.print(Panel(info, title="Event Details"))
+
+
+# ===========================================================================
+# ADDRESS MANAGEMENT
+# ===========================================================================
+
+@cli.group()
+def address():
+    """Manage addresses for distributors, workshops, and users."""
+    pass
+
+
+@address.command("list")
+@click.argument("entity_type", type=click.Choice(["distributor", "workshop", "user"]))
+@click.argument("entity_name_or_email")
+def address_list(entity_type, entity_name_or_email):
+    """List addresses for a distributor, workshop, or user."""
+    sb = get_client()
+
+    # Resolve entity ID
+    entity_id = None
+    if entity_type == "distributor":
+        result = sb.table("distributors").select("id").eq("name", entity_name_or_email).execute()
+        if result.data:
+            entity_id = result.data[0]["id"]
+    elif entity_type == "workshop":
+        result = sb.table("workshops").select("id").eq("name", entity_name_or_email).execute()
+        if result.data:
+            entity_id = result.data[0]["id"]
+    elif entity_type == "user":
+        result = sb.table("users").select("id").eq("email", entity_name_or_email.lower()).execute()
+        if result.data:
+            entity_id = result.data[0]["id"]
+
+    if not entity_id:
+        console.print(f"[red]{entity_type.title()} not found:[/red] {entity_name_or_email}")
+        return
+
+    addresses = sb.table("addresses").select("*") \
+        .eq("entity_type", entity_type).eq("entity_id", entity_id) \
+        .order("created_at").execute()
+
+    if not addresses.data:
+        console.print(f"[yellow]No addresses found for {entity_type} '{entity_name_or_email}'[/yellow]")
+        return
+
+    table = Table(title=f"Addresses for {entity_type.title()}: {entity_name_or_email}")
+    table.add_column("#", style="dim")
+    table.add_column("Line 1", style="cyan")
+    table.add_column("Line 2", style="dim")
+    table.add_column("City", style="green")
+    table.add_column("Region", style="yellow")
+    table.add_column("Postcode", style="magenta")
+    table.add_column("Country", style="white")
+    table.add_column("ID", style="dim")
+
+    for i, addr in enumerate(addresses.data, 1):
+        table.add_row(
+            str(i),
+            addr.get("line1") or "-",
+            addr.get("line2") or "-",
+            addr.get("city") or "-",
+            addr.get("region") or "-",
+            addr.get("postcode") or "-",
+            addr.get("country") or "-",
+            addr["id"][:8] + "...",
+        )
+
+    console.print(table)
+
+
+@address.command("add")
+@click.argument("entity_type", type=click.Choice(["distributor", "workshop", "user"]))
+@click.argument("entity_name_or_email")
+@click.option("--line1", required=True, help="Address line 1")
+@click.option("--line2", default=None, help="Address line 2")
+@click.option("--city", required=True, help="City")
+@click.option("--region", default=None, help="State/region/county")
+@click.option("--postcode", required=True, help="Postcode/ZIP")
+@click.option("--country", required=True, help="ISO 3166-1 alpha-2 country code")
+def address_add(entity_type, entity_name_or_email, line1, line2, city, region, postcode, country):
+    """Add an address to a distributor, workshop, or user."""
+    sb = get_client()
+
+    entity_id = None
+    if entity_type == "distributor":
+        result = sb.table("distributors").select("id").eq("name", entity_name_or_email).execute()
+        if result.data:
+            entity_id = result.data[0]["id"]
+    elif entity_type == "workshop":
+        result = sb.table("workshops").select("id").eq("name", entity_name_or_email).execute()
+        if result.data:
+            entity_id = result.data[0]["id"]
+    elif entity_type == "user":
+        result = sb.table("users").select("id").eq("email", entity_name_or_email.lower()).execute()
+        if result.data:
+            entity_id = result.data[0]["id"]
+
+    if not entity_id:
+        console.print(f"[red]{entity_type.title()} not found:[/red] {entity_name_or_email}")
+        return
+
+    addr_data = {
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "line1": line1,
+        "city": city,
+        "postcode": postcode,
+        "country": country.upper(),
+    }
+    if line2:
+        addr_data["line2"] = line2
+    if region:
+        addr_data["region"] = region
+
+    console.print(f"  Line 1:   {line1}")
+    if line2:
+        console.print(f"  Line 2:   {line2}")
+    console.print(f"  City:     {city}")
+    if region:
+        console.print(f"  Region:   {region}")
+    console.print(f"  Postcode: {postcode}")
+    console.print(f"  Country:  {country.upper()}")
+
+    if not Confirm.ask(f"Add this address to {entity_type} '{entity_name_or_email}'?"):
+        return
+
+    sb.table("addresses").insert(addr_data).execute()
+    console.print(f"[green]Address added to {entity_type} '{entity_name_or_email}'[/green]")
+
+
+@address.command("update")
+@click.argument("address_id")
+@click.option("--line1", default=None, help="Address line 1")
+@click.option("--line2", default=None, help="Address line 2")
+@click.option("--city", default=None, help="City")
+@click.option("--region", default=None, help="State/region/county")
+@click.option("--postcode", default=None, help="Postcode/ZIP")
+@click.option("--country", default=None, help="ISO 3166-1 alpha-2 country code")
+def address_update(address_id, line1, line2, city, region, postcode, country):
+    """Update an existing address by ID (use address list to find IDs)."""
+    sb = get_client()
+
+    # Try exact or prefix match
+    result = sb.table("addresses").select("*").eq("id", address_id).execute()
+    if not result.data:
+        result = sb.table("addresses").select("*").ilike("id", f"{address_id}%").execute()
+
+    if not result.data:
+        console.print(f"[red]Address not found:[/red] {address_id}")
+        return
+
+    if len(result.data) > 1:
+        console.print(f"[red]Multiple addresses match prefix '{address_id}'. Use a longer ID.[/red]")
+        return
+
+    addr = result.data[0]
+    updates = {}
+    if line1 is not None:
+        updates["line1"] = line1
+    if line2 is not None:
+        updates["line2"] = line2
+    if city is not None:
+        updates["city"] = city
+    if region is not None:
+        updates["region"] = region
+    if postcode is not None:
+        updates["postcode"] = postcode
+    if country is not None:
+        updates["country"] = country.upper()
+
+    if not updates:
+        console.print("[yellow]No changes specified.[/yellow]")
+        return
+
+    console.print("[bold]Changes:[/bold]")
+    for key, val in updates.items():
+        old = addr.get(key) or "-"
+        console.print(f"  {key}: {old} -> {val}")
+
+    if not Confirm.ask("Apply changes?"):
+        return
+
+    sb.table("addresses").update(updates).eq("id", addr["id"]).execute()
+    console.print(f"[green]Address updated.[/green]")
+
+
+@address.command("delete")
+@click.argument("address_id")
+def address_delete(address_id):
+    """Delete an address by ID."""
+    sb = get_client()
+
+    result = sb.table("addresses").select("*").eq("id", address_id).execute()
+    if not result.data:
+        result = sb.table("addresses").select("*").ilike("id", f"{address_id}%").execute()
+
+    if not result.data:
+        console.print(f"[red]Address not found:[/red] {address_id}")
+        return
+
+    if len(result.data) > 1:
+        console.print(f"[red]Multiple addresses match prefix '{address_id}'. Use a longer ID.[/red]")
+        return
+
+    addr = result.data[0]
+    console.print(f"  {addr.get('line1', '')} {addr.get('city', '')} {addr.get('country', '')}")
+
+    if not Confirm.ask("Delete this address?"):
+        return
+
+    sb.table("addresses").delete().eq("id", addr["id"]).execute()
+    console.print("[green]Address deleted.[/green]")
+
+
+# ===========================================================================
+# USER EXPORT & BULK OPERATIONS (extensions to user group)
+# ===========================================================================
+
+@user.command("export")
+@click.option("--level", "-l", default=None, help="Filter by user_level")
+@click.option("--country", "-c", default=None, help="Filter by home_country")
+@click.option("--output", "-o", default="users_export.csv", help="Output CSV file")
+def user_export(level, country, output):
+    """Export user data to CSV."""
+    import csv
+
+    sb = get_client()
+    query = sb.table("users").select(USER_SELECT)
+
+    if level:
+        query = query.eq("user_level", level)
+    if country:
+        query = query.eq("home_country", country.upper())
+
+    result = query.order("created_at", desc=True).execute()
+
+    if not result.data:
+        console.print("[yellow]No users to export.[/yellow]")
+        return
+
+    with open(output, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "email", "first_name", "last_name", "user_level", "roles",
+            "home_country", "current_country", "distributor", "workshop",
+            "is_verified", "is_active", "created_at",
+        ])
+        for row in result.data:
+            roles = row.get("roles") or []
+            writer.writerow([
+                row.get("email") or "",
+                row.get("first_name") or "",
+                row.get("last_name") or "",
+                row.get("user_level") or "",
+                ",".join(roles) if isinstance(roles, list) else str(roles),
+                row.get("home_country") or "",
+                row.get("current_country") or "",
+                _resolve_fk(row, "distributors"),
+                _resolve_fk(row, "workshops"),
+                "Yes" if row.get("is_verified") else "No",
+                "Yes" if row.get("is_active") else "No",
+                (row.get("created_at") or "")[:16],
+            ])
+
+    console.print(f"[green]Exported {len(result.data)} users to {output}[/green]")
+
+
+@user.command("deactivate-inactive")
+@click.option("--days", "-d", default=180, help="Days since last activity")
+@click.option("--dry-run", is_flag=True, default=True, help="Preview only (default, use --no-dry-run to apply)")
+def user_deactivate_inactive(days, dry_run):
+    """Find and optionally deactivate users with no recent sessions."""
+    from datetime import datetime, timezone, timedelta
+
+    sb = get_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    # Get active users
+    users = sb.table("users").select("id, email, first_name, last_name, created_at") \
+        .eq("is_active", True).execute()
+
+    inactive = []
+    for u in users.data:
+        # Check for recent sessions
+        sessions = sb.table("sessions").select("id") \
+            .eq("user_id", u["id"]).gte("created_at", cutoff).limit(1).execute()
+        if not sessions.data:
+            inactive.append(u)
+
+    if not inactive:
+        console.print(f"[green]All active users have sessions within the last {days} days.[/green]")
+        return
+
+    table = Table(title=f"Inactive Users (no sessions in {days} days)")
+    table.add_column("Email", style="cyan")
+    table.add_column("Name", style="white")
+    table.add_column("Created", style="dim")
+
+    for u in inactive:
+        name = f"{u.get('first_name') or ''} {u.get('last_name') or ''}".strip() or "-"
+        table.add_row(u["email"], name, (u.get("created_at") or "")[:10])
+
+    console.print(table)
+    console.print(f"\n{len(inactive)} users found")
+
+    if dry_run:
+        console.print("[yellow]Dry run — no changes made. Use --no-dry-run to deactivate.[/yellow]")
+        return
+
+    if not Confirm.ask(f"Deactivate {len(inactive)} users?"):
+        return
+
+    for u in inactive:
+        sb.table("users").update({"is_active": False}).eq("id", u["id"]).execute()
+
+    console.print(f"[green]Deactivated {len(inactive)} users.[/green]")
 
 
 # ===========================================================================
