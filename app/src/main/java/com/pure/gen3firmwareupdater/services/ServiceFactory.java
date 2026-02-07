@@ -10,8 +10,9 @@ import com.pure.gen3firmwareupdater.SupabaseClient;
 
 /**
  * Singleton factory for shared service instances.
- * Eliminates duplicated `new SupabaseClient(BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_SERVICE_KEY)`
- * calls across 6+ Activities.
+ * Uses the anon key for all direct database operations (subject to RLS).
+ * Admin/auth operations go through Edge Functions which use the service_role
+ * key server-side.
  *
  * For React Native/Flutter ports, this class is replaced by the platform's DI mechanism.
  *
@@ -38,7 +39,7 @@ public class ServiceFactory {
         }
         if (supabaseClient == null) {
             supabaseClient = new SupabaseClient(
-                    BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_SERVICE_KEY);
+                    BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY);
         }
     }
 
@@ -49,7 +50,7 @@ public class ServiceFactory {
     public static synchronized SupabaseClient getSupabaseClient() {
         if (supabaseClient == null) {
             supabaseClient = new SupabaseClient(
-                    BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_SERVICE_KEY);
+                    BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY);
         }
         return supabaseClient;
     }

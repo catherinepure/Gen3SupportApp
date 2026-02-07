@@ -18,10 +18,10 @@ android {
         versionName "1.0.0"
 
         buildConfigField "String", "SUPABASE_URL", '"https://hhpxmlrpdharhhzwjxuc.supabase.co"'
-        // Service role key - bypasses RLS. Used by SupabaseClient for direct DB operations.
-        // TODO: Rotate this key since it has been committed to source control.
-        buildConfigField "String", "SUPABASE_SERVICE_KEY", '"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocHhtbHJwZGhhcmhoendqeHVjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDIwODA1NCwiZXhwIjoyMDg1Nzg0MDU0fQ.n_AjoVOs7DSHUlZqqxmM6lKw6zYcoxRKw1gW1aQ404s"'
-        // Anon key - subject to RLS. Used by AuthClient for auth operations.
+        // Anon key - subject to RLS. Used by all client-side operations.
+        // SECURITY: The service_role key has been removed from the app.
+        // All admin operations go through Edge Functions which use the
+        // service_role key server-side via Deno.env.
         buildConfigField "String", "SUPABASE_ANON_KEY", '"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocHhtbHJwZGhhcmhoendqeHVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMDgwNTQsImV4cCI6MjA4NTc4NDA1NH0.w_9rkrz6Mw12asETIAk7jenY-yjVVxrLeWz642k3PVM"'
     }
 
