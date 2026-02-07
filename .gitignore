@@ -53,3 +53,7 @@ node_modules/
 
 # Claude
 .claude/
+
+# FTP credentials
+.ftp-credentials
+*.ftp

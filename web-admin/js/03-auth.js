@@ -33,10 +33,14 @@ const Auth = (() => {
                 adminEmail.textContent = user.email;
             }
 
+            // Initialize router and page modules (not done on the login path)
+            Router.init();
+            Object.values(window.Pages).forEach(page => {
+                if (page.init) page.init();
+            });
+
             // Navigate to dashboard
-            if (window.Router) {
-                Router.navigate('dashboard');
-            }
+            Router.navigate('dashboard');
 
             toast(`Welcome back, ${user.first_name || user.email}!`, 'success');
 

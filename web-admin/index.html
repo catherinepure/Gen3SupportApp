@@ -93,6 +93,18 @@
                     <h2>Users</h2>
                     <div class="page-actions">
                         <input type="text" id="users-search" placeholder="Search users..." class="search-input">
+                        <select id="users-level-filter" class="filter-select">
+                            <option value="">All Levels</option>
+                            <option value="user">User</option>
+                            <option value="distributor">Distributor</option>
+                            <option value="maintenance">Maintenance</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                        <select id="users-active-filter" class="filter-select">
+                            <option value="">All Status</option>
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
                         <button class="btn btn-secondary" id="users-export-btn">Export CSV</button>
                     </div>
                 </div>
@@ -243,6 +255,6 @@
     <script src="js/pages/validation.js"></script>
 
     <!-- Main App Init -->
-    <script src="js/main.js?t=20260207"></script>
+    <script src="js/app-init.js"></script>
 </body>
 </html>

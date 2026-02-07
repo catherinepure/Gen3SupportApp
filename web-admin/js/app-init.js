@@ -1,10 +1,10 @@
 /**
- * Main Application Entry Point
+ * Main Application Entry Point - RENAMED TO BYPASS CACHE
  * Initializes all modules and starts the app
  */
 
-// Global Pages Registry
-const Pages = {
+// Global Pages Registry - attach to window so Router can access it
+window.Pages = {
     dashboard: DashboardPage,
     users: UsersPage,
     scooters: ScootersPage,
@@ -20,7 +20,7 @@ const Pages = {
 
 // App Initialization
 (async function initApp() {
-    console.log('=== Gen3 Admin v2 - Initializing ===');
+    console.log('=== Gen3 Admin v2 - NEW FILE - Initializing ===');
 
     // Initialize modal component
     ModalComponent.init();
@@ -37,7 +37,7 @@ const Pages = {
 
         // Initialize all page modules
         console.log('✓ Initializing page modules...');
-        Object.values(Pages).forEach(page => {
+        Object.values(window.Pages).forEach(page => {
             if (page.init) {
                 page.init();
             }
@@ -53,5 +53,5 @@ const Pages = {
         Auth.setupLoginForm();
     }
 
-    console.log('=== Gen3 Admin - Ready ===');
+    console.log('=== Gen3 Admin v2 - NEW FILE - Ready ===');
 })();

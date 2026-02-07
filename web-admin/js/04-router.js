@@ -5,6 +5,7 @@
 
 const Router = (() => {
     const { $, $$ } = Utils;
+    let initialized = false;
 
     function navigate(page) {
         console.log(`Router.navigate('${page}')`);
@@ -52,6 +53,9 @@ const Router = (() => {
     }
 
     function init() {
+        if (initialized) return;
+        initialized = true;
+
         // Set up nav click handlers
         $$('.nav-item').forEach(item => {
             item.addEventListener('click', () => {

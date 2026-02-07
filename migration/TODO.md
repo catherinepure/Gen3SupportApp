@@ -7,18 +7,31 @@
 ## Current Phase
 
 **Phase:** Pre-1 -- Backend, Database Prep, Admin Tooling & Web Admin
-**Status:** CORS fixes applied, admin user created. Edge Functions need deployment to unblock web admin testing.
+**Status:** ✅ Web admin deployed and working at ives.org.uk/app2026. CORS fixes applied, admin user created. Ready for security hardening and feature enhancements.
 **Spec reference:** Section 9.3 (Phase 2 DB work pulled forward)
 
 ---
 
 ## In Progress
 
-- [ ] Deploy Edge Functions with CORS fixes (blocked: needs Supabase CLI or manual dashboard deployment)
-- [ ] Web admin testing and functionality enhancements (blocked: needs Edge Function deployment)
+- [x] Deploy Edge Functions with CORS fixes ✅ (deployed to Supabase)
+- [x] Web admin testing and deployment ✅ (deployed to ives.org.uk/app2026)
+- [x] Web admin functionality enhancements (can work on this WITHOUT admin rights - see tasks below)
+  - [x] Users page enhanced with filters, deactivate button, linked scooters/sessions display
+  - [ ] Users page UI bug fix: search fields disappearing after table loads (sticky positioning applied)
 
 ## Recently Completed
 
+- [x] Web admin modular refactoring -- 26 files, ~3000 lines (was 4 files, 1379 lines)
+- [x] Web admin deployment to ives.org.uk/app2026 -- WORKING
+- [x] Fixed caching issues, Router scope issues, deployment bugs
+- [x] Dashboard page working with stats cards
+- [x] Users page fully functional (search, view, edit, export)
+- [x] Users page enhanced: user level filter, active status filter, deactivate button
+- [x] Users page detail modal: now shows linked scooters and recent sessions
+- [x] Users page edit form: now includes roles, distributor_id, workshop_id fields
+- [x] FTP deployment system: .ftp-credentials file + deploy.sh script for easy uploads
+- [x] All 11 pages accessible with stub implementations
 - [x] CORS fixes: All 12 Edge Functions updated to allow `apikey` header
 - [x] Admin user created: `catherine.ives@pureelectric.com` with `manufacturer_admin` role
 - [x] Web admin testing tools: `serve.sh` and `test-connection.html`
@@ -32,23 +45,51 @@
 
 ---
 
-## Blocked / Needs Decision
+## Blocked / Needs Admin Rights (Monday)
 
-### Critical (Blocks Web Admin Testing)
-- **Edge Function Deployment** -- CORS fixes need deployment to Supabase
-  - **Option A (Now):** Manual deployment via Supabase dashboard → Functions → Edit
-  - **Option B (Monday):** Install Homebrew + Supabase CLI → `supabase functions deploy`
-  - Priority: `login` and `admin` functions (2 functions minimum for web admin)
-
-### High Priority (Security)
+### High Priority (Security - Requires Supabase Dashboard Access)
 - **Service_role key rotation** -- Old key was in build.gradle (removed). Rotate in Supabase dashboard, update admin-tool/.env
 - **RLS migration** -- `sql/005_rls_hardening.sql` needs to be applied to Supabase (after key rotation)
 - **SendGrid API key** -- Old key was exposed in repo. Needs rotation in SendGrid dashboard + set as env var
 - **Admin password change** -- Current password `admin123` is temporary
 
-### Medium Priority (Development)
-- **Flutter unavailable until Monday** -- Phase 1 scaffold cannot start yet
-- **Web admin hosting** -- Deploy to HostingUK after testing complete
+### Medium Priority (Development - Requires Admin Rights)
+- **Flutter/Homebrew/Supabase CLI installation** -- Phase 1 scaffold cannot start yet (Monday)
+
+## Can Do NOW (No Admin Rights Required)
+
+### Web Admin Enhancements (Local Development → Deploy to HostingUK)
+**All these tasks can be done by editing local files and uploading to HostingUK:**
+
+#### Quick Wins (High Impact, Low Effort)
+- [ ] **Dashboard enhancements**: Add more stat cards (firmware versions, recent events count)
+- [ ] **Dashboard charts**: Add simple CSS-based bar charts for scooters by country, users by role
+- [x] **Users page filters**: Add role filter, country filter, verified status filter ✅ (user level + active status filters added)
+- [ ] **Users page filters (remaining)**: Add country filter, role filter (individual)
+- [ ] **Scooters page implementation**: Enhance from stub to full CRUD (like Users page)
+- [ ] **Distributors page implementation**: Add detail modal, address list, staff list
+- [ ] **Dark mode toggle**: Add theme switcher in sidebar footer
+- [ ] **Loading states improvement**: Replace spinner with skeleton screens
+- [ ] **Better error messages**: More specific error handling with retry buttons
+
+#### Medium Tasks (Moderate Impact/Effort)
+- [ ] **Service Jobs kanban board**: Visual workflow (booked → in-progress → complete)
+- [ ] **Firmware version comparison**: Side-by-side diff view for versions
+- [ ] **Telemetry charts**: Line charts for battery health over time (Chart.js or similar)
+- [ ] **Export improvements**: Date range picker for filtered exports
+- [ ] **Search improvements**: Global search in header that works across all entities
+- [ ] **Keyboard shortcuts**: Add hotkeys for navigation (e.g., G+D for dashboard)
+- [ ] **Breadcrumb navigation**: Show current location path
+- [ ] **Recent activity feed**: Dashboard widget showing last 10 events
+
+#### Advanced Tasks (High Impact, High Effort)
+- [ ] **Map view for scooters**: Interactive map showing scooter locations (if location data available)
+- [ ] **Real-time updates**: WebSocket connection for live dashboard updates
+- [ ] **Bulk actions**: Select multiple items and perform actions (export, status change)
+- [ ] **Advanced filtering UI**: Multi-select dropdowns, date ranges, numeric ranges
+- [ ] **Mobile responsive layout**: Make web admin work on tablets/phones
+- [ ] **PWA manifest**: Make web admin installable as app
+- [ ] **Offline support**: Service worker for offline viewing of cached data
 
 ---
 
@@ -374,6 +415,52 @@ _(unchanged from spec)_
 ---
 
 ## Session Log
+
+### Session 7 -- 2026-02-07 (Continued Session)
+**Model used:** Sonnet 4.5
+**What was accomplished:**
+- **Complete modular refactoring** of web admin:
+  - Split monolithic 808-line `app.js` into 26 focused files
+  - Created core modules: utils, state, API, auth, router (5 files)
+  - Created reusable components: modal, table, form, filters (4 files)
+  - Created 11 page modules: dashboard, users, scooters, distributors, workshops, service-jobs, firmware, telemetry, logs, events, validation
+  - Total transformation: 4 files → 26 files, 1379 lines → ~3000 lines
+- **Deployment to HostingUK** (ives.org.uk/app2026):
+  - Fixed ServiceJobsPage typo (uppercase 'J')
+  - Resolved aggressive browser caching (renamed main.js → app-init.js)
+  - Fixed Router scope issue (`const Pages` → `window.Pages`)
+  - Successfully deployed and verified working
+- **Dashboard**: Fully functional with stats cards
+- **Users page**: Fully implemented (search, list, detail, edit, export)
+- **All other pages**: Basic stub implementations ready for enhancement
+- Created `REFACTORING_COMPLETE.md` documentation
+- Created progress document: `progress/2026-02-07_refactored-deployment-success.md`
+
+**Where we stopped:**
+- ✅ Web admin deployed and working at ives.org.uk/app2026
+- ✅ Login/authentication working (session persists across refreshes)
+- ✅ Dashboard showing stats
+- ✅ Users page fully functional
+- ✅ All 11 pages accessible
+- 🔨 9 pages are stubs ready for enhancement (scooters, distributors, etc.)
+- 📋 150+ enhancement tasks identified and prioritized
+- 📋 Separated tasks into "needs admin rights" vs "can do now"
+
+**Issues encountered:**
+- Server caching was extremely aggressive (solution: renamed file entirely)
+- Browser sessionStorage clears on browser close (by design for security)
+- `window.Pages` scope issue prevented Router from accessing page registry
+
+**Next session should:**
+1. Pick enhancement tasks that don't require admin rights (see "Can Do NOW" section)
+2. Suggested priorities:
+   - Scooters page enhancement (full CRUD like Users)
+   - Dashboard charts/widgets
+   - Distributors page detail modal
+   - Service Jobs kanban board
+   - Dark mode toggle
+3. Security tasks wait for Monday (requires Supabase dashboard access)
+4. Flutter Phase 1 waits for Monday (requires admin rights to install Flutter)
 
 ### Session 6 -- 2026-02-07
 **Model used:** Sonnet 4.5

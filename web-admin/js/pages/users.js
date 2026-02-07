@@ -12,7 +12,13 @@ const UsersPage = (() => {
 
     async function load(filters = {}) {
         try {
-            $('#users-content').innerHTML = Utils.loading('Loading users...');
+            const content = $('#users-content');
+            if (!content) {
+                console.error('users-content div not found');
+                return;
+            }
+
+            content.innerHTML = Utils.loading('Loading users...');
 
             currentFilters = filters;
 
@@ -31,14 +37,25 @@ const UsersPage = (() => {
                         label: 'Edit',
                         className: 'btn-sm btn-primary',
                         handler: editUser
+                    },
+                    {
+                        name: 'deactivate',
+                        label: 'Deactivate',
+                        className: 'btn-sm btn-danger',
+                        handler: deactivateUser,
+                        condition: (user) => user.is_active
                     }
                 ],
                 emptyMessage: 'No users found'
             });
 
         } catch (err) {
+            console.error('Error loading users:', err);
             toast(err.message, 'error');
-            $('#users-content').innerHTML = Utils.errorState('Failed to load users');
+            const content = $('#users-content');
+            if (content) {
+                content.innerHTML = Utils.errorState('Failed to load users');
+            }
         }
     }
 
@@ -66,39 +83,78 @@ const UsersPage = (() => {
         ];
     }
 
-    function showUserDetail(user) {
-        let html = '<div class="detail-grid">';
+    async function showUserDetail(user) {
+        // Show loading state first
+        ModalComponent.show(`User: ${user.email}`, Utils.loading('Loading user details...'));
 
-        html += detailSection('Account Information');
-        html += detailRow('Email', user.email);
-        html += detailRow('Name', `${user.first_name || ''} ${user.last_name || ''}`.trim() || '-');
-        html += detailRow('User Level', user.user_level);
-        html += detailRow('Roles', user.roles?.map(r => Utils.roleBadge(r)).join(' ') || '-');
-        html += detailRow('Verified', user.is_verified ? '✓ Yes' : '✗ No');
-        html += detailRow('Active', user.is_active ? '✓ Yes' : '✗ No');
+        try {
+            // Fetch full user details including scooters and sessions
+            const result = await API.call('users', 'get', { id: user.id });
+            const fullUser = result.user;
+            const scooters = result.scooters || [];
+            const sessions = result.sessions || [];
 
-        html += detailSection('Location');
-        html += detailRow('Home Country', user.home_country || '-');
-        html += detailRow('Current Country', user.current_country || '-');
+            let html = '<div class="detail-grid">';
 
-        if (user.distributor_id || user.workshop_id) {
-            html += detailSection('Assignments');
-            html += detailRow('Distributor', user.distributor_id || '-');
-            html += detailRow('Workshop', user.workshop_id || '-');
+            html += detailSection('Account Information');
+            html += detailRow('Email', fullUser.email);
+            html += detailRow('Name', `${fullUser.first_name || ''} ${fullUser.last_name || ''}`.trim() || '-');
+            html += detailRow('User Level', fullUser.user_level);
+            html += detailRow('Roles', fullUser.roles?.map(r => Utils.roleBadge(r)).join(' ') || '-');
+            html += detailRow('Verified', fullUser.is_verified ? '✓ Yes' : '✗ No');
+            html += detailRow('Active', fullUser.is_active ? '✓ Yes' : '✗ No');
+
+            html += detailSection('Location');
+            html += detailRow('Home Country', fullUser.home_country || '-');
+            html += detailRow('Current Country', fullUser.current_country || '-');
+
+            if (fullUser.distributor_id || fullUser.workshop_id) {
+                html += detailSection('Assignments');
+                html += detailRow('Distributor', fullUser.distributors?.name || fullUser.distributor_id || '-');
+                html += detailRow('Workshop', fullUser.workshops?.name || fullUser.workshop_id || '-');
+            }
+
+            // Linked Scooters
+            if (scooters.length > 0) {
+                html += detailSection(`Linked Scooters (${scooters.length})`);
+                scooters.forEach(link => {
+                    const scooter = link.scooters;
+                    const isPrimary = link.is_primary ? ' ⭐' : '';
+                    html += detailRow(
+                        scooter.zyd_serial + isPrimary,
+                        `${scooter.model || '-'} • ${Utils.statusBadge(scooter.status)}`
+                    );
+                });
+            }
+
+            // Active Sessions
+            if (sessions.length > 0) {
+                html += detailSection(`Recent Sessions (${sessions.length})`);
+                sessions.slice(0, 5).forEach(session => {
+                    const isExpired = new Date(session.expires_at) < new Date();
+                    html += detailRow(
+                        session.device_info || 'Unknown Device',
+                        `Created: ${formatDate(session.created_at)}${isExpired ? ' (expired)' : ' ✓'}`
+                    );
+                });
+            }
+
+            html += detailSection('Account Activity');
+            html += detailRow('Created', formatDate(fullUser.created_at));
+            html += detailRow('Last Login', formatDate(fullUser.last_login) || 'Never');
+
+            html += detailSection('Additional Info');
+            html += detailRow('Date of Birth', formatDate(fullUser.date_of_birth) || '-');
+            html += detailRow('Gender', fullUser.gender || '-');
+            html += detailRow('User ID', fullUser.id);
+
+            html += '</div>';
+
+            ModalComponent.show(`User: ${fullUser.email}`, html);
+
+        } catch (err) {
+            ModalComponent.show(`User: ${user.email}`, `<p class="error-msg">${err.message}</p>`);
         }
-
-        html += detailSection('Account Activity');
-        html += detailRow('Created', formatDate(user.created_at));
-        html += detailRow('Last Login', formatDate(user.last_login) || 'Never');
-
-        html += detailSection('Additional Info');
-        html += detailRow('Date of Birth', formatDate(user.date_of_birth) || '-');
-        html += detailRow('Gender', user.gender || '-');
-        html += detailRow('User ID', user.id);
-
-        html += '</div>';
-
-        ModalComponent.show(`User: ${user.email}`, html);
     }
 
     function editUser(user) {
@@ -118,11 +174,24 @@ const UsersPage = (() => {
                 ],
                 required: true
             },
-            { name: 'home_country', label: 'Home Country', value: user.home_country },
-            { name: 'current_country', label: 'Current Country', value: user.current_country },
+            {
+                name: 'roles',
+                label: 'Roles (comma-separated)',
+                value: user.roles?.join(', ') || '',
+                placeholder: 'e.g., customer, distributor_staff, manufacturer_admin'
+            },
+            { name: 'home_country', label: 'Home Country', value: user.home_country, placeholder: 'GB, US, DE, etc.' },
+            { name: 'current_country', label: 'Current Country', value: user.current_country, placeholder: 'GB, US, DE, etc.' },
+            { name: 'distributor_id', label: 'Distributor ID (optional)', value: user.distributor_id },
+            { name: 'workshop_id', label: 'Workshop ID (optional)', value: user.workshop_id },
             { name: 'is_active', label: 'Active', type: 'checkbox', value: user.is_active },
             { name: 'is_verified', label: 'Verified', type: 'checkbox', value: user.is_verified }
         ], async (formData) => {
+            // Convert roles from comma-separated string to array
+            if (formData.roles) {
+                formData.roles = formData.roles.split(',').map(r => r.trim()).filter(Boolean);
+            }
+
             await API.call('users', 'update', {
                 id: user.id,
                 ...formData
@@ -133,9 +202,47 @@ const UsersPage = (() => {
         });
     }
 
+    async function deactivateUser(user) {
+        if (!confirm(`Deactivate user ${user.email}? This will log them out from all devices.`)) {
+            return;
+        }
+
+        try {
+            await API.call('users', 'deactivate', { id: user.id });
+            toast(`User ${user.email} has been deactivated`, 'success');
+            load(currentFilters);
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    }
+
     function handleSearch(e) {
         const query = e.target.value.trim();
         load({ ...currentFilters, search: query });
+    }
+
+    function handleLevelFilter(e) {
+        const user_level = e.target.value;
+        const filters = { ...currentFilters };
+        if (user_level) {
+            filters.user_level = user_level;
+        } else {
+            delete filters.user_level;
+        }
+        load(filters);
+    }
+
+    function handleActiveFilter(e) {
+        const is_active = e.target.value;
+        const filters = { ...currentFilters };
+        if (is_active === 'true') {
+            filters.is_active = true;
+        } else if (is_active === 'false') {
+            filters.is_active = false;
+        } else {
+            delete filters.is_active;
+        }
+        load(filters);
     }
 
     function handleExport() {
@@ -146,6 +253,16 @@ const UsersPage = (() => {
         const searchInput = $('#users-search');
         if (searchInput) {
             searchInput.addEventListener('input', Utils.debounce(handleSearch, 300));
+        }
+
+        const levelFilter = $('#users-level-filter');
+        if (levelFilter) {
+            levelFilter.addEventListener('change', handleLevelFilter);
+        }
+
+        const activeFilter = $('#users-active-filter');
+        if (activeFilter) {
+            activeFilter.addEventListener('change', handleActiveFilter);
         }
 
         const exportBtn = $('#users-export-btn');
