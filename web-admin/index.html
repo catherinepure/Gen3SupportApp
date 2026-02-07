@@ -17,7 +17,7 @@
             <form id="login-form">
                 <div class="form-group">
                     <label for="login-email">Email</label>
-                    <input type="email" id="login-email" required autocomplete="email" placeholder="admin@pure.com">
+                    <input type="email" id="login-email" required autocomplete="email" placeholder="catherine.ives@pureelectric.com">
                 </div>
                 <div class="form-group">
                     <label for="login-password">Password</label>
@@ -79,8 +79,121 @@
 
         <!-- Main Content -->
         <main id="main-content">
-            <div id="page-content">
-                <!-- Pages rendered here by JS -->
+            <!-- Dashboard Page -->
+            <div id="dashboard-page" class="page-content">
+                <div class="page-header">
+                    <h2>Dashboard</h2>
+                </div>
+                <div id="dashboard-content"></div>
+            </div>
+
+            <!-- Users Page -->
+            <div id="users-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Users</h2>
+                    <div class="page-actions">
+                        <input type="text" id="users-search" placeholder="Search users..." class="search-input">
+                        <button class="btn btn-secondary" id="users-export-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div id="users-content"></div>
+            </div>
+
+            <!-- Scooters Page -->
+            <div id="scooters-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Scooters</h2>
+                    <div class="page-actions">
+                        <input type="text" id="scooters-search" placeholder="Search scooters..." class="search-input">
+                        <button class="btn btn-secondary" id="scooters-export-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div id="scooters-content"></div>
+            </div>
+
+            <!-- Distributors Page -->
+            <div id="distributors-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Distributors</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-secondary" id="distributors-export-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div id="distributors-content"></div>
+            </div>
+
+            <!-- Workshops Page -->
+            <div id="workshops-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Workshops</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-secondary" id="workshops-export-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div id="workshops-content"></div>
+            </div>
+
+            <!-- Service Jobs Page -->
+            <div id="service-jobs-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Service Jobs</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-secondary" id="service-jobs-export-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div id="service-jobs-content"></div>
+            </div>
+
+            <!-- Firmware Page -->
+            <div id="firmware-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Firmware</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-secondary" id="firmware-export-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div id="firmware-content"></div>
+            </div>
+
+            <!-- Telemetry Page -->
+            <div id="telemetry-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Telemetry</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-secondary" id="telemetry-export-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div id="telemetry-content"></div>
+            </div>
+
+            <!-- Logs Page -->
+            <div id="logs-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Upload Logs</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-secondary" id="logs-export-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div id="logs-content"></div>
+            </div>
+
+            <!-- Events Page -->
+            <div id="events-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Activity Events</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-secondary" id="events-export-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div id="events-content"></div>
+            </div>
+
+            <!-- Validation Page -->
+            <div id="validation-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Validation</h2>
+                </div>
+                <div id="validation-content"></div>
             </div>
         </main>
     </div>
@@ -103,7 +216,33 @@
     <!-- Toast Container -->
     <div id="toast-container"></div>
 
-    <script src="js/api.js"></script>
-    <script src="js/app.js"></script>
+    <!-- Core Scripts (load order matters!) -->
+    <script src="js/00-utils.js"></script>
+    <script src="js/01-state.js"></script>
+    <script src="js/02-api.js"></script>
+    <script src="js/03-auth.js"></script>
+    <script src="js/04-router.js"></script>
+
+    <!-- Components -->
+    <script src="js/components/modal.js"></script>
+    <script src="js/components/table.js"></script>
+    <script src="js/components/form.js"></script>
+    <script src="js/components/filters.js"></script>
+
+    <!-- Pages -->
+    <script src="js/pages/dashboard.js"></script>
+    <script src="js/pages/users.js"></script>
+    <script src="js/pages/scooters.js"></script>
+    <script src="js/pages/distributors.js"></script>
+    <script src="js/pages/workshops.js"></script>
+    <script src="js/pages/service-jobs.js"></script>
+    <script src="js/pages/firmware.js"></script>
+    <script src="js/pages/telemetry.js"></script>
+    <script src="js/pages/logs.js"></script>
+    <script src="js/pages/events.js"></script>
+    <script src="js/pages/validation.js"></script>
+
+    <!-- Main App Init -->
+    <script src="js/main.js"></script>
 </body>
 </html>
