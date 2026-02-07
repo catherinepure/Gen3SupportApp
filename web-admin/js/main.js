@@ -4,19 +4,33 @@
  */
 
 // Global Pages Registry
-const Pages = {
-    dashboard: DashboardPage,
-    users: UsersPage,
-    scooters: ScootersPage,
-    distributors: DistributorsPage,
-    workshops: WorkshopsPage,
-    'service-jobs': ServiceJobsPage,
-    firmware: FirmwarePage,
-    telemetry: TelemetryPage,
-    logs: LogsPage,
-    events: EventsPage,
-    validation: ValidationPage
-};
+// Check which pages are defined
+console.log('Checking page modules...');
+console.log('DashboardPage:', typeof DashboardPage);
+console.log('UsersPage:', typeof UsersPage);
+console.log('ScootersPage:', typeof ScootersPage);
+
+let Pages = {};
+
+try {
+    Pages = {
+        dashboard: DashboardPage,
+        users: UsersPage,
+        scooters: ScootersPage,
+        distributors: DistributorsPage,
+        workshops: WorkshopsPage,
+        'service-jobs': ServiceJobsPage,
+        firmware: FirmwarePage,
+        telemetry: TelemetryPage,
+        logs: LogsPage,
+        events: EventsPage,
+        validation: ValidationPage
+    };
+    console.log('✓ All pages loaded successfully');
+} catch (err) {
+    console.error('✗ Error loading pages:', err.message);
+    console.error('Stack:', err.stack);
+}
 
 // App Initialization
 (async function initApp() {
