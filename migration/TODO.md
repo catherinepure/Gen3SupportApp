@@ -6,8 +6,8 @@
 
 ## Current Phase
 
-**Phase:** Pre-1 -- Backend & Database Prep + Admin Tooling
-**Status:** Admin tooling complete. Ready for Edge Function deployment + Flutter Phase 1.
+**Phase:** Pre-1 -- Backend, Database Prep, Admin Tooling & Web Admin
+**Status:** Security hardened + web admin built. Ready for Edge Function deployment + Flutter Phase 1.
 **Spec reference:** Section 9.3 (Phase 2 DB work pulled forward)
 
 ---
@@ -17,6 +17,10 @@
 - [x] Apply `sql/004_spec_alignment_migration.sql` to Supabase -- DONE (fixed CREATE POLICY syntax error)
 - [x] Admin CLI tool -- 81 commands across 12 groups (4082 lines)
 - [x] Admin GUI -- 11 tabs, modular gui/ package (3700+ lines across 17 files)
+- [x] Security fix: service_role key removed from Android app, switched to anon key
+- [x] RLS hardening migration (`sql/005_rls_hardening.sql`) -- all tables now have RLS
+- [x] Admin Edge Function (`supabase/functions/admin/`) -- 13 resources, 50+ actions (1066 lines)
+- [x] Web admin SPA (`web-admin/`) -- static HTML/CSS/JS for shared hosting
 
 ---
 
@@ -24,8 +28,10 @@
 
 - **Flutter unavailable until Monday** -- Phase 1 scaffold cannot start yet
 - ~~**Supabase DB access**~~ -- Migration SQL applied successfully via dashboard
-- **Supabase CLI** -- Need Homebrew + CLI to deploy Edge Functions (Monday)
+- **Supabase CLI** -- Need Homebrew + CLI to deploy Edge Functions including new admin function (Monday)
 - **SendGrid API key** -- Old key was exposed in repo. Needs rotation in SendGrid dashboard + set as env var
+- **Service_role key rotation** -- Old key was in build.gradle (removed). Rotate in Supabase dashboard, update admin-tool/.env
+- **RLS migration** -- `sql/005_rls_hardening.sql` needs to be applied to Supabase (after key rotation)
 
 ---
 
@@ -153,7 +159,14 @@
 - [x] Update existing Edge Functions to return new schema fields (login, validate-session, register, register-user)
 - [x] Admin CLI expanded to 81 commands: users, scooters, firmware, telemetry, logs, service-jobs, events, workshops, distributors, addresses, validation, setup
 - [x] Admin GUI refactored into modular gui/ package with 11 tabs matching all CLI features
-- [ ] Deploy Edge Functions (blocked -- needs Supabase CLI Monday)
+- [x] Security: service_role key removed from Android app build.gradle
+- [x] RLS hardening migration written (`sql/005_rls_hardening.sql`)
+- [x] Admin Edge Function built (`supabase/functions/admin/index.ts`) -- 13 resources, 50+ actions
+- [x] Web admin SPA built (`web-admin/`) -- static site for shared hosting deployment
+- [ ] Apply `sql/005_rls_hardening.sql` to Supabase (after key rotation)
+- [ ] Rotate service_role key in Supabase dashboard + update admin-tool/.env
+- [ ] Deploy Edge Functions including admin (blocked -- needs Supabase CLI Monday)
+- [ ] Deploy web-admin/ to HostingUK shared hosting
 - [ ] Rotate SendGrid API key
 
 ### Phase 1 -- Flutter Scaffold & Feature Parity (Monday+)
@@ -184,6 +197,46 @@ _(unchanged from spec)_
 ---
 
 ## Session Log
+
+### Session 5 -- 2026-02-07
+**Model used:** Opus
+**What was accomplished:**
+- **Security fix**: Removed `SUPABASE_SERVICE_KEY` from Android app `build.gradle`
+  - Switched `ServiceFactory.java` to use `SUPABASE_ANON_KEY` for all direct DB calls
+  - Service_role key no longer shipped in APK (was a critical vulnerability)
+- **RLS hardening migration** (`sql/005_rls_hardening.sql`):
+  - Enabled RLS on 6 previously unprotected tables: users, user_sessions, user_scooters, scooter_telemetry, user_audit_log, password_reset_tokens
+  - Added anon policies matching exactly what the Android app's repositories need
+  - Ensured Edge Functions still work via service_role (server-side only)
+- **Admin Edge Function** (`supabase/functions/admin/index.ts` — 1066 lines):
+  - Single endpoint with 13 resources: users, scooters, distributors, workshops, firmware, service-jobs, telemetry, logs, events, addresses, sessions, validation, dashboard
+  - 50+ actions covering all CLI/GUI features
+  - Admin-only auth via existing session token system
+  - Full territory scoping, status transitions, export support
+- **Web admin SPA** (`web-admin/` — 4 files, 2805 lines):
+  - `index.html` — Login screen + sidebar navigation + 11 pages
+  - `css/styles.css` — Complete design system (cards, tables, badges, modals, toasts)
+  - `js/api.js` — API client using anon key + session tokens
+  - `js/app.js` — Full SPA with dashboard stats, paginated lists, detail modals, CSV export, validation checks
+  - Pure vanilla JS — no build step, no framework dependencies
+  - Deployable to any static hosting (HostingUK shared server)
+- Committed and pushed as b806aea
+
+**Where we stopped:**
+- All code written and committed
+- Pending deployment: RLS migration, key rotation, Edge Functions, web hosting
+
+**Issues encountered:**
+- None — all JS syntax verified, Android service_key references cleaned
+
+**Next session should:**
+1. Rotate service_role key in Supabase dashboard
+2. Update admin-tool/.env with new key
+3. Apply `sql/005_rls_hardening.sql` to Supabase
+4. Install Supabase CLI + deploy all Edge Functions (including admin)
+5. Upload web-admin/ to HostingUK
+6. Test login + all pages on web admin
+7. On-device test: verify Android app still works with anon key
 
 ### Session 4 -- 2026-02-07
 **Model used:** Opus
