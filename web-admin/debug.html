@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug - Gen3 Admin</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+        pre { background: #000; padding: 10px; border: 1px solid #333; }
+    </style>
+</head>
+<body>
+    <h1>Gen3 Admin - Debug Console</h1>
+    <div id="output"></div>
+
+    <script>
+        const output = document.getElementById('output');
+
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = msg;
+            output.appendChild(div);
+        }
+
+        function logObject(label, obj) {
+            const div = document.createElement('div');
+            div.innerHTML = `<strong>${label}:</strong><pre>${JSON.stringify(obj, null, 2)}</pre>`;
+            output.appendChild(div);
+        }
+
+        // Check if scripts are loading
+        log('1. Checking script loading...', 'info');
+
+        setTimeout(() => {
+            log('2. Checking for Utils...', 'info');
+            if (typeof Utils !== 'undefined') {
+                log('✓ Utils loaded', 'success');
+            } else {
+                log('✗ Utils NOT loaded', 'error');
+            }
+
+            log('3. Checking for State...', 'info');
+            if (typeof State !== 'undefined') {
+                log('✓ State loaded', 'success');
+            } else {
+                log('✗ State NOT loaded', 'error');
+            }
+
+            log('4. Checking for API...', 'info');
+            if (typeof API !== 'undefined') {
+                log('✓ API loaded', 'success');
+            } else {
+                log('✗ API NOT loaded', 'error');
+            }
+
+            log('5. Checking for Auth...', 'info');
+            if (typeof Auth !== 'undefined') {
+                log('✓ Auth loaded', 'success');
+                logObject('Auth functions', Object.keys(Auth));
+            } else {
+                log('✗ Auth NOT loaded', 'error');
+            }
+
+            log('6. Checking for Router...', 'info');
+            if (typeof Router !== 'undefined') {
+                log('✓ Router loaded', 'success');
+            } else {
+                log('✗ Router NOT loaded', 'error');
+            }
+
+            log('7. Checking for Pages...', 'info');
+            if (typeof Pages !== 'undefined') {
+                log('✓ Pages loaded', 'success');
+                logObject('Available pages', Object.keys(Pages));
+            } else {
+                log('✗ Pages NOT loaded', 'error');
+            }
+
+            log('8. Checking DOM elements...', 'info');
+            const loginForm = document.querySelector('#login-form');
+            if (loginForm) {
+                log('✓ Login form found', 'success');
+
+                // Check if form has event listener by trying to submit
+                log('9. Testing form submission...', 'info');
+
+                // Create test values
+                const emailInput = document.querySelector('#login-email');
+                const passwordInput = document.querySelector('#login-password');
+
+                if (emailInput && passwordInput) {
+                    log('✓ Form inputs found', 'success');
+                } else {
+                    log('✗ Form inputs NOT found', 'error');
+                }
+            } else {
+                log('✗ Login form NOT found', 'error');
+            }
+
+        }, 1000);
+
+        // Listen for errors
+        window.addEventListener('error', (e) => {
+            log(`JavaScript Error: ${e.message} at ${e.filename}:${e.lineno}`, 'error');
+        });
+    </script>
+
+    <!-- Load all scripts in same order as index.html -->
+    <script src="js/00-utils.js"></script>
+    <script src="js/01-state.js"></script>
+    <script src="js/02-api.js"></script>
+    <script src="js/03-auth.js"></script>
+    <script src="js/04-router.js"></script>
+    <script src="js/components/modal.js"></script>
+    <script src="js/components/table.js"></script>
+    <script src="js/components/form.js"></script>
+    <script src="js/components/filters.js"></script>
+    <script src="js/pages/dashboard.js"></script>
+    <script src="js/pages/users.js"></script>
+    <script src="js/pages/scooters.js"></script>
+    <script src="js/pages/distributors.js"></script>
+    <script src="js/pages/workshops.js"></script>
+    <script src="js/pages/service-jobs.js"></script>
+    <script src="js/pages/firmware.js"></script>
+    <script src="js/pages/telemetry.js"></script>
+    <script src="js/pages/logs.js"></script>
+    <script src="js/pages/events.js"></script>
+    <script src="js/pages/validation.js"></script>
+
+    <!-- Copy login form from index.html -->
+    <form id="login-form" style="display:none;">
+        <input type="email" id="login-email" value="test@test.com">
+        <input type="password" id="login-password" value="test">
+        <button type="submit" id="login-btn">Sign In</button>
+    </form>
+
+    <script>
+        // Try to manually call setupLoginForm after everything loads
+        setTimeout(() => {
+            log('10. Manually calling Auth.setupLoginForm()...', 'info');
+            try {
+                Auth.setupLoginForm();
+                log('✓ setupLoginForm() called successfully', 'success');
+            } catch (err) {
+                log(`✗ Error calling setupLoginForm(): ${err.message}`, 'error');
+            }
+        }, 1500);
+    </script>
+</body>
+</html>

@@ -10,7 +10,7 @@ const Pages = {
     scooters: ScootersPage,
     distributors: DistributorsPage,
     workshops: WorkshopsPage,
-    'service-jobs': ServicejobsPage,
+    'service-jobs': ServiceJobsPage,
     firmware: FirmwarePage,
     telemetry: TelemetryPage,
     logs: LogsPage,
