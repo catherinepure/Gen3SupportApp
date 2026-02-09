@@ -322,7 +322,7 @@ const WorkshopsPage = (() => {
                     }[job.status] || 'badge-inactive';
 
                     html += `
-                        <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; background: white;">
+                        <div class="job-card" data-job-id="${job.id}" style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; background: white; cursor: pointer; transition: box-shadow 0.2s;">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
                                     <strong>Job #${job.id.substring(0, 8)}</strong>
@@ -335,6 +335,31 @@ const WorkshopsPage = (() => {
                             <p style="margin: 4px 0; font-size: 0.9em; color: #555;">${job.issue_description || 'No description'}</p>
                         </div>
                     `;
+                });
+
+                html += '</div>';
+                container.innerHTML = html;
+
+                // Add click handlers to job cards
+                document.querySelectorAll('.job-card').forEach(card => {
+                    card.addEventListener('click', () => {
+                        const jobId = card.getAttribute('data-job-id');
+                        const job = allJobs.find(j => j.id === jobId);
+                        if (job) {
+                            ModalComponent.close();
+                            setTimeout(() => showJobDetail(job, workshop), 100);
+                        }
+                    });
+
+                    // Add hover effect
+                    card.addEventListener('mouseenter', () => {
+                        card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                        card.style.borderColor = '#0066cc';
+                    });
+                    card.addEventListener('mouseleave', () => {
+                        card.style.boxShadow = '';
+                        card.style.borderColor = '#e0e0e0';
+                    });
                 });
 
                 html += '</div>';
@@ -376,6 +401,177 @@ const WorkshopsPage = (() => {
 
         // Initial render
         renderJobs();
+    }
+
+    async function showJobDetail(job, workshop) {
+        try {
+            // Fetch fresh job details
+            const result = await API.call('service-jobs', 'get', { id: job.id });
+            const j = result.job || result.data || job;
+
+            let html = '<div class="detail-grid">';
+
+            // Job Info
+            html += '<div class="detail-section">';
+            html += '<h4>Job Information</h4>';
+            html += `<p><strong>Job ID:</strong> ${j.id}</p>`;
+
+            const statusClass = {
+                'booked': 'badge-warning',
+                'in_progress': 'badge-primary',
+                'completed': 'badge-success',
+                'cancelled': 'badge-inactive'
+            }[j.status] || 'badge-inactive';
+            html += `<p><strong>Status:</strong> <span class="badge ${statusClass}">${j.status}</span></p>`;
+            html += `<p><strong>Booked Date:</strong> ${formatDate(j.booked_date || j.created_at)}</p>`;
+            if (j.completed_date) {
+                html += `<p><strong>Completed:</strong> ${formatDate(j.completed_date)}</p>`;
+            }
+            html += '</div>';
+
+            // Scooter Info
+            html += '<div class="detail-section">';
+            html += '<h4>Scooter</h4>';
+            if (j.scooters) {
+                html += `<p><strong>Serial:</strong> ${j.scooters.zyd_serial || 'N/A'}</p>`;
+                html += `<p><strong>Model:</strong> ${j.scooters.model || 'N/A'}</p>`;
+                if (j.scooters.current_firmware) {
+                    html += `<p><strong>Firmware:</strong> ${j.scooters.current_firmware}</p>`;
+                }
+            } else {
+                html += '<p class="text-muted">Scooter information unavailable</p>';
+            }
+            html += '</div>';
+
+            // Customer Info
+            html += '<div class="detail-section">';
+            html += '<h4>Customer</h4>';
+            if (j.users) {
+                html += `<p><strong>Email:</strong> ${j.users.email || 'N/A'}</p>`;
+                html += `<p><strong>Name:</strong> ${j.users.full_name || 'N/A'}</p>`;
+                if (j.users.phone) {
+                    html += `<p><strong>Phone:</strong> ${j.users.phone}</p>`;
+                }
+            } else {
+                html += '<p class="text-muted">Customer information unavailable</p>';
+            }
+            html += '</div>';
+
+            // Issue & Resolution
+            html += '<div class="detail-section full-width">';
+            html += '<h4>Issue Description</h4>';
+            html += `<p>${j.issue_description || 'No description provided'}</p>`;
+            html += '</div>';
+
+            if (j.resolution_notes) {
+                html += '<div class="detail-section full-width">';
+                html += '<h4>Resolution Notes</h4>';
+                html += `<p>${j.resolution_notes}</p>`;
+                html += '</div>';
+            }
+
+            // Timestamps
+            html += '<div class="detail-section">';
+            html += '<h4>Timestamps</h4>';
+            html += `<p><strong>Created:</strong> ${formatDate(j.created_at)}</p>`;
+            html += `<p><strong>Updated:</strong> ${formatDate(j.updated_at)}</p>`;
+            html += '</div>';
+
+            html += '</div>';
+
+            // Action buttons
+            const actions = [
+                {
+                    label: 'Edit Job',
+                    class: 'btn-primary',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => editJob(j, workshop), 100);
+                    }
+                },
+                {
+                    label: 'Back to Jobs',
+                    class: 'btn-secondary',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => showWorkshopJobs(workshop), 100);
+                    }
+                }
+            ];
+
+            ModalComponent.show('Service Job Detail', html, actions);
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    }
+
+    function editJob(job, workshop) {
+        const fields = [
+            {
+                name: 'status',
+                label: 'Status *',
+                type: 'select',
+                required: true,
+                value: job.status,
+                options: [
+                    { value: 'booked', label: 'Booked' },
+                    { value: 'in_progress', label: 'In Progress' },
+                    { value: 'completed', label: 'Completed' },
+                    { value: 'cancelled', label: 'Cancelled' }
+                ]
+            },
+            {
+                name: 'booked_date',
+                label: 'Booked Date',
+                type: 'date',
+                value: job.booked_date ? job.booked_date.split('T')[0] : ''
+            },
+            {
+                name: 'completed_date',
+                label: 'Completed Date',
+                type: 'date',
+                value: job.completed_date ? job.completed_date.split('T')[0] : '',
+                help: 'Leave blank if not completed'
+            },
+            {
+                name: 'issue_description',
+                label: 'Issue Description',
+                type: 'textarea',
+                value: job.issue_description || '',
+                placeholder: 'Describe the issue...'
+            },
+            {
+                name: 'resolution_notes',
+                label: 'Resolution Notes',
+                type: 'textarea',
+                value: job.resolution_notes || '',
+                placeholder: 'Notes on how the issue was resolved...'
+            }
+        ];
+
+        FormComponent.show('Edit Service Job', fields, async (formData) => {
+            try {
+                await API.call('service-jobs', 'update', {
+                    id: job.id,
+                    status: formData.status,
+                    booked_date: formData.booked_date || null,
+                    completed_date: formData.completed_date || null,
+                    issue_description: formData.issue_description || null,
+                    resolution_notes: formData.resolution_notes || null
+                });
+
+                toast('Service job updated successfully', 'success');
+                ModalComponent.close();
+
+                // Go back to job detail view
+                setTimeout(async () => {
+                    const result = await API.call('service-jobs', 'get', { id: job.id });
+                    showJobDetail(result.job || result.data, workshop);
+                }, 100);
+            } catch (err) {
+                toast(err.message, 'error');
+            }
+        });
     }
 
     function createWorkshop() {

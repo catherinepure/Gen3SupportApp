@@ -164,9 +164,8 @@ serve(async (req) => {
 
       // Create address if provided
       if (body.address) {
-        await supabase.from('addresses').insert({
-          entity_type: 'workshop',
-          entity_id: data.id,
+        await supabase.from('workshop_addresses').insert({
+          workshop_id: data.id,
           line_1: body.address.line_1,
           line_2: body.address.line_2 || null,
           city: body.address.city,

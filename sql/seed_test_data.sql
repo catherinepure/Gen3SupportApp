@@ -42,20 +42,20 @@ ON CONFLICT (activation_code) DO NOTHING;
 
 
 -- ============================================================================
--- STEP 2: Addresses for distributors
+-- STEP 2: Addresses for distributors (using new distributor_addresses table)
 -- ============================================================================
 
-INSERT INTO addresses (id, entity_type, entity_id, line_1, line_2, city, region, postcode, country, is_primary)
+INSERT INTO distributor_addresses (id, distributor_id, line_1, line_2, city, region, postcode, country, is_primary)
 VALUES
-  ('a1000000-0000-0000-0000-000000000001', 'distributor', 'd1000000-0000-0000-0000-000000000001',
+  ('a1000000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000001',
    '45 Electric Avenue', 'Unit 12', 'London', 'Greater London', 'SW9 8JQ', 'GB', true),
 
-  ('a1000000-0000-0000-0000-000000000002', 'distributor', 'd1000000-0000-0000-0000-000000000002',
+  ('a1000000-0000-0000-0000-000000000002', 'd1000000-0000-0000-0000-000000000002',
    '1200 Innovation Drive', 'Suite 300', 'Austin', 'TX', '78701', 'US', true),
 
-  ('a1000000-0000-0000-0000-000000000003', 'distributor', 'd1000000-0000-0000-0000-000000000003',
+  ('a1000000-0000-0000-0000-000000000003', 'd1000000-0000-0000-0000-000000000003',
    'Voltastraße 15', NULL, 'Berlin', 'Berlin', '10179', 'DE', true)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 
 
 -- ============================================================================
@@ -79,20 +79,20 @@ ON CONFLICT DO NOTHING;
 
 
 -- ============================================================================
--- STEP 4: Addresses for workshops
+-- STEP 4: Addresses for workshops (using new workshop_addresses table)
 -- ============================================================================
 
-INSERT INTO addresses (id, entity_type, entity_id, line_1, line_2, city, region, postcode, country, is_primary)
+INSERT INTO workshop_addresses (id, workshop_id, line_1, line_2, city, region, postcode, country, is_primary)
 VALUES
-  ('a1000000-0000-0000-0000-000000000011', 'workshop', 'ee100000-0000-0000-0000-000000000001',
+  ('a1000000-0000-0000-0000-000000000011', 'ee100000-0000-0000-0000-000000000001',
    '12 Tooley Street', 'Arch 4', 'London', 'Greater London', 'SE1 2TF', 'GB', true),
 
-  ('a1000000-0000-0000-0000-000000000012', 'workshop', 'ee100000-0000-0000-0000-000000000002',
+  ('a1000000-0000-0000-0000-000000000012', 'ee100000-0000-0000-0000-000000000002',
    '850 Workshop Lane', NULL, 'Austin', 'TX', '78702', 'US', true),
 
-  ('a1000000-0000-0000-0000-000000000013', 'workshop', 'ee100000-0000-0000-0000-000000000003',
+  ('a1000000-0000-0000-0000-000000000013', 'ee100000-0000-0000-0000-000000000003',
    'Werkstattweg 8', NULL, 'Berlin', 'Berlin', '10245', 'DE', true)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 
 
 -- ============================================================================

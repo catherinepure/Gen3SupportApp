@@ -552,9 +552,9 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
       .select('*').eq('id', body.id).single()
     if (error) return errorResponse('Distributor not found', 404)
 
-    // Get addresses
-    const { data: addresses } = await supabase.from('addresses')
-      .select('*').eq('entity_type', 'distributor').eq('entity_id', body.id)
+    // Get addresses (using new distributor_addresses table)
+    const { data: addresses } = await supabase.from('distributor_addresses')
+      .select('*').eq('distributor_id', body.id)
 
     // Get workshops
     const { data: workshops } = await supabase.from('workshops')
@@ -694,8 +694,8 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
       .eq('id', body.id).single()
     if (error) return errorResponse('Workshop not found', 404)
 
-    const { data: addresses } = await supabase.from('addresses')
-      .select('*').eq('entity_type', 'workshop').eq('entity_id', body.id)
+    const { data: addresses } = await supabase.from('workshop_addresses')
+      .select('*').eq('workshop_id', body.id)
 
     const { data: staff } = await supabase.from('users')
       .select('id, email, first_name, last_name, is_active')
@@ -1251,10 +1251,24 @@ async function handleEvents(supabase: any, action: string, body: any, admin: any
 }
 
 async function handleAddresses(supabase: any, action: string, body: any, _admin: any) {
+  // Helper to determine which table and ID field to use
+  const getTableInfo = (entityType: string) => {
+    if (entityType === 'distributor') {
+      return { table: 'distributor_addresses', idField: 'distributor_id' }
+    } else if (entityType === 'workshop') {
+      return { table: 'workshop_addresses', idField: 'workshop_id' }
+    }
+    throw new Error('Invalid entity_type. Must be "distributor" or "workshop"')
+  }
+
   if (action === 'list') {
-    let query = supabase.from('addresses').select('*').order('created_at', { ascending: false })
-    if (body.entity_type) query = query.eq('entity_type', body.entity_type)
-    if (body.entity_id) query = query.eq('entity_id', body.entity_id)
+    if (!body.entity_type) {
+      return errorResponse('entity_type required (distributor or workshop)')
+    }
+    const { table, idField } = getTableInfo(body.entity_type)
+
+    let query = supabase.from(table).select('*').order('created_at', { ascending: false })
+    if (body.entity_id) query = query.eq(idField, body.entity_id)
 
     const { data, error } = await query
     if (error) return errorResponse(error.message, 500)
@@ -1262,8 +1276,12 @@ async function handleAddresses(supabase: any, action: string, body: any, _admin:
   }
 
   if (action === 'get') {
-    if (!body.id) return errorResponse('Address ID required')
-    const { data, error } = await supabase.from('addresses')
+    if (!body.id || !body.entity_type) {
+      return errorResponse('id and entity_type required')
+    }
+    const { table } = getTableInfo(body.entity_type)
+
+    const { data, error } = await supabase.from(table)
       .select('*').eq('id', body.id).single()
     if (error) return errorResponse('Address not found', 404)
     return respond({ address: data })
@@ -1273,34 +1291,50 @@ async function handleAddresses(supabase: any, action: string, body: any, _admin:
     if (!body.entity_type || !body.entity_id || !body.line_1 || !body.city || !body.postcode || !body.country) {
       return errorResponse('entity_type, entity_id, line_1, city, postcode, country required')
     }
-    const { data, error } = await supabase.from('addresses')
-      .insert({
-        entity_type: body.entity_type, entity_id: body.entity_id,
-        line_1: body.line_1, line_2: body.line_2 || null,
-        city: body.city, region: body.region || null,
-        postcode: body.postcode, country: body.country,
-        is_primary: body.is_primary !== undefined ? body.is_primary : true,
-      }).select().single()
+    const { table, idField } = getTableInfo(body.entity_type)
+
+    const insertData: any = {
+      [idField]: body.entity_id,
+      line_1: body.line_1,
+      line_2: body.line_2 || null,
+      city: body.city,
+      region: body.region || null,
+      postcode: body.postcode,
+      country: body.country,
+      is_primary: body.is_primary !== undefined ? body.is_primary : true,
+    }
+
+    const { data, error } = await supabase.from(table)
+      .insert(insertData).select().single()
     if (error) return errorResponse(error.message, 500)
     return respond({ success: true, address: data }, 201)
   }
 
   if (action === 'update') {
-    if (!body.id) return errorResponse('Address ID required')
+    if (!body.id || !body.entity_type) {
+      return errorResponse('id and entity_type required')
+    }
+    const { table } = getTableInfo(body.entity_type)
+
     const allowed = ['line_1', 'line_2', 'city', 'region', 'postcode', 'country', 'is_primary']
-    const updates: Record<string, any> = { updated_at: new Date().toISOString() }
+    const updates: Record<string, any> = {}
     for (const key of allowed) {
       if (body[key] !== undefined) updates[key] = body[key]
     }
-    const { data, error } = await supabase.from('addresses')
+
+    const { data, error } = await supabase.from(table)
       .update(updates).eq('id', body.id).select().single()
     if (error) return errorResponse(error.message, 500)
     return respond({ success: true, address: data })
   }
 
   if (action === 'delete') {
-    if (!body.id) return errorResponse('Address ID required')
-    const { error } = await supabase.from('addresses').delete().eq('id', body.id)
+    if (!body.id || !body.entity_type) {
+      return errorResponse('id and entity_type required')
+    }
+    const { table } = getTableInfo(body.entity_type)
+
+    const { error } = await supabase.from(table).delete().eq('id', body.id)
     if (error) return errorResponse(error.message, 500)
     return respond({ success: true })
   }
