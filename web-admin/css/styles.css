@@ -108,6 +108,23 @@ input:focus, select:focus, textarea:focus {
 
 textarea { min-height: 80px; resize: vertical; }
 
+/* Multi-select styling */
+select[multiple] {
+    min-height: 150px;
+    padding: 0.25rem;
+}
+
+select[multiple] option {
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    margin: 2px 0;
+}
+
+select[multiple] option:checked {
+    background: var(--primary);
+    color: white;
+}
+
 /* ---- Buttons ---- */
 .btn {
     display: inline-flex;

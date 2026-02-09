@@ -69,14 +69,28 @@ const FormComponent = (() => {
                 break;
 
             case 'select':
+                const isMultiple = field.multiple === true;
                 html += `<select id="field-${name}"
                         name="${name}"
+                        ${isMultiple ? 'multiple size="8"' : ''}
                         ${required ? 'required' : ''}
                         ${disabled ? 'disabled' : ''}>`;
-                html += `<option value="">-- Select --</option>`;
+
+                // Don't show "-- Select --" for multi-select
+                if (!isMultiple) {
+                    html += `<option value="">-- Select --</option>`;
+                }
+
                 options.forEach(opt => {
-                    const selected = opt.value === value ? 'selected' : '';
-                    html += `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
+                    let selected = false;
+                    if (isMultiple) {
+                        // For multi-select, value should be an array
+                        selected = Array.isArray(value) && value.includes(opt.value);
+                    } else {
+                        // For single select, direct comparison
+                        selected = opt.value === value;
+                    }
+                    html += `<option value="${opt.value}" ${selected ? 'selected' : ''}>${opt.label}</option>`;
                 });
                 html += '</select>';
                 break;
@@ -171,6 +185,15 @@ const FormComponent = (() => {
                 } else if (type === 'multiselect') {
                     const checkboxes = form.querySelectorAll(`[name="${name}[]"]:checked`);
                     formData[name] = Array.from(checkboxes).map(cb => cb.value);
+                } else if (type === 'select' && field.multiple) {
+                    // Handle HTML5 multi-select
+                    const select = form.querySelector(`[name="${name}"]`);
+                    if (select) {
+                        const selectedOptions = Array.from(select.selectedOptions);
+                        formData[name] = selectedOptions.map(opt => opt.value);
+                    } else {
+                        formData[name] = [];
+                    }
                 } else if (type === 'file') {
                     const input = form.querySelector(`[name="${name}"]`);
                     formData[name] = input?.files || null;
