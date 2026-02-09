@@ -49,114 +49,61 @@ const DistributorsPage = (() => {
             const staffCount = result.staff_count || 0;
             const scooterCount = result.scooter_count || 0;
 
-            let html = '<div class="detail-grid">';
-
-            // Basic Info
-            html += '<div class="detail-section">';
-            html += '<h4>Distributor Information</h4>';
-            html += `<p><strong>Name:</strong> ${d.name}</p>`;
-            html += `<p><strong>Email:</strong> ${d.email || 'N/A'}</p>`;
-            html += `<p><strong>Phone:</strong> ${d.phone || 'N/A'}</p>`;
-            html += `<p><strong>Status:</strong> ${d.is_active ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>'}</p>`;
-            html += '</div>';
-
-            // Activation Code
-            html += '<div class="detail-section">';
-            html += '<h4>Activation Code</h4>';
-            if (d.activation_code_plaintext) {
-                // Show plaintext code (only visible to manufacturer_admin)
-                html += '<p><strong>Code:</strong></p>';
-                html += `<p><code style="font-size: 1.4em; background: #e8f5e9; padding: 12px 16px; border-radius: 6px; display: inline-block; font-weight: bold; letter-spacing: 1px;">${d.activation_code_plaintext}</code></p>`;
-                html += '<p class="text-muted" style="font-size: 0.9em; margin-top: 10px;">Share this code with the distributor for registration.</p>';
-                if (d.activation_code_created_at) {
-                    html += `<p class="text-muted"><strong>Created:</strong> ${formatDate(d.activation_code_created_at)}</p>`;
+            // Build sections using DetailModal component
+            const sections = [
+                // Basic Info
+                {
+                    title: 'Distributor Information',
+                    fields: [
+                        { label: 'Name', value: d.name },
+                        { label: 'Email', value: d.email || 'N/A' },
+                        { label: 'Phone', value: d.phone || 'N/A' },
+                        { label: 'Status', value: d.is_active, type: 'badge-boolean' }
+                    ]
+                },
+                // Activation Code (using helper)
+                DetailModal.activationCodeSection(d, 'distributor'),
+                // Territory
+                {
+                    title: 'Territory Coverage',
+                    fields: [
+                        { label: 'Countries', value: d.countries, type: 'list' }
+                    ]
+                },
+                // Stats
+                {
+                    title: 'Statistics',
+                    fields: [
+                        { label: 'Staff Members', value: staffCount },
+                        { label: 'Scooters', value: scooterCount },
+                        { label: 'Workshops', value: workshops.length }
+                    ]
                 }
-                if (d.activation_code_expires_at) {
-                    const expires = new Date(d.activation_code_expires_at);
-                    const isExpired = expires < new Date();
-                    html += `<p class="text-muted"><strong>Expires:</strong> ${formatDate(d.activation_code_expires_at)} `;
-                    if (isExpired) {
-                        html += '<span class="badge badge-danger">Expired - Regenerate Required</span>';
-                    } else {
-                        html += '<span class="badge badge-success">Valid</span>';
-                    }
-                    html += '</p>';
-                }
-            } else if (d.activation_code_hash) {
-                // Has hash but no plaintext (shouldn't happen with new system)
-                html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-success">Secured</span></p>';
-                html += '<p class="text-muted" style="font-size: 0.9em;">Code was created before plaintext storage. Use "Regenerate Code" button below to create a new one.</p>';
-            } else if (d.activation_code) {
-                // Legacy plaintext code (old format)
-                html += `<p><strong>Code:</strong> <code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${d.activation_code}</code></p>`;
-                html += '<p class="text-warning" style="font-size: 0.9em; margin-top: 10px;">⚠️ Legacy format - click "Regenerate Code" below to upgrade</p>';
-            } else {
-                html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-inactive">No Code</span></p>';
-                html += '<p class="text-muted" style="font-size: 0.9em;">Click "Regenerate Code" below to create an activation code.</p>';
-            }
-            html += '</div>';
+            ];
 
-            // Territory
-            html += '<div class="detail-section">';
-            html += '<h4>Territory Coverage</h4>';
-            if (d.countries && d.countries.length > 0) {
-                html += '<p><strong>Countries:</strong></p><ul>';
-                d.countries.forEach(country => {
-                    html += `<li>${country}</li>`;
-                });
-                html += '</ul>';
-            } else {
-                html += '<p class="text-muted">No countries assigned</p>';
-            }
-            html += '</div>';
-
-            // Stats
-            html += '<div class="detail-section">';
-            html += '<h4>Statistics</h4>';
-            html += `<p><strong>Staff Members:</strong> ${staffCount}</p>`;
-            html += `<p><strong>Scooters:</strong> ${scooterCount}</p>`;
-            html += `<p><strong>Workshops:</strong> ${workshops.length}</p>`;
-            html += '</div>';
-
-            // Workshops
+            // Workshops section (if any)
             if (workshops.length > 0) {
-                html += '<div class="detail-section full-width">';
-                html += '<h4>Workshops</h4>';
-                html += '<ul>';
+                let workshopsHtml = '<ul>';
                 workshops.forEach(w => {
                     const status = w.is_active ? '✓' : '✗';
-                    html += `<li>${status} ${w.name} (${w.email || 'no email'})</li>`;
+                    workshopsHtml += `<li>${status} ${w.name} (${w.email || 'no email'})</li>`;
                 });
-                html += '</ul>';
-                html += '</div>';
+                workshopsHtml += '</ul>';
+                sections.push({
+                    title: 'Workshops',
+                    html: workshopsHtml
+                });
             }
 
-            // Addresses
+            // Addresses section (using helper)
             if (addresses.length > 0) {
-                html += '<div class="detail-section full-width">';
-                html += '<h4>Addresses</h4>';
-                addresses.forEach(addr => {
-                    html += '<div style="margin-bottom: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">';
-                    html += `<p><strong>${addr.label || 'Address'}:</strong></p>`;
-                    html += `<p>${addr.street_line1}</p>`;
-                    if (addr.street_line2) html += `<p>${addr.street_line2}</p>`;
-                    html += `<p>${addr.city}, ${addr.postcode}</p>`;
-                    html += `<p>${addr.country}</p>`;
-                    html += '</div>';
-                });
-                html += '</div>';
+                sections.push(DetailModal.addressSection(addresses));
             }
 
-            // Timestamps
-            html += '<div class="detail-section">';
-            html += '<h4>Timestamps</h4>';
-            html += `<p><strong>Created:</strong> ${formatDate(d.created_at)}</p>`;
-            html += `<p><strong>Updated:</strong> ${formatDate(d.updated_at)}</p>`;
-            html += '</div>';
+            // Metadata (using helper)
+            sections.push(DetailModal.metadataSection(d));
 
-            html += '</div>';
-
-            // Add action buttons
+            // Action buttons
             const actions = [
                 {
                     label: 'Edit Distributor',
@@ -196,7 +143,15 @@ const DistributorsPage = (() => {
                 });
             }
 
-            ModalComponent.show('Distributor Detail', html, actions);
+            // Show modal using DetailModal component
+            DetailModal.show('Distributor Detail', {
+                sections,
+                actions,
+                breadcrumbs: [
+                    { label: 'Distributors', onClick: () => { ModalComponent.close(); } },
+                    { label: d.name }
+                ]
+            });
         } catch (err) {
             toast(err.message, 'error');
         }

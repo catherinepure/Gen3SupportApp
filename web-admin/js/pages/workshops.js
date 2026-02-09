@@ -50,110 +50,70 @@ const WorkshopsPage = (() => {
             const staff = result.staff || [];
             const activeJobCount = result.active_job_count || 0;
 
-            let html = '<div class="detail-grid">';
-
-            html += '<div class="detail-section">';
-            html += '<h4>Workshop Information</h4>';
-            html += `<p><strong>Name:</strong> ${w.name}</p>`;
-            html += `<p><strong>Email:</strong> ${w.email || 'N/A'}</p>`;
-            html += `<p><strong>Phone:</strong> ${w.phone || 'N/A'}</p>`;
-            html += `<p><strong>Status:</strong> ${w.is_active ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>'}</p>`;
-            html += `<p><strong>Type:</strong> ${w.parent_distributor_id ? 'Linked to Distributor' : 'Independent'}</p>`;
-            html += '</div>';
-
-            // Activation Code
-            html += '<div class="detail-section">';
-            html += '<h4>Activation Code</h4>';
-            if (w.activation_code_plaintext) {
-                // Show plaintext code (only visible to manufacturer_admin)
-                html += '<p><strong>Code:</strong></p>';
-                html += `<p><code style="font-size: 1.4em; background: #e8f5e9; padding: 12px 16px; border-radius: 6px; display: inline-block; font-weight: bold; letter-spacing: 1px;">${w.activation_code_plaintext}</code></p>`;
-                html += '<p class="text-muted" style="font-size: 0.9em; margin-top: 10px;">Share this code with the workshop for registration.</p>';
-                if (w.activation_code_created_at) {
-                    html += `<p class="text-muted"><strong>Created:</strong> ${formatDate(w.activation_code_created_at)}</p>`;
+            // Build sections using DetailModal component
+            const sections = [
+                // Basic Info
+                {
+                    title: 'Workshop Information',
+                    fields: [
+                        { label: 'Name', value: w.name },
+                        { label: 'Email', value: w.email || 'N/A' },
+                        { label: 'Phone', value: w.phone || 'N/A' },
+                        { label: 'Status', value: w.is_active, type: 'badge-boolean' },
+                        { label: 'Type', value: w.parent_distributor_id ? 'Linked to Distributor' : 'Independent' }
+                    ]
+                },
+                // Activation Code (using helper)
+                DetailModal.activationCodeSection(w, 'workshop'),
+                // Service Coverage
+                {
+                    title: 'Service Coverage',
+                    fields: [
+                        { label: 'Countries', value: w.service_area_countries, type: 'list' }
+                    ]
+                },
+                // Statistics
+                {
+                    title: 'Statistics',
+                    fields: [
+                        { label: 'Staff Members', value: staff.length },
+                        { label: 'Active Service Jobs', value: activeJobCount }
+                    ]
                 }
-                if (w.activation_code_expires_at) {
-                    const expires = new Date(w.activation_code_expires_at);
-                    const isExpired = expires < new Date();
-                    html += `<p class="text-muted"><strong>Expires:</strong> ${formatDate(w.activation_code_expires_at)} `;
-                    if (isExpired) {
-                        html += '<span class="badge badge-danger">Expired - Regenerate Required</span>';
-                    } else {
-                        html += '<span class="badge badge-success">Valid</span>';
-                    }
-                    html += '</p>';
-                }
-            } else if (w.activation_code_hash) {
-                // Has hash but no plaintext (shouldn't happen with new system)
-                html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-success">Secured</span></p>';
-                html += '<p class="text-muted" style="font-size: 0.9em;">Code was created before plaintext storage. Use "Regenerate Code" button below to create a new one.</p>';
-            } else if (w.activation_code) {
-                // Legacy plaintext code (old format)
-                html += `<p><strong>Code:</strong> <code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${w.activation_code}</code></p>`;
-                html += '<p class="text-warning" style="font-size: 0.9em; margin-top: 10px;">⚠️ Legacy format - click "Regenerate Code" below to upgrade</p>';
-            } else {
-                html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-inactive">No Code</span></p>';
-                html += '<p class="text-muted" style="font-size: 0.9em;">Click "Regenerate Code" below to create an activation code.</p>';
-            }
-            html += '</div>';
+            ];
 
+            // Parent distributor section (if applicable)
             if (w.parent_distributor_id) {
                 const parentDist = distributorsList.find(d => d.id === w.parent_distributor_id);
-                html += '<div class="detail-section">';
-                html += '<h4>Parent Distributor</h4>';
-                html += `<p><strong>Name:</strong> ${w.distributors?.name || parentDist?.name || 'Unknown'}</p>`;
-                html += '</div>';
-            }
-
-            html += '<div class="detail-section">';
-            html += '<h4>Service Coverage</h4>';
-            if (w.service_area_countries && w.service_area_countries.length > 0) {
-                html += '<p><strong>Countries:</strong></p><ul>';
-                w.service_area_countries.forEach(country => {
-                    html += `<li>${country}</li>`;
+                sections.splice(2, 0, {
+                    title: 'Parent Distributor',
+                    fields: [
+                        { label: 'Name', value: w.distributors?.name || parentDist?.name || 'Unknown' }
+                    ]
                 });
-                html += '</ul>';
-            } else {
-                html += '<p class="text-muted">No service areas defined</p>';
             }
-            html += '</div>';
 
-            html += '<div class="detail-section">';
-            html += '<h4>Statistics</h4>';
-            html += `<p><strong>Staff Members:</strong> ${staff.length}</p>`;
-            html += `<p><strong>Active Service Jobs:</strong> ${activeJobCount}</p>`;
-            html += '</div>';
-
+            // Staff section (if any)
             if (staff.length > 0) {
-                html += '<div class="detail-section">';
-                html += '<h4>Staff</h4>';
+                let staffHtml = '';
                 staff.forEach(s => {
-                    html += `<p>${s.first_name || ''} ${s.last_name || ''} (${s.email}) ${s.is_active ? '✓' : '✗'}</p>`;
+                    staffHtml += `<p>${s.first_name || ''} ${s.last_name || ''} (${s.email}) ${s.is_active ? '✓' : '✗'}</p>`;
                 });
-                html += '</div>';
+                sections.push({
+                    title: 'Staff',
+                    html: staffHtml
+                });
             }
 
+            // Addresses section (using helper)
             if (addresses.length > 0) {
-                html += '<div class="detail-section">';
-                html += '<h4>Addresses</h4>';
-                addresses.forEach(addr => {
-                    html += `<p><strong>${addr.address_type}:</strong></p>`;
-                    html += `<p>${addr.street_address}</p>`;
-                    html += `<p>${addr.city}, ${addr.postcode}</p>`;
-                    html += `<p>${addr.country}</p>`;
-                });
-                html += '</div>';
+                sections.push(DetailModal.addressSection(addresses));
             }
 
-            html += '<div class="detail-section">';
-            html += '<h4>Timestamps</h4>';
-            html += `<p><strong>Created:</strong> ${formatDate(w.created_at)}</p>`;
-            html += `<p><strong>Updated:</strong> ${formatDate(w.updated_at)}</p>`;
-            html += '</div>';
+            // Metadata (using helper)
+            sections.push(DetailModal.metadataSection(w));
 
-            html += '</div>';
-
-            // Add action buttons
+            // Action buttons
             const actions = [
                 {
                     label: 'Edit Workshop',
@@ -170,18 +130,16 @@ const WorkshopsPage = (() => {
                         ModalComponent.close();
                         setTimeout(() => regenerateActivationCode(w), 100);
                     }
+                },
+                {
+                    label: 'View Service Jobs',
+                    class: 'btn-info',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => showWorkshopJobs(w), 100);
+                    }
                 }
             ];
-
-            // Add View Jobs button
-            actions.push({
-                label: 'View Service Jobs',
-                class: 'btn-info',
-                onClick: () => {
-                    ModalComponent.close();
-                    setTimeout(() => showWorkshopJobs(w), 100);
-                }
-            });
 
             if (w.is_active) {
                 actions.push({
@@ -203,13 +161,15 @@ const WorkshopsPage = (() => {
                 });
             }
 
-            // Show breadcrumbs
-            Breadcrumbs.show([
-                {label: 'Workshops', onClick: () => { ModalComponent.close(); }},
-                {label: w.name}
-            ]);
-
-            ModalComponent.show('Workshop Detail', html, actions);
+            // Show modal using DetailModal component
+            DetailModal.show('Workshop Detail', {
+                sections,
+                actions,
+                breadcrumbs: [
+                    { label: 'Workshops', onClick: () => { ModalComponent.close(); } },
+                    { label: w.name }
+                ]
+            });
         } catch (err) {
             toast(err.message, 'error');
         }
