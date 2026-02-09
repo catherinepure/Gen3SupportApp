@@ -561,6 +561,44 @@ _(unchanged from spec)_
 2. Consider backend updates needed: create user action, country/role filter params, territory scoping
 3. Security tasks if admin rights available (key rotation, RLS migration, password change)
 
+### Session 10 -- 2026-02-09
+**Model used:** Sonnet 4.5
+**What was accomplished:**
+- **Activation codes system** (COMPLETE):
+  - Unique codes for distributors: `PURE-XXXX-XXXX` format
+  - Unique codes for workshops: `WORK-XXXX-XXXX` format
+  - Updated `admin/index.ts` to generate codes on create (lines 406-413, 628-637)
+  - Created new Edge Function: `register-workshop` (243 lines)
+  - Database migration: `20260209000001_workshop_activation_codes.sql`
+  - Applied via Supabase CLI (`supabase db push`)
+  - Verified: All 4 existing workshops received activation codes
+  - Documentation: `ACTIVATION_CODES_IMPLEMENTATION.md` (351 lines)
+- **Web Admin CRUD completion**:
+  - Fixed modal component to render action buttons (modal.js)
+  - Added Edit + Deactivate/Reactivate buttons to all detail modals
+  - Pattern: Click row → detail modal → Edit/status change actions
+  - Updated pages: users.js, distributors.js, scooters.js, workshops.js, service-jobs.js
+  - Universal click-to-view UX across all list pages
+- **Cache busting**: Added `?v=20260209-2` to all page script tags in index.html
+- **Workshops page enhancement**: Complete CRUD with parent distributor selection and multi-country support
+- Committed: 3a9d914, 47c9156, c4d0339, a1eb23a, 216ae6c
+
+**Where we stopped:**
+- All activation code functionality complete and deployed
+- All web admin pages have full CRUD with edit/delete actions
+- Migration applied successfully to production database
+
+**Issues encountered:**
+- Modal action buttons not rendering - fixed by changing modal.js signature to accept actions array
+- Browser cache preventing updated JS from loading - fixed with query parameter versioning
+- Initial attempt to apply migration via Node.js script failed - switched to Supabase CLI
+
+**Next session should:**
+1. Test activation code registration flow with mobile app
+2. Begin territory scoping Phase 4 (verification and testing)
+3. Create test data for all role types (manufacturer_admin, distributor_staff, workshop_staff)
+4. Run security tests to verify territory filters cannot be bypassed
+
 ### Session 7 -- 2026-02-07 (Continued Session)
 **Model used:** Sonnet 4.5
 **What was accomplished:**
