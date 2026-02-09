@@ -25,6 +25,54 @@
                 </div>
                 <button type="submit" class="btn btn-primary btn-full" id="login-btn">Sign In</button>
                 <div id="login-error" class="error-msg hidden"></div>
+                <div style="text-align: center; margin-top: 15px;">
+                    <a href="#" id="forgot-password-link" style="color: #0066cc; text-decoration: none; font-size: 14px;">Forgot password?</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Password Reset Request Modal -->
+    <div id="reset-request-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 450px;">
+            <h3>Reset Password</h3>
+            <p>Enter your email address and we'll send you a link to reset your password.</p>
+            <form id="reset-request-form">
+                <div class="form-group">
+                    <label for="reset-email">Email</label>
+                    <input type="email" id="reset-email" required autocomplete="email" placeholder="your.email@example.com">
+                </div>
+                <div id="reset-request-error" class="error-msg hidden"></div>
+                <div id="reset-request-success" class="success-msg hidden"></div>
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" id="cancel-reset-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="send-reset-btn">Send Reset Link</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Password Reset Form (shown when user clicks email link) -->
+    <div id="reset-password-screen" class="login-container hidden">
+        <div class="login-card">
+            <div class="login-logo">
+                <h1>Reset Password</h1>
+                <p>Enter your new password</p>
+            </div>
+            <form id="reset-password-form">
+                <div class="form-group">
+                    <label for="new-password">New Password</label>
+                    <input type="password" id="new-password" required autocomplete="new-password" placeholder="Enter new password" minlength="8">
+                </div>
+                <div class="form-group">
+                    <label for="confirm-password">Confirm Password</label>
+                    <input type="password" id="confirm-password" required autocomplete="new-password" placeholder="Confirm new password" minlength="8">
+                </div>
+                <button type="submit" class="btn btn-primary btn-full" id="reset-submit-btn">Reset Password</button>
+                <div id="reset-error" class="error-msg hidden"></div>
+                <div style="text-align: center; margin-top: 15px;">
+                    <a href="#" id="back-to-login-link" style="color: #0066cc; text-decoration: none; font-size: 14px;">Back to login</a>
+                </div>
             </form>
         </div>
     </div>

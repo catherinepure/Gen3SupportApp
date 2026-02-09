@@ -349,7 +349,11 @@ const UsersPage = (() => {
             // Show with DetailModal
             DetailModal.show(`User: ${fullUser.email}`, {
                 sections,
-                actions
+                actions,
+                breadcrumbs: [
+                    { label: 'Users', onClick: () => { ModalComponent.close(); } },
+                    { label: fullUser.email }
+                ]
             });
 
         } catch (err) {

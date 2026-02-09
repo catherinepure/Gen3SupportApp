@@ -70,6 +70,16 @@ body {
     text-align: center;
 }
 
+.success-msg {
+    color: var(--success);
+    background: var(--success-light);
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    margin-top: 1rem;
+    text-align: center;
+}
+
 /* ---- Forms ---- */
 .form-group { margin-bottom: 1rem; }
 .form-group label {

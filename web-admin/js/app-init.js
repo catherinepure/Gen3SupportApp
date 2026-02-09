@@ -51,6 +51,7 @@ window.Pages = {
         // Show login screen
         console.log('No active session - showing login');
         Auth.setupLoginForm();
+        Auth.setupPasswordResetForm(); // Check if on reset page
     }
 
     console.log('=== Gen3 Admin v2 - NEW FILE - Ready ===');

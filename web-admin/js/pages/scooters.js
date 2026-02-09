@@ -197,7 +197,11 @@ const ScootersPage = (() => {
             // Show with DetailModal
             DetailModal.show(`Scooter: ${fullScooter.zyd_serial || fullScooter.serial_number}`, {
                 sections,
-                actions
+                actions,
+                breadcrumbs: [
+                    { label: 'Scooters', onClick: () => { ModalComponent.close(); } },
+                    { label: fullScooter.zyd_serial || fullScooter.serial_number }
+                ]
             });
         } catch (err) {
             toast('Failed to load scooter details', 'error');
