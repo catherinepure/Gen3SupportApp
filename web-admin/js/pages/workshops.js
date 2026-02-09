@@ -170,6 +170,16 @@ const WorkshopsPage = (() => {
                 }
             ];
 
+            // Add View Jobs button
+            actions.push({
+                label: 'View Service Jobs',
+                class: 'btn-info',
+                onClick: () => {
+                    ModalComponent.close();
+                    setTimeout(() => showWorkshopJobs(w), 100);
+                }
+            });
+
             if (w.is_active) {
                 actions.push({
                     label: 'Deactivate',
@@ -194,6 +204,178 @@ const WorkshopsPage = (() => {
         } catch (err) {
             toast(err.message, 'error');
         }
+    }
+
+    async function showWorkshopJobs(workshop) {
+        try {
+            // Fetch all jobs for this workshop
+            const result = await API.call('service-jobs', 'list', {
+                workshop_id: workshop.id,
+                limit: 500
+            });
+            const allJobs = result.jobs || result.data || [];
+
+            // Create filterable view
+            let html = `
+                <div style="margin-bottom: 20px;">
+                    <h3>${workshop.name} - Service Jobs</h3>
+                    <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+                        <select id="job-status-filter" class="filter-select" style="padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+                            <option value="">All Statuses</option>
+                            <option value="booked">Booked</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+
+                        <select id="job-date-filter" class="filter-select" style="padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+                            <option value="">All Time</option>
+                            <option value="today">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="month">This Month</option>
+                            <option value="90days">Last 90 Days</option>
+                        </select>
+
+                        <button id="reset-filters-btn" class="btn btn-secondary btn-sm">Reset Filters</button>
+                    </div>
+                </div>
+
+                <div id="jobs-container" style="max-height: 400px; overflow-y: auto;">
+                    <!-- Jobs will be rendered here -->
+                </div>
+
+                <div id="jobs-summary" style="margin-top: 15px; padding: 10px; background: #f5f5f5; border-radius: 4px;">
+                    <!-- Summary will be shown here -->
+                </div>
+            `;
+
+            ModalComponent.show('Workshop Service Jobs', html, [
+                {
+                    label: 'Close',
+                    class: 'btn-secondary',
+                    onClick: () => ModalComponent.close()
+                }
+            ]);
+
+            // Set up filtering after modal is shown
+            setTimeout(() => {
+                setupJobFilters(allJobs);
+            }, 100);
+
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    }
+
+    function setupJobFilters(allJobs) {
+        const statusFilter = document.getElementById('job-status-filter');
+        const dateFilter = document.getElementById('job-date-filter');
+        const resetBtn = document.getElementById('reset-filters-btn');
+
+        function renderJobs() {
+            const selectedStatus = statusFilter?.value || '';
+            const selectedDate = dateFilter?.value || '';
+
+            // Filter jobs
+            let filteredJobs = allJobs.filter(job => {
+                // Status filter
+                if (selectedStatus && job.status !== selectedStatus) return false;
+
+                // Date filter
+                if (selectedDate) {
+                    const jobDate = new Date(job.booked_date || job.created_at);
+                    const now = new Date();
+
+                    if (selectedDate === 'today') {
+                        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                        if (jobDate < today) return false;
+                    } else if (selectedDate === 'week') {
+                        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                        if (jobDate < weekAgo) return false;
+                    } else if (selectedDate === 'month') {
+                        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                        if (jobDate < monthAgo) return false;
+                    } else if (selectedDate === '90days') {
+                        const daysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+                        if (jobDate < daysAgo) return false;
+                    }
+                }
+
+                return true;
+            });
+
+            // Render jobs
+            const container = document.getElementById('jobs-container');
+            if (!container) return;
+
+            if (filteredJobs.length === 0) {
+                container.innerHTML = '<p class="text-muted" style="padding: 20px; text-align: center;">No jobs found matching the filters.</p>';
+            } else {
+                let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+
+                filteredJobs.forEach(job => {
+                    const statusClass = {
+                        'booked': 'badge-info',
+                        'in_progress': 'badge-warning',
+                        'completed': 'badge-success',
+                        'cancelled': 'badge-inactive'
+                    }[job.status] || 'badge-inactive';
+
+                    html += `
+                        <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; background: white;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                <div>
+                                    <strong>Job #${job.id.substring(0, 8)}</strong>
+                                    <span class="badge ${statusClass}" style="margin-left: 8px;">${job.status}</span>
+                                </div>
+                                <span style="font-size: 0.85em; color: #666;">${formatDate(job.booked_date || job.created_at)}</span>
+                            </div>
+                            <p style="margin: 4px 0; font-size: 0.9em;"><strong>Scooter:</strong> ${job.scooters?.zyd_serial || 'N/A'}</p>
+                            <p style="margin: 4px 0; font-size: 0.9em;"><strong>Customer:</strong> ${job.users?.email || 'N/A'}</p>
+                            <p style="margin: 4px 0; font-size: 0.9em; color: #555;">${job.issue_description || 'No description'}</p>
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+                container.innerHTML = html;
+            }
+
+            // Update summary
+            const summary = document.getElementById('jobs-summary');
+            if (summary) {
+                const statusCounts = {
+                    booked: filteredJobs.filter(j => j.status === 'booked').length,
+                    in_progress: filteredJobs.filter(j => j.status === 'in_progress').length,
+                    completed: filteredJobs.filter(j => j.status === 'completed').length,
+                    cancelled: filteredJobs.filter(j => j.status === 'cancelled').length
+                };
+
+                summary.innerHTML = `
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                        <span><strong>Total:</strong> ${filteredJobs.length} of ${allJobs.length} jobs</span>
+                        <span><strong>Booked:</strong> ${statusCounts.booked}</span>
+                        <span><strong>In Progress:</strong> ${statusCounts.in_progress}</span>
+                        <span><strong>Completed:</strong> ${statusCounts.completed}</span>
+                        <span><strong>Cancelled:</strong> ${statusCounts.cancelled}</span>
+                    </div>
+                `;
+            }
+        }
+
+        // Attach event listeners
+        if (statusFilter) statusFilter.addEventListener('change', renderJobs);
+        if (dateFilter) dateFilter.addEventListener('change', renderJobs);
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                if (statusFilter) statusFilter.value = '';
+                if (dateFilter) dateFilter.value = '';
+                renderJobs();
+            });
+        }
+
+        // Initial render
+        renderJobs();
     }
 
     function createWorkshop() {
