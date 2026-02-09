@@ -10,8 +10,8 @@
 // Resources & Actions:
 //   users:        list, get, update, deactivate, export, search
 //   scooters:     list, get, create, update, link-user, unlink-user, export
-//   distributors: list, get, create, update, export
-//   workshops:    list, get, create, update, export
+//   distributors: list, get, create, update, regenerate-code, export
+//   workshops:    list, get, create, update, regenerate-code, export
 //   firmware:     list, get, create, update, deactivate, reactivate, export
 //   service-jobs: list, get, create, update, cancel, export
 //   telemetry:    list, get, health-check, export
@@ -24,6 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts"
 
 const corsHeaders = {
   'Content-Type': 'application/json',
@@ -38,6 +39,46 @@ function respond(body: object, status = 200) {
 
 function errorResponse(msg: string, status = 400) {
   return respond({ error: msg }, status)
+}
+
+// ============================================================================
+// Activation Code Utilities
+// ============================================================================
+
+/**
+ * Generate a secure activation code with specified prefix
+ * @param prefix 'PURE' for distributors, 'WORK' for workshops
+ * @returns Activation code in format PREFIX-XXXX-XXXX
+ */
+function generateActivationCode(prefix: 'PURE' | 'WORK'): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  const randomBytes = crypto.getRandomValues(new Uint8Array(8))
+  const part1 = Array.from(randomBytes.slice(0, 4))
+    .map(b => chars[b % chars.length]).join('')
+  const part2 = Array.from(randomBytes.slice(4, 8))
+    .map(b => chars[b % chars.length]).join('')
+  return `${prefix}-${part1}-${part2}`
+}
+
+/**
+ * Hash an activation code using bcrypt
+ * @param code Plaintext activation code
+ * @returns Bcrypt hash
+ */
+async function hashActivationCode(code: string): Promise<string> {
+  const salt = await bcrypt.genSalt(10)
+  const hash = await bcrypt.hash(code.toUpperCase(), salt)
+  return hash
+}
+
+/**
+ * Verify activation code against hash
+ * @param code Plaintext code to verify
+ * @param hash Stored bcrypt hash
+ * @returns True if code matches hash
+ */
+async function verifyActivationCode(code: string, hash: string): Promise<boolean> {
+  return await bcrypt.compare(code.toUpperCase(), hash)
 }
 
 async function authenticateAdmin(supabase: any, sessionToken: string) {
@@ -538,21 +579,35 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
 
   if (action === 'create') {
     if (!body.name) return errorResponse('Distributor name required')
-    // Generate activation code in format PURE-XXXX-XXXX
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    const randomBytes = crypto.getRandomValues(new Uint8Array(8))
-    const part1 = Array.from(randomBytes.slice(0, 4)).map(b => chars[b % chars.length]).join('')
-    const part2 = Array.from(randomBytes.slice(4, 8)).map(b => chars[b % chars.length]).join('')
-    const code = `PURE-${part1}-${part2}`
+
+    // Generate activation code (NOT stored as plaintext)
+    const code = generateActivationCode('PURE')
+    const codeHash = await hashActivationCode(code)
+
+    // Set expiry (default 90 days)
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 90)
 
     const { data, error } = await supabase.from('distributors')
       .insert({
-        name: body.name, activation_code: code,
-        countries: body.countries || [], phone: body.phone || null,
-        email: body.email || null, is_active: true,
+        name: body.name,
+        activation_code_hash: codeHash,
+        activation_code_expires_at: expiresAt.toISOString(),
+        activation_code_created_at: new Date().toISOString(),
+        countries: body.countries || [],
+        phone: body.phone || null,
+        email: body.email || null,
+        is_active: true,
       }).select().single()
+
     if (error) return errorResponse(error.message, 500)
-    return respond({ success: true, distributor: data }, 201)
+
+    // Return plaintext code ONLY in response (not stored)
+    return respond({
+      success: true,
+      distributor: data,
+      activation_code: code  // ONE-TIME display
+    }, 201)
   }
 
   if (action === 'update') {
@@ -566,6 +621,35 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
       .update(updates).eq('id', body.id).select().single()
     if (error) return errorResponse(error.message, 500)
     return respond({ success: true, distributor: data })
+  }
+
+  if (action === 'regenerate-code') {
+    if (!body.id) return errorResponse('Distributor ID required')
+
+    // Generate new code
+    const code = generateActivationCode('PURE')
+    const codeHash = await hashActivationCode(code)
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 90)
+
+    const { data, error } = await supabase.from('distributors')
+      .update({
+        activation_code_hash: codeHash,
+        activation_code_expires_at: expiresAt.toISOString(),
+        activation_code_created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', body.id)
+      .select().single()
+
+    if (error) return errorResponse(error.message, 500)
+
+    // Return plaintext code ONLY in response (not stored)
+    return respond({
+      success: true,
+      distributor: data,
+      activation_code: code  // ONE-TIME display
+    }, 200)
   }
 
   if (action === 'export') {
@@ -627,22 +711,36 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
 
   if (action === 'create') {
     if (!body.name) return errorResponse('Workshop name required')
-    // Generate activation code in format WORK-XXXX-XXXX
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    const randomBytes = crypto.getRandomValues(new Uint8Array(8))
-    const part1 = Array.from(randomBytes.slice(0, 4)).map(b => chars[b % chars.length]).join('')
-    const part2 = Array.from(randomBytes.slice(4, 8)).map(b => chars[b % chars.length]).join('')
-    const code = `WORK-${part1}-${part2}`
+
+    // Generate activation code (NOT stored as plaintext)
+    const code = generateActivationCode('WORK')
+    const codeHash = await hashActivationCode(code)
+
+    // Set expiry (default 90 days)
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 90)
 
     const { data, error } = await supabase.from('workshops')
       .insert({
-        name: body.name, activation_code: code,
-        phone: body.phone || null, email: body.email || null,
+        name: body.name,
+        activation_code_hash: codeHash,
+        activation_code_expires_at: expiresAt.toISOString(),
+        activation_code_created_at: new Date().toISOString(),
+        phone: body.phone || null,
+        email: body.email || null,
         parent_distributor_id: body.parent_distributor_id || null,
-        service_area_countries: body.service_area_countries || [], is_active: true,
+        service_area_countries: body.service_area_countries || [],
+        is_active: true,
       }).select().single()
+
     if (error) return errorResponse(error.message, 500)
-    return respond({ success: true, workshop: data }, 201)
+
+    // Return plaintext code ONLY in response (not stored)
+    return respond({
+      success: true,
+      workshop: data,
+      activation_code: code  // ONE-TIME display
+    }, 201)
   }
 
   if (action === 'update') {
@@ -657,6 +755,35 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
       .update(updates).eq('id', body.id).select().single()
     if (error) return errorResponse(error.message, 500)
     return respond({ success: true, workshop: data })
+  }
+
+  if (action === 'regenerate-code') {
+    if (!body.id) return errorResponse('Workshop ID required')
+
+    // Generate new code
+    const code = generateActivationCode('WORK')
+    const codeHash = await hashActivationCode(code)
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 90)
+
+    const { data, error } = await supabase.from('workshops')
+      .update({
+        activation_code_hash: codeHash,
+        activation_code_expires_at: expiresAt.toISOString(),
+        activation_code_created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', body.id)
+      .select().single()
+
+    if (error) return errorResponse(error.message, 500)
+
+    // Return plaintext code ONLY in response (not stored)
+    return respond({
+      success: true,
+      workshop: data,
+      activation_code: code  // ONE-TIME display
+    }, 200)
   }
 
   if (action === 'export') {

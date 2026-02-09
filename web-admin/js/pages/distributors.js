@@ -16,7 +16,11 @@ const DistributorsPage = (() => {
 
             TableComponent.render('#distributors-content', currentData, [
                 { key: 'name', label: 'Name' },
-                { key: 'activation_code', label: 'Activation Code', format: (val) => val ? `<code>${val}</code>` : 'N/A' },
+                { key: 'activation_code_hash', label: 'Code Status', format: (val, row) => {
+                    if (val) return '<span class="badge badge-success">Encrypted</span>';
+                    if (row.activation_code) return '<span class="badge badge-warning">Legacy</span>';
+                    return '<span class="badge badge-inactive">None</span>';
+                }},
                 { key: 'countries', label: 'Countries', format: (arr) => arr && arr.length > 0 ? arr.join(', ') : 'None' },
                 { key: 'phone', label: 'Phone', format: (val) => val || 'N/A' },
                 { key: 'email', label: 'Email', format: (val) => val || 'N/A' },
@@ -59,8 +63,27 @@ const DistributorsPage = (() => {
             // Activation Code
             html += '<div class="detail-section">';
             html += '<h4>Activation Code</h4>';
-            html += `<p><code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${d.activation_code || 'N/A'}</code></p>`;
-            html += '<p class="text-muted" style="font-size: 0.9em;">Use this code during distributor registration</p>';
+            if (d.activation_code_hash) {
+                html += '<p class="text-muted">Activation code is encrypted and cannot be displayed.</p>';
+                if (d.activation_code_created_at) {
+                    html += `<p class="text-muted"><strong>Created:</strong> ${formatDate(d.activation_code_created_at)}</p>`;
+                }
+                if (d.activation_code_expires_at) {
+                    const expires = new Date(d.activation_code_expires_at);
+                    const isExpired = expires < new Date();
+                    html += `<p class="text-muted"><strong>Expires:</strong> ${formatDate(d.activation_code_expires_at)} `;
+                    if (isExpired) {
+                        html += '<span class="badge badge-danger">Expired</span>';
+                    }
+                    html += '</p>';
+                }
+            } else if (d.activation_code) {
+                // Legacy plaintext code (during migration)
+                html += `<p><code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${d.activation_code}</code></p>`;
+                html += '<p class="text-warning" style="font-size: 0.9em;">⚠️ Legacy plaintext code - regenerate for security</p>';
+            } else {
+                html += '<p class="text-muted">No activation code</p>';
+            }
             html += '</div>';
 
             // Territory
@@ -131,6 +154,14 @@ const DistributorsPage = (() => {
                     onClick: () => {
                         ModalComponent.close();
                         setTimeout(() => editDistributor(d), 100);
+                    }
+                },
+                {
+                    label: 'Regenerate Code',
+                    class: 'btn-warning',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => regenerateActivationCode(d), 100);
                     }
                 }
             ];
@@ -287,6 +318,30 @@ const DistributorsPage = (() => {
                 is_active: true
             });
             toast('Distributor reactivated', 'success');
+            load();
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    }
+
+    async function regenerateActivationCode(distributor) {
+        if (!confirm(`Generate a new activation code for "${distributor.name}"? The old code will be invalidated immediately.`)) {
+            return;
+        }
+
+        try {
+            const result = await API.call('distributors', 'regenerate-code', { id: distributor.id });
+
+            // Show new code in modal (ONE TIME)
+            ModalComponent.show('New Activation Code Generated',
+                `<div style="text-align: center;">
+                    <p>The new activation code for <strong>${distributor.name}</strong> is:</p>
+                    <p style="margin: 20px 0;"><code style="font-size: 1.8em; background: #fff3cd; padding: 20px 30px; border-radius: 8px; display: inline-block; border: 2px solid #ffc107;">${result.activation_code}</code></p>
+                    <p class="text-danger" style="margin-top: 20px; font-weight: bold;">⚠️ Save this code immediately!</p>
+                    <p class="text-muted">This code cannot be retrieved later and will expire in 90 days.</p>
+                </div>`);
+
+            toast('Activation code regenerated', 'success');
             load();
         } catch (err) {
             toast(err.message, 'error');

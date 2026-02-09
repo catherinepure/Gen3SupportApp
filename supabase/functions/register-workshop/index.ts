@@ -3,6 +3,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts"
 
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY')!
 const FROM_EMAIL = Deno.env.get('SENDGRID_FROM_EMAIL') || "noreply@pureelectric.com"
@@ -18,11 +19,15 @@ interface RegisterWorkshopRequest {
 }
 
 async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+  const salt = await bcrypt.genSalt(10)
+  return await bcrypt.hash(password, salt)
+}
+
+/**
+ * Verify activation code against hash
+ */
+async function verifyActivationCode(code: string, hash: string): Promise<boolean> {
+  return await bcrypt.compare(code.toUpperCase(), hash)
 }
 
 function generateToken(): string {
@@ -147,20 +152,49 @@ serve(async (req) => {
       )
     }
 
-    // Validate activation code
-    const { data: workshop, error: workshopError } = await supabase
+    // Validate activation code (support both hashed and legacy plaintext)
+    const { data: workshops, error: workshopError } = await supabase
       .from('workshops')
-      .select('id, name, is_active, parent_distributor_id')
-      .ilike('activation_code', activation_code)
+      .select('id, name, is_active, parent_distributor_id, activation_code, activation_code_hash, activation_code_expires_at')
       .eq('is_active', true)
-      .single()
 
-    if (workshopError || !workshop) {
+    if (workshopError || !workshops) {
       return new Response(
         JSON.stringify({ error: 'Invalid activation code' }),
         { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
       )
     }
+
+    // Find matching workshop
+    let matchedWorkshop = null
+    for (const ws of workshops) {
+      // Check hashed code first (preferred)
+      if (ws.activation_code_hash && await verifyActivationCode(activation_code, ws.activation_code_hash)) {
+        // Check expiry
+        if (ws.activation_code_expires_at && new Date() > new Date(ws.activation_code_expires_at)) {
+          return new Response(
+            JSON.stringify({ error: 'Activation code expired' }),
+            { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+          )
+        }
+        matchedWorkshop = ws
+        break
+      }
+      // Fallback to plaintext (legacy codes during migration)
+      else if (ws.activation_code && ws.activation_code.toUpperCase() === activation_code.toUpperCase()) {
+        matchedWorkshop = ws
+        break
+      }
+    }
+
+    if (!matchedWorkshop) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid activation code' }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      )
+    }
+
+    const workshop = matchedWorkshop
 
     // Hash password and generate token
     const passwordHash = await hashPassword(password)
@@ -184,6 +218,7 @@ serve(async (req) => {
         distributor_id: workshop.parent_distributor_id || null,
         registration_type: 'workshop',
         workshop_activation_code_used: activation_code.toUpperCase(),
+        activation_code_used_at: new Date().toISOString(),
         is_verified: false,
         verification_token: verificationToken,
         verification_token_expires: expiresAt.toISOString()
