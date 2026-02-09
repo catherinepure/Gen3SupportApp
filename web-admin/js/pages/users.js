@@ -1,14 +1,115 @@
 /**
  * Users Page
- * Manage users, search, filter, view details, edit
+ * Manage users, search, filter, view details, edit, deactivate/reactivate
  */
 
 const UsersPage = (() => {
-    const { $, toast, exportCSV, formatDate, detailRow, detailSection } = Utils;
+    const { $, toast, exportCSV, formatDate, detailRow, detailSection, debounce } = Utils;
     const { render: renderTable } = TableComponent;
+
+    const PAGE_SIZE = 50;
+
+    const COUNTRY_OPTIONS = [
+        { value: 'GB', label: 'United Kingdom' },
+        { value: 'DE', label: 'Germany' },
+        { value: 'FR', label: 'France' },
+        { value: 'IT', label: 'Italy' },
+        { value: 'ES', label: 'Spain' },
+        { value: 'NL', label: 'Netherlands' },
+        { value: 'BE', label: 'Belgium' },
+        { value: 'AT', label: 'Austria' },
+        { value: 'CH', label: 'Switzerland' },
+        { value: 'US', label: 'United States' },
+        { value: 'IE', label: 'Ireland' },
+        { value: 'PT', label: 'Portugal' },
+        { value: 'SE', label: 'Sweden' },
+        { value: 'DK', label: 'Denmark' },
+        { value: 'NO', label: 'Norway' },
+        { value: 'PL', label: 'Poland' }
+    ];
+
+    const ROLE_OPTIONS = [
+        { value: 'customer', label: 'Customer' },
+        { value: 'distributor_staff', label: 'Distributor Staff' },
+        { value: 'workshop_staff', label: 'Workshop Staff' },
+        { value: 'manufacturer_admin', label: 'Manufacturer Admin' }
+    ];
 
     let currentUsers = [];
     let currentFilters = {};
+    let totalRecords = 0;
+    let distributorsList = [];
+    let workshopsList = [];
+
+    // ---- Reference Data ----
+
+    async function loadReferenceData() {
+        // Try cache first
+        const cachedDistributors = State.getCache('distributors_list');
+        const cachedWorkshops = State.getCache('workshops_list');
+
+        if (cachedDistributors && cachedWorkshops) {
+            distributorsList = cachedDistributors;
+            workshopsList = cachedWorkshops;
+            populateDistributorDropdown();
+            return;
+        }
+
+        try {
+            const [distResult, workshopResult] = await Promise.all([
+                API.call('distributors', 'list', { limit: 200 }),
+                API.call('workshops', 'list', { limit: 200 })
+            ]);
+
+            distributorsList = distResult.distributors || [];
+            workshopsList = workshopResult.workshops || [];
+
+            State.setCache('distributors_list', distributorsList);
+            State.setCache('workshops_list', workshopsList);
+
+            populateDistributorDropdown();
+        } catch (err) {
+            console.error('Error loading reference data:', err);
+            // Non-fatal — filters just won't have distributor options
+        }
+    }
+
+    function populateDistributorDropdown() {
+        const select = $('#users-distributor-filter');
+        if (!select) return;
+
+        // Keep the "All Distributors" option, clear the rest
+        select.innerHTML = '<option value="">All Distributors</option>';
+
+        distributorsList.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.id;
+            opt.textContent = d.name || d.id;
+            select.appendChild(opt);
+        });
+    }
+
+    // ---- Client-Side Filtering ----
+
+    function getDisplayUsers() {
+        let users = [...currentUsers];
+
+        // Client-side country filter
+        const country = currentFilters._clientCountry;
+        if (country) {
+            users = users.filter(u => u.home_country === country);
+        }
+
+        // Client-side role filter
+        const role = currentFilters._clientRole;
+        if (role) {
+            users = users.filter(u => Array.isArray(u.roles) && u.roles.includes(role));
+        }
+
+        return users;
+    }
+
+    // ---- Load & Render ----
 
     async function load(filters = {}) {
         try {
@@ -22,14 +123,28 @@ const UsersPage = (() => {
 
             currentFilters = filters;
 
-            const result = await API.call('users', filters.search ? 'search' : 'list', {
-                ...filters,
-                limit: 50
+            // Separate client-side filters from server-side params
+            const serverParams = {};
+            Object.entries(filters).forEach(([key, val]) => {
+                if (!key.startsWith('_client') && val !== undefined && val !== '') {
+                    serverParams[key] = val;
+                }
             });
 
-            currentUsers = result.users || [];
+            // Pagination
+            const { pageNum, pageSize } = State.getPagination('users');
+            serverParams.limit = pageSize || PAGE_SIZE;
+            serverParams.offset = ((pageNum || 1) - 1) * serverParams.limit;
 
-            renderTable('#users-content', currentUsers, getColumns(), {
+            const result = await API.call('users', serverParams.search ? 'search' : 'list', serverParams);
+
+            currentUsers = result.users || [];
+            totalRecords = result.total || currentUsers.length;
+
+            const displayUsers = getDisplayUsers();
+            const totalPages = Math.ceil(totalRecords / (pageSize || PAGE_SIZE));
+
+            renderTable('#users-content', displayUsers, getColumns(), {
                 onRowClick: showUserDetail,
                 actions: [
                     {
@@ -43,9 +158,23 @@ const UsersPage = (() => {
                         label: 'Deactivate',
                         className: 'btn-sm btn-danger',
                         handler: deactivateUser,
-                        condition: (user) => user.is_active
+                        shouldShow: (user) => user.is_active
+                    },
+                    {
+                        name: 'reactivate',
+                        label: 'Reactivate',
+                        className: 'btn-sm btn-success',
+                        handler: reactivateUser,
+                        shouldShow: (user) => !user.is_active
                     }
                 ],
+                pagination: totalPages > 1 ? {
+                    current: pageNum || 1,
+                    total: totalPages,
+                    pageSize: pageSize || PAGE_SIZE,
+                    totalRecords: totalRecords
+                } : null,
+                onPageChange: handlePageChange,
                 emptyMessage: 'No users found'
             });
 
@@ -83,12 +212,12 @@ const UsersPage = (() => {
         ];
     }
 
+    // ---- Detail Modal ----
+
     async function showUserDetail(user) {
-        // Show loading state first
         ModalComponent.show(`User: ${user.email}`, Utils.loading('Loading user details...'));
 
         try {
-            // Fetch full user details including scooters and sessions
             const result = await API.call('users', 'get', { id: user.id });
             const fullUser = result.user;
             const scooters = result.scooters || [];
@@ -110,8 +239,12 @@ const UsersPage = (() => {
 
             if (fullUser.distributor_id || fullUser.workshop_id) {
                 html += detailSection('Assignments');
-                html += detailRow('Distributor', fullUser.distributors?.name || fullUser.distributor_id || '-');
-                html += detailRow('Workshop', fullUser.workshops?.name || fullUser.workshop_id || '-');
+                const distName = distributorsList.find(d => d.id === fullUser.distributor_id)?.name
+                    || fullUser.distributors?.name || fullUser.distributor_id || '-';
+                const workshopName = workshopsList.find(w => w.id === fullUser.workshop_id)?.name
+                    || fullUser.workshops?.name || fullUser.workshop_id || '-';
+                html += detailRow('Distributor', distName);
+                html += detailRow('Workshop', workshopName);
             }
 
             // Linked Scooters
@@ -157,7 +290,21 @@ const UsersPage = (() => {
         }
     }
 
+    // ---- Edit Form ----
+
     function editUser(user) {
+        // Build distributor options from cached list
+        const distributorOptions = [
+            { value: '', label: '-- None --' },
+            ...distributorsList.map(d => ({ value: d.id, label: d.name || d.id }))
+        ];
+
+        // Build workshop options from cached list
+        const workshopOptions = [
+            { value: '', label: '-- None --' },
+            ...workshopsList.map(w => ({ value: w.id, label: w.name || w.id }))
+        ];
+
         FormComponent.show('Edit User', [
             { name: 'first_name', label: 'First Name', value: user.first_name },
             { name: 'last_name', label: 'Last Name', value: user.last_name },
@@ -176,21 +323,48 @@ const UsersPage = (() => {
             },
             {
                 name: 'roles',
-                label: 'Roles (comma-separated)',
-                value: user.roles?.join(', ') || '',
-                placeholder: 'e.g., customer, distributor_staff, manufacturer_admin'
+                label: 'Roles',
+                type: 'multiselect',
+                value: user.roles || [],
+                options: ROLE_OPTIONS
             },
-            { name: 'home_country', label: 'Home Country', value: user.home_country, placeholder: 'GB, US, DE, etc.' },
-            { name: 'current_country', label: 'Current Country', value: user.current_country, placeholder: 'GB, US, DE, etc.' },
-            { name: 'distributor_id', label: 'Distributor ID (optional)', value: user.distributor_id },
-            { name: 'workshop_id', label: 'Workshop ID (optional)', value: user.workshop_id },
+            {
+                name: 'home_country',
+                label: 'Home Country',
+                type: 'select',
+                value: user.home_country || '',
+                options: COUNTRY_OPTIONS
+            },
+            {
+                name: 'current_country',
+                label: 'Current Country',
+                type: 'select',
+                value: user.current_country || '',
+                options: COUNTRY_OPTIONS
+            },
+            {
+                name: 'distributor_id',
+                label: 'Distributor',
+                type: 'select',
+                value: user.distributor_id || '',
+                options: distributorOptions
+            },
+            {
+                name: 'workshop_id',
+                label: 'Workshop',
+                type: 'select',
+                value: user.workshop_id || '',
+                options: workshopOptions
+            },
             { name: 'is_active', label: 'Active', type: 'checkbox', value: user.is_active },
             { name: 'is_verified', label: 'Verified', type: 'checkbox', value: user.is_verified }
         ], async (formData) => {
-            // Convert roles from comma-separated string to array
-            if (formData.roles) {
-                formData.roles = formData.roles.split(',').map(r => r.trim()).filter(Boolean);
-            }
+            // Clean up empty strings to null for optional fields
+            ['distributor_id', 'workshop_id', 'home_country', 'current_country'].forEach(key => {
+                if (formData[key] === '') {
+                    formData[key] = null;
+                }
+            });
 
             await API.call('users', 'update', {
                 id: user.id,
@@ -201,6 +375,8 @@ const UsersPage = (() => {
             load(currentFilters);
         });
     }
+
+    // ---- Actions ----
 
     async function deactivateUser(user) {
         if (!confirm(`Deactivate user ${user.email}? This will log them out from all devices.`)) {
@@ -216,9 +392,30 @@ const UsersPage = (() => {
         }
     }
 
+    async function reactivateUser(user) {
+        if (!confirm(`Reactivate user ${user.email}?`)) {
+            return;
+        }
+
+        try {
+            await API.call('users', 'update', { id: user.id, is_active: true });
+            toast(`User ${user.email} has been reactivated`, 'success');
+            load(currentFilters);
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    }
+
+    // ---- Filter Handlers ----
+
+    function resetPagination() {
+        State.setPagination('users', 1, PAGE_SIZE);
+    }
+
     function handleSearch(e) {
         const query = e.target.value.trim();
-        load({ ...currentFilters, search: query });
+        resetPagination();
+        load({ ...currentFilters, search: query || undefined });
     }
 
     function handleLevelFilter(e) {
@@ -229,6 +426,7 @@ const UsersPage = (() => {
         } else {
             delete filters.user_level;
         }
+        resetPagination();
         load(filters);
     }
 
@@ -242,17 +440,62 @@ const UsersPage = (() => {
         } else {
             delete filters.is_active;
         }
+        resetPagination();
         load(filters);
+    }
+
+    function handleCountryFilter(e) {
+        const country = e.target.value;
+        const filters = { ...currentFilters };
+        if (country) {
+            filters._clientCountry = country;
+        } else {
+            delete filters._clientCountry;
+        }
+        resetPagination();
+        load(filters);
+    }
+
+    function handleDistributorFilter(e) {
+        const distributor_id = e.target.value;
+        const filters = { ...currentFilters };
+        if (distributor_id) {
+            filters.distributor_id = distributor_id;
+        } else {
+            delete filters.distributor_id;
+        }
+        resetPagination();
+        load(filters);
+    }
+
+    function handleRoleFilter(e) {
+        const role = e.target.value;
+        const filters = { ...currentFilters };
+        if (role) {
+            filters._clientRole = role;
+        } else {
+            delete filters._clientRole;
+        }
+        resetPagination();
+        load(filters);
+    }
+
+    function handlePageChange(pageNum) {
+        const { pageSize } = State.getPagination('users');
+        State.setPagination('users', pageNum, pageSize || PAGE_SIZE);
+        load(currentFilters);
     }
 
     function handleExport() {
         exportCSV(currentUsers, 'users.csv');
     }
 
-    function init() {
+    // ---- Init & Lifecycle ----
+
+    async function init() {
         const searchInput = $('#users-search');
         if (searchInput) {
-            searchInput.addEventListener('input', Utils.debounce(handleSearch, 300));
+            searchInput.addEventListener('input', debounce(handleSearch, 300));
         }
 
         const levelFilter = $('#users-level-filter');
@@ -265,13 +508,49 @@ const UsersPage = (() => {
             activeFilter.addEventListener('change', handleActiveFilter);
         }
 
+        const countryFilter = $('#users-country-filter');
+        if (countryFilter) {
+            countryFilter.addEventListener('change', handleCountryFilter);
+        }
+
+        const distributorFilter = $('#users-distributor-filter');
+        if (distributorFilter) {
+            distributorFilter.addEventListener('change', handleDistributorFilter);
+        }
+
+        const roleFilter = $('#users-role-filter');
+        if (roleFilter) {
+            roleFilter.addEventListener('change', handleRoleFilter);
+        }
+
         const exportBtn = $('#users-export-btn');
         if (exportBtn) {
             exportBtn.addEventListener('click', handleExport);
         }
+
+        // Initialize pagination
+        State.setPagination('users', 1, PAGE_SIZE);
+
+        // Pre-load reference data
+        await loadReferenceData();
     }
 
-    function onNavigate() {
+    async function onNavigate() {
+        // Refresh reference data if cache expired
+        await loadReferenceData();
+
+        // Reset filters and pagination
+        currentFilters = {};
+        resetPagination();
+
+        // Reset dropdown UI
+        ['#users-search', '#users-level-filter', '#users-active-filter',
+         '#users-country-filter', '#users-distributor-filter', '#users-role-filter']
+            .forEach(sel => {
+                const el = $(sel);
+                if (el) el.value = '';
+            });
+
         load();
     }
 

@@ -18,7 +18,11 @@
 - [x] Web admin testing and deployment ✅ (deployed to ives.org.uk/app2026)
 - [x] Web admin functionality enhancements (can work on this WITHOUT admin rights - see tasks below)
   - [x] Users page enhanced with filters, deactivate button, linked scooters/sessions display
-  - [ ] Users page UI bug fix: search fields disappearing after table loads (sticky positioning applied)
+  - [x] Users page UI bug fix: search fields disappearing ✅ (three bugs: CSS width, login init path, flex layout)
+- [x] **Users page — P1 complete** ✅ (filters, pagination, edit form, reactivate — see detailed tasks below)
+- [ ] **Install development tools** — Homebrew, Flutter SDK, Supabase CLI, Deno, CocoaPods (DNS issue on corporate network — try phone hotspot or manual DNS)
+- [ ] **Run seed_test_data.sql** — 50 test users already seeded; comprehensive test data (distributors, workshops, scooters, service jobs) ready to run
+- [ ] **Security hardening** — key rotation, RLS migration, password change (now have admin access)
 
 ## Recently Completed
 
@@ -45,16 +49,26 @@
 
 ---
 
-## Blocked / Needs Admin Rights (Monday)
+## Blocked / Needs Action (Have Admin Access Now)
 
-### High Priority (Security - Requires Supabase Dashboard Access)
-- **Service_role key rotation** -- Old key was in build.gradle (removed). Rotate in Supabase dashboard, update admin-tool/.env
-- **RLS migration** -- `sql/005_rls_hardening.sql` needs to be applied to Supabase (after key rotation)
-- **SendGrid API key** -- Old key was exposed in repo. Needs rotation in SendGrid dashboard + set as env var
-- **Admin password change** -- Current password `admin123` is temporary
+### High Priority (Security - Requires Supabase Dashboard Access) ⚠️ DO FIRST
+- [ ] **Service_role key rotation** -- Old key was in build.gradle (removed). Rotate in Supabase dashboard, update admin-tool/.env
+- [ ] **RLS migration** -- `sql/005_rls_hardening.sql` needs to be applied to Supabase (after key rotation)
+- [ ] **SendGrid API key** -- Old key was exposed in repo. Needs rotation in SendGrid dashboard + set as env var
+- [ ] **Admin password change** -- Current password `admin123` is temporary
 
-### Medium Priority (Development - Requires Admin Rights)
-- **Flutter/Homebrew/Supabase CLI installation** -- Phase 1 scaffold cannot start yet (Monday)
+### High Priority (Development Tooling) 🔧
+- [ ] **Install Homebrew** -- `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"` — DNS resolution failed on corporate network. Try: (a) phone hotspot, (b) set DNS to 8.8.8.8/1.1.1.1, (c) `sudo dscacheutil -flushcache`
+- [ ] **Install Flutter SDK** -- `brew install --cask flutter` then `flutter doctor`
+- [ ] **Install Supabase CLI** -- `brew install supabase/tap/supabase`
+- [ ] **Install Deno** -- `brew install deno` (for Edge Function development)
+- [ ] **Install CocoaPods** -- `brew install cocoapods` (for iOS builds)
+- [ ] **Install VS Code** -- `brew install --cask visual-studio-code` (optional, with Flutter/Dart extensions)
+- [ ] **Run `flutter doctor`** -- Verify full setup (Android SDK, Xcode, etc.)
+
+### Medium Priority (Test Data)
+- [ ] **Run `sql/seed_test_data.sql`** in Supabase SQL Editor -- adds distributors, workshops, scooters, service jobs, firmware versions, activity events (UUID hex + type cast bugs fixed)
+- [ ] **Verify test data** -- Check Users page shows 50+ users with varied countries/roles/levels
 
 ## Can Do NOW (No Admin Rights Required)
 
@@ -64,8 +78,7 @@
 #### Quick Wins (High Impact, Low Effort)
 - [ ] **Dashboard enhancements**: Add more stat cards (firmware versions, recent events count)
 - [ ] **Dashboard charts**: Add simple CSS-based bar charts for scooters by country, users by role
-- [x] **Users page filters**: Add role filter, country filter, verified status filter ✅ (user level + active status filters added)
-- [ ] **Users page filters (remaining)**: Add country filter, role filter (individual)
+- [x] **Users page filters**: All 6 filters complete ✅ (search, user level, active status, country, distributor, role)
 - [ ] **Scooters page implementation**: Enhance from stub to full CRUD (like Users page)
 - [ ] **Distributors page implementation**: Add detail modal, address list, staff list
 - [ ] **Dark mode toggle**: Add theme switcher in sidebar footer
@@ -242,14 +255,62 @@
 - [ ] Add recent activity feed: Last 10 events (logins, registrations, service updates)
 - [ ] Add system health indicators: Edge Function status, database connection, storage usage
 
-#### Users Page Enhancements
-- [ ] Add advanced filters: by role, country, verified status, active status, distributor, workshop
-- [ ] Add bulk actions: Export selected, bulk deactivate, bulk verify
-- [ ] Add inline editing: Edit name, role, country without opening modal
-- [ ] Add user activity timeline in detail modal: Recent logins, scooters owned, service jobs
-- [ ] Add linked entities view: Show user's scooters, sessions, audit log in tabs
-- [ ] Add password reset functionality
-- [ ] Add user impersonation (for support)
+#### Users Page — Detailed Task List (Next Session)
+
+**Context:** The admin Edge Function already supports: list, search, get (with scooters+sessions), update (all fields including roles[], distributor_id, workshop_id, countries), deactivate, export. The frontend needs to expose all of this properly.
+
+**Role-based access (from spec section 4):**
+- `manufacturer_admin` → sees ALL users globally
+- `distributor_staff` → sees users where `home_country IN distributor.countries` (NOT YET IN BACKEND)
+- `workshop_staff` → TBD (sees customers with active service jobs only)
+- `customer` → sees only own record
+
+**What's already built in the frontend:**
+- [x] User list table with columns: email, name, level, roles, country, verified, active, created
+- [x] Search by text (calls API search action)
+- [x] Filter by user_level dropdown
+- [x] Filter by active status dropdown
+- [x] Detail modal with linked scooters and sessions
+- [x] Edit form with all fields (name, level, roles, countries, distributor, workshop, active, verified)
+- [x] Deactivate button with confirmation
+- [x] CSV export of current list
+- [x] Search fields visible and sticky at all window sizes
+
+**Frontend tasks remaining (prioritised):**
+
+**P1 — Core functionality gaps:** ✅ COMPLETE (Session 9)
+- [x] Add country filter dropdown ✅ (client-side filter on `home_country`, 16 ISO codes)
+- [x] Add distributor filter dropdown ✅ (server-side `distributor_id` param, populated from API)
+- [x] Add role filter ✅ (client-side filter on `roles[]` array)
+- [x] Improve roles editing ✅ (multi-select checkboxes: customer, distributor_staff, workshop_staff, manufacturer_admin)
+- [x] Improve distributor/workshop assignment ✅ (select dropdowns from cached API lists)
+- [x] Improve country fields ✅ (ISO country code select dropdown)
+- [x] Add pagination controls ✅ (50 per page, page numbers, onPageChange callback)
+- [x] Add reactivate action ✅ (calls update with `is_active: true`, shows for inactive users only)
+- [x] Fix `condition` → `shouldShow` bug on deactivate action ✅ (TableComponent uses `shouldShow`)
+- [ ] Add "Create User" capability (BACKEND GAP: no `create` action in handleUsers — needs adding to Edge Function, or use the existing `/register-user` Edge Function)
+
+**P2 — UX improvements:**
+- [ ] Add sort by column (click column headers to sort)
+- [ ] Add row count display ("Showing 1-50 of 234 users")
+- [ ] Add loading skeleton instead of spinner
+- [ ] Add confirmation before editing (unsaved changes warning)
+- [ ] Add success feedback: highlight updated row after edit
+- [ ] Debounce filter changes (currently each dropdown change triggers immediate API call)
+- [ ] Remember filter state when navigating away and back (use State module)
+
+**P3 — Advanced features (later):**
+- [ ] Add bulk select with checkboxes for bulk deactivate/export
+- [ ] Add user activity timeline in detail modal (audit log entries)
+- [ ] Add role-based UI: hide admin-only actions for distributor_staff users
+- [ ] Add password reset trigger
+- [ ] Add session management: view/kill individual sessions from detail modal
+
+**Backend gaps to address:**
+- [ ] Add `create` action to admin Edge Function handleUsers (or wire up existing `/register-user` endpoint)
+- [ ] Add `home_country` and `current_country` filter params to user list query
+- [ ] Add `roles` array filter (e.g., `has_role` param to filter users containing a specific role)
+- [ ] Add territory scoping: when caller is distributor_staff, auto-filter to their distributor's countries
 
 #### Scooters Page Enhancements
 - [ ] Add map view: Show scooter locations on interactive map (if location data available)
@@ -415,6 +476,77 @@ _(unchanged from spec)_
 ---
 
 ## Session Log
+
+### Session 9 -- 2026-02-09 (Users P1 Complete + Tooling Prep)
+**Model used:** Claude (Opus/Sonnet)
+**What was accomplished:**
+- **Users page P1 complete** — full rewrite of `web-admin/js/pages/users.js` (561 lines):
+  - 3 new filter dropdowns: country (16 ISO codes, client-side), distributor (server-side, populated from API), role (client-side)
+  - Pagination: 50 per page with page number controls
+  - Edit form improvements: roles as multiselect checkboxes, country/distributor/workshop as select dropdowns
+  - Reference data caching: distributors + workshops lists cached with 5min TTL
+  - Reactivate action for inactive users
+  - Fixed `condition` → `shouldShow` bug on deactivate action
+  - Filter architecture: server-side (`search`, `user_level`, `distributor_id`, `is_active`) + client-side (`_clientCountry`, `_clientRole`) with `_client` prefix convention
+- **Seed test data SQL** (`sql/seed_test_data.sql` — 795 lines):
+  - Comprehensive test data: 3 distributors, 3 workshops, 6 addresses, 30 scooters, user updates, 23 new users, 32 user-scooter links, 6 service jobs, 5 firmware versions, ~10 activity events
+  - Fixed UUID hex bug: replaced non-hex prefixes (`w`, `s`, `j`) with valid hex (`ee`, `cc`, `bb`)
+  - Fixed type casting bug: added `::uuid` casts to scooter IDs in INSERT...SELECT statements
+  - Uses email-based subqueries (because `seed_test_users.sql` was already run with random UUIDs)
+- **50 test users SQL** (`sql/seed_test_users.sql`) — already run in Supabase
+- **Development tooling inventory** — identified full tool requirements for Flutter migration:
+  - Homebrew → Flutter SDK → Supabase CLI → Deno → CocoaPods → VS Code
+  - Key Flutter packages: supabase_flutter, flutter_blue_plus, go_router, provider/riverpod
+- **DNS troubleshooting** — Homebrew install failed (`curl: (6) Could not resolve host: raw.githubusercontent.com`). Corporate network DNS issue. Workarounds documented: phone hotspot, manual DNS (8.8.8.8), flush cache.
+
+**Files modified:**
+- `web-admin/index.html` — 3 new filter `<select>` elements
+- `web-admin/css/styles.css` — filter width constraints (`max-width: 180px`) + pagination styles
+- `web-admin/js/pages/users.js` — complete rewrite (561 lines)
+- `sql/seed_test_data.sql` — new file (795 lines) + 2 bug fixes
+- `sql/seed_test_users.sql` — new file (superseded header added)
+
+**Where we stopped:**
+- ✅ Users page P1 fully implemented (not yet tested with live data)
+- ✅ Seed data SQL fixed and ready to run
+- ❌ Homebrew install blocked by DNS (corporate network)
+- ❌ Tool installation not started (Homebrew prerequisite)
+- ❌ Security tasks not started (need to prioritise)
+- ⚠️ Changes not yet committed to git
+
+**Next session should:**
+1. **Install tools** — resolve DNS issue (try phone hotspot), install Homebrew → Flutter → Supabase CLI
+2. **Run seed data** — paste `sql/seed_test_data.sql` into Supabase SQL Editor
+3. **Test Users page** — verify filters, pagination, edit form with real data
+4. **Security tasks** — key rotation, RLS migration, password change (NOW HAVE ADMIN ACCESS)
+5. **Git commit** all changes from sessions 8-9
+6. **Deploy to HostingUK** — upload updated web-admin files
+
+### Session 8 -- 2026-02-07 (Evening — Bug Fixes)
+**Model used:** Opus 4
+**What was accomplished:**
+- **Fixed three bugs causing Users page search fields to vanish:**
+  1. **Login init gap** (`03-auth.js`): Fresh login path skipped `Router.init()` and all `page.init()` calls. Only the session-restore path (hard refresh) ran initialization. Fixed by adding Router/page init to `handleLogin()`.
+  2. **CSS global width:100%** (`styles.css`): Global `input, select { width: 100% }` collapsed toolbar inputs inside flex containers. Scoped to `.form-group` and `.modal-body` only.
+  3. **Page header flex layout** (`styles.css`): `flex-direction: row` with `justify-content: space-between` pushed `.page-actions` off-screen at normal window widths. Changed to `flex-direction: column` so title and search bar stack vertically.
+- **Added idempotent guard to Router.init()** (`04-router.js`): Prevents duplicate event listeners if init called multiple times.
+- **Fixed FTP credentials** (`.ftp-credentials`): Password containing `$` was being expanded by bash `source`. Wrapped in single quotes.
+- **Set up local dev server** (`python3 -m http.server 8000`) to bypass HostingUK caching during development.
+- **Debugging approach**: Added DOM state logging after table render — confirmed elements were present, visible, correctly sized but off-screen. Red debug border on `.page-header` confirmed the layout issue.
+- **Updated progress notes** and **committed** (`3a9d914`).
+- **Reviewed spec (section 4, 8.5) and admin Edge Function** to create detailed Users page task list for next session.
+
+**Where we stopped:**
+- ✅ Users page search/filter fields visible and working at all window sizes
+- ✅ Fresh login no longer requires hard refresh
+- ✅ FTP deploy script working
+- ✅ Local dev server running for fast iteration
+- 📋 Detailed Users page task list created (P1/P2/P3 + backend gaps)
+
+**Next session should:**
+1. Work through P1 Users page tasks: country/distributor filter dropdowns, roles multi-select, pagination
+2. Consider backend updates needed: create user action, country/role filter params, territory scoping
+3. Security tasks if admin rights available (key rotation, RLS migration, password change)
 
 ### Session 7 -- 2026-02-07 (Continued Session)
 **Model used:** Sonnet 4.5
