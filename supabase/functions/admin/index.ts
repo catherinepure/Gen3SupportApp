@@ -538,9 +538,12 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
 
   if (action === 'create') {
     if (!body.name) return errorResponse('Distributor name required')
-    // Generate activation code
-    const code = Array.from(crypto.getRandomValues(new Uint8Array(4)))
-      .map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase()
+    // Generate activation code in format PURE-XXXX-XXXX
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    const randomBytes = crypto.getRandomValues(new Uint8Array(8))
+    const part1 = Array.from(randomBytes.slice(0, 4)).map(b => chars[b % chars.length]).join('')
+    const part2 = Array.from(randomBytes.slice(4, 8)).map(b => chars[b % chars.length]).join('')
+    const code = `PURE-${part1}-${part2}`
 
     const { data, error } = await supabase.from('distributors')
       .insert({
