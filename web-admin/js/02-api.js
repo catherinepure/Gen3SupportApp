@@ -51,7 +51,12 @@ const API = (() => {
             body: JSON.stringify(body),
         });
 
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch {
+            throw new Error(`Server error (HTTP ${response.status})`);
+        }
 
         if (!response.ok) {
             throw new Error(data.error || `HTTP ${response.status}`);
@@ -79,7 +84,12 @@ const API = (() => {
             }),
         });
 
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch {
+            throw new Error(`Server error (HTTP ${response.status})`);
+        }
 
         if (!response.ok) {
             throw new Error(data.error || 'Login failed');
@@ -150,6 +160,7 @@ const API = (() => {
         restoreSession,
         getUser,
         isLoggedIn,
-        baseUrl: `${CONFIG.supabaseUrl}/functions/v1`  // Expose baseUrl for direct function calls
+        baseUrl: `${CONFIG.supabaseUrl}/functions/v1`,
+        anonKey: CONFIG.anonKey
     };
 })();

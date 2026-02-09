@@ -7,7 +7,7 @@
 ## Current Phase
 
 **Phase:** Pre-1 -- Backend, Database Prep, Admin Tooling & Web Admin
-**Status:** ✅ Web admin fully deployed and synchronized at ives.org.uk/app2026. Secure activation codes with bcrypt hashing deployed. All CRUD operations and filters working. Node 20 environment configured. Ready for further feature development.
+**Status:** ✅ Web admin fully deployed and synchronized at ives.org.uk/app2026. All 11 pages now have DetailModal integration, filters, and action buttons. Shared constants consolidated. Bug fixes applied (dual logout, duplicated anon key, eager-loading, JSON error boundary). Dashboard enhanced with recent activity and service job panels. Ready for deployment + further feature development.
 **Spec reference:** Section 9.3 (Phase 2 DB work pulled forward)
 
 ---
@@ -25,6 +25,21 @@
 - [ ] **Security hardening** — key rotation, RLS migration, password change (now have admin access)
 
 ## Recently Completed
+
+### Session 2026-02-09 (Web Admin Quality & Feature Pass — Opus 4)
+- [x] **Bug fix: Dual logout handler** — Router.init() and Auth.setupLogoutButton() both attached click handlers to #logout-btn. Removed duplicate from Router, moved setupLogoutButton() into Auth.init() so it runs on both login and session-restore paths.
+- [x] **Bug fix: Duplicated anon key** — Supabase anon key was hardcoded in both 02-api.js and 03-auth.js (2 places). Exposed API.anonKey from the API module, updated auth to use it. Single source of truth now.
+- [x] **Bug fix: Service Jobs eager-loading** — Was loading all 1000 scooters + workshops on every page navigation. Now lazy-loads via ensureReferenceData() only when user clicks "Create Service Job". Cache cleared on page navigation.
+- [x] **Bug fix: JSON.parse error boundary** — API.call() and login() now wrap response.json() in try/catch. Returns clean "Server error (HTTP xxx)" instead of crashing on non-JSON responses (502, HTML error pages).
+- [x] **Dashboard enhancement** — Rewritten from 63 → 215 lines. Clickable stat cards, Recent Activity panel (last 10 events), Recent Service Jobs panel (last 5), Scooter Status Breakdown with visual cards. "View All" navigation buttons.
+- [x] **Service Jobs DetailModal migration** — Full rewrite with structured sections (job info, timeline, issue, notes, firmware, parts). Edit form with status workflow and parts JSON field. Lazy-loaded reference data.
+- [x] **Firmware DetailModal + filters** — Migrated from raw HTML to DetailModal. Added activate/deactivate actions, status filter dropdown (All/Active/Inactive), client-side filtering.
+- [x] **Telemetry DetailModal + search** — Migrated to DetailModal with battery/performance/error/location sections. Added scooter serial search, color-coded battery charge, error count badges.
+- [x] **Logs DetailModal + filter** — Migrated to DetailModal with upload info, progress bars, error sections. Added status filter dropdown (Pending/Uploading/Completed/Failed).
+- [x] **Events DetailModal + filters** — Migrated to DetailModal with event info, related entities, payload. Added event type filter and search input with debounce.
+- [x] **Validation page enhancement** — Complete rewrite: card-based UI with color-coded status, "Run All Checks" + individual check buttons (Orphaned Scooters, Expired Sessions, Stale Jobs), click-to-detail.
+- [x] **Shared constants consolidated** — Added COUNTRIES, COUNTRY_CODES, ROLES, USER_LEVELS, SCOOTER_STATUSES, SERVICE_JOB_STATUSES to 00-utils.js. Updated users.js, distributors.js, workshops.js to use shared constants.
+- [x] **HTML updates** — Added filter dropdowns/search inputs to Firmware, Telemetry, Logs, Events, Validation page headers. Cache versions bumped to v=20260209-11.
 
 ### Session 2026-02-09 (Password Reset Feature)
 - [x] **Password reset feature complete** ✅ Full implementation with SendGrid
@@ -104,14 +119,14 @@
 **All these tasks can be done by editing local files and uploading to HostingUK:**
 
 #### Quick Wins (High Impact, Low Effort)
-- [ ] **Dashboard enhancements**: Add more stat cards (firmware versions, recent events count)
+- [x] **Dashboard enhancements**: ✅ Recent Activity (last 10 events), Recent Service Jobs (last 5), clickable stat cards, scooter status breakdown
 - [ ] **Dashboard charts**: Add simple CSS-based bar charts for scooters by country, users by role
 - [x] **Users page filters**: All 6 filters complete ✅ (search, user level, active status, country, distributor, role)
 - [ ] **Scooters page implementation**: Enhance from stub to full CRUD (like Users page)
 - [ ] **Distributors page implementation**: Add detail modal, address list, staff list
 - [ ] **Dark mode toggle**: Add theme switcher in sidebar footer
 - [ ] **Loading states improvement**: Replace spinner with skeleton screens
-- [ ] **Better error messages**: More specific error handling with retry buttons
+- [x] **Better error messages**: ✅ JSON error boundary in API client, clean error messages for non-JSON responses
 
 #### Medium Tasks (Moderate Impact/Effort)
 - [ ] **Service Jobs kanban board**: Visual workflow (booked → in-progress → complete)
@@ -121,7 +136,7 @@
 - [ ] **Search improvements**: Global search in header that works across all entities
 - [ ] **Keyboard shortcuts**: Add hotkeys for navigation (e.g., G+D for dashboard)
 - [ ] **Breadcrumb navigation**: Show current location path
-- [ ] **Recent activity feed**: Dashboard widget showing last 10 events
+- [x] **Recent activity feed**: ✅ Dashboard widget showing last 10 events + last 5 service jobs
 
 #### Advanced Tasks (High Impact, High Effort)
 - [ ] **Map view for scooters**: Interactive map showing scooter locations (if location data available)
@@ -277,10 +292,11 @@
 **Goal:** Increase usefulness and functionality of each page in the web admin
 
 #### Dashboard Page Enhancements
-- [ ] Add real-time metric cards: Total Users, Active Scooters, Pending Service Jobs, Recent Events
+- [x] Add real-time metric cards: ✅ Total Users, Active Scooters, Distributors, Workshops (clickable → navigate to page)
 - [ ] Add charts/graphs: User growth over time, scooter registrations by country, service job status breakdown
 - [ ] Add quick actions: "Create User", "Register Scooter", "Create Service Job"
-- [ ] Add recent activity feed: Last 10 events (logins, registrations, service updates)
+- [x] Add recent activity feed: ✅ Last 10 events + Last 5 service jobs with status colors
+- [x] Add scooter status breakdown: ✅ Visual cards for active/in_service/stolen/decommissioned with percentages
 - [ ] Add system health indicators: Edge Function status, database connection, storage usage
 
 #### Users Page — Detailed Task List (Next Session)
@@ -409,7 +425,7 @@
 
 #### Events (Activity) Page Enhancements
 - [ ] Add event timeline visualization
-- [ ] Add event type filtering with checkboxes
+- [x] Add event type filtering: ✅ Dropdown filter by event type + text search with debounce
 - [ ] Add user journey reconstruction: All events for a specific user
 - [ ] Add scooter lifecycle view: All events for a specific scooter
 - [ ] Add audit trail export for compliance
@@ -419,7 +435,8 @@
 
 #### Validation Page Enhancements
 - [ ] Add automated scheduled validation runs
-- [ ] Add validation history: Past runs and results
+- [x] Add validation history: ✅ Results displayed as cards with status indicators
+- [x] Add run-check buttons: ✅ Run All, Orphaned Scooters, Expired Sessions, Stale Jobs
 - [ ] Add one-click fix actions: Cleanup orphaned records, expire sessions
 - [ ] Add validation rule configuration
 - [ ] Add data quality dashboard: Completeness, consistency metrics
@@ -517,6 +534,72 @@ _(unchanged from spec)_
 ---
 
 ## Session Log
+
+### Session 13 -- 2026-02-09 (Web Admin Quality & Feature Pass)
+**Model used:** Opus 4
+**What was accomplished:**
+
+**Fresh codebase review + 12 improvements across 15 files:**
+
+**Bug Fixes (4):**
+1. Dual logout handler — Router.init() and Auth.setupLogoutButton() both attached click handlers. Removed duplicate from Router, moved setupLogoutButton() into Auth.init().
+2. Duplicated anon key — hardcoded in 02-api.js and 03-auth.js (2 places). Exposed API.anonKey, updated auth to use it.
+3. Service Jobs eager-loading — was fetching 1000 scooters on every page load. Now lazy-loads only when "Create" is clicked.
+4. JSON.parse error boundary — API.call() and login() now handle non-JSON responses (502s, HTML error pages).
+
+**Dashboard Enhancement:**
+- Rewritten from 63 → 215 lines
+- Clickable stat cards (navigate to page)
+- Recent Activity panel (last 10 events with icons/timeAgo)
+- Recent Service Jobs panel (last 5 with status colors)
+- Scooter Status Breakdown (visual cards with percentages)
+
+**6 Pages Migrated to DetailModal:**
+- Service Jobs — structured sections, edit form, status workflow
+- Firmware — activate/deactivate actions, status filter
+- Telemetry — battery/performance/error sections, search, color-coded charge
+- Logs — progress bars, error sections, status filter
+- Events — event type filter, search with debounce
+- Validation — card-based UI, Run All/individual check buttons
+
+**Shared Constants Consolidated:**
+- COUNTRIES, COUNTRY_CODES, ROLES, USER_LEVELS, SCOOTER_STATUSES, SERVICE_JOB_STATUSES in 00-utils.js
+- Updated users.js, distributors.js, workshops.js to use shared constants
+
+**HTML Updates:**
+- Filter dropdowns/search inputs for Firmware, Telemetry, Logs, Events, Validation
+- "Run All Checks" button for Validation
+- Cache versions bumped to v=20260209-11
+
+**Files modified (15):**
+- `js/00-utils.js` — shared constants
+- `js/02-api.js` — anonKey export, JSON error boundary
+- `js/03-auth.js` — use API.anonKey, setupLogoutButton in init()
+- `js/04-router.js` — remove duplicate logout handler
+- `js/pages/dashboard.js` — complete rewrite
+- `js/pages/service-jobs.js` — complete rewrite
+- `js/pages/firmware.js` — complete rewrite
+- `js/pages/telemetry.js` — complete rewrite
+- `js/pages/logs.js` — complete rewrite
+- `js/pages/events.js` — complete rewrite
+- `js/pages/validation.js` — complete rewrite
+- `js/pages/distributors.js` — use shared constants
+- `js/pages/workshops.js` — use shared constants
+- `js/pages/users.js` — use shared constants
+- `index.html` — new filters, cache bust
+
+**Where we stopped:**
+- ✅ All 12 improvements implemented and tested locally
+- ✅ All 11 pages now use DetailModal consistently
+- ⚠️ Changes NOT yet deployed to HostingUK — need FTP upload
+- ⚠️ Changes NOT yet committed to git
+
+**Next session should:**
+1. Deploy updated web-admin files to HostingUK via FTP
+2. Git commit all changes
+3. Test all pages with live data
+4. Consider remaining items: dashboard charts, dark mode, skeleton loading, kanban board
+5. Security tasks: key rotation, RLS migration, admin password change
 
 ### Session 12 -- 2026-02-09 (Password Reset Feature Complete)
 **Model used:** Sonnet 4.5

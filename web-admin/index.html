@@ -264,6 +264,11 @@
                 <div class="page-header">
                     <h2>Firmware</h2>
                     <div class="page-actions">
+                        <select id="firmware-filter" class="filter-select">
+                            <option value="">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
                         <button class="btn btn-secondary" id="firmware-export-btn">Export CSV</button>
                     </div>
                 </div>
@@ -275,6 +280,7 @@
                 <div class="page-header">
                     <h2>Telemetry</h2>
                     <div class="page-actions">
+                        <input type="text" id="telemetry-search" placeholder="Search by scooter serial..." class="search-input">
                         <button class="btn btn-secondary" id="telemetry-export-btn">Export CSV</button>
                     </div>
                 </div>
@@ -286,6 +292,13 @@
                 <div class="page-header">
                     <h2>Upload Logs</h2>
                     <div class="page-actions">
+                        <select id="logs-status-filter" class="filter-select">
+                            <option value="">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="uploading">Uploading</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                        </select>
                         <button class="btn btn-secondary" id="logs-export-btn">Export CSV</button>
                     </div>
                 </div>
@@ -297,6 +310,17 @@
                 <div class="page-header">
                     <h2>Activity Events</h2>
                     <div class="page-actions">
+                        <input type="text" id="events-search" placeholder="Search events..." class="search-input">
+                        <select id="events-type-filter" class="filter-select">
+                            <option value="">All Types</option>
+                            <option value="user_login">Login</option>
+                            <option value="user_logout">Logout</option>
+                            <option value="user_register">Register</option>
+                            <option value="scooter_scan">Scooter Scan</option>
+                            <option value="firmware_update">Firmware Update</option>
+                            <option value="service_job_created">Job Created</option>
+                            <option value="service_job_completed">Job Completed</option>
+                        </select>
                         <button class="btn btn-secondary" id="events-export-btn">Export CSV</button>
                     </div>
                 </div>
@@ -307,6 +331,10 @@
             <div id="validation-page" class="page-content hidden">
                 <div class="page-header">
                     <h2>Validation</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-primary" id="validation-run-all-btn">Run All Checks</button>
+                        <button class="btn btn-secondary" id="validation-export-btn">Export CSV</button>
+                    </div>
                 </div>
                 <div id="validation-content"></div>
             </div>
@@ -347,19 +375,19 @@
     <script src="js/components/detail-modal.js"></script>
 
     <!-- Pages -->
-    <script src="js/pages/dashboard.js?v=20260209-10"></script>
-    <script src="js/pages/users.js?v=20260209-10"></script>
-    <script src="js/pages/scooters.js?v=20260209-10"></script>
-    <script src="js/pages/distributors.js?v=20260209-10"></script>
-    <script src="js/pages/workshops.js?v=20260209-10"></script>
-    <script src="js/pages/service-jobs.js?v=20260209-10"></script>
-    <script src="js/pages/firmware.js?v=20260209-10"></script>
-    <script src="js/pages/telemetry.js?v=20260209-10"></script>
-    <script src="js/pages/logs.js?v=20260209-10"></script>
-    <script src="js/pages/events.js?v=20260209-10"></script>
-    <script src="js/pages/validation.js?v=20260209-10"></script>
+    <script src="js/pages/dashboard.js?v=20260209-11"></script>
+    <script src="js/pages/users.js?v=20260209-11"></script>
+    <script src="js/pages/scooters.js?v=20260209-11"></script>
+    <script src="js/pages/distributors.js?v=20260209-11"></script>
+    <script src="js/pages/workshops.js?v=20260209-11"></script>
+    <script src="js/pages/service-jobs.js?v=20260209-11"></script>
+    <script src="js/pages/firmware.js?v=20260209-11"></script>
+    <script src="js/pages/telemetry.js?v=20260209-11"></script>
+    <script src="js/pages/logs.js?v=20260209-11"></script>
+    <script src="js/pages/events.js?v=20260209-11"></script>
+    <script src="js/pages/validation.js?v=20260209-11"></script>
 
     <!-- Main App Init -->
-    <script src="js/app-init.js?v=20260209-8"></script>
+    <script src="js/app-init.js?v=20260209-11"></script>
 </body>
 </html>

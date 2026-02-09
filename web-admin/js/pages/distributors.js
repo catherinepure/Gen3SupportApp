@@ -1,12 +1,7 @@
 /** Distributors Page */
 const DistributorsPage = (() => {
-    const { $, toast, exportCSV, formatDate } = Utils;
+    const { $, toast, exportCSV, formatDate, COUNTRY_CODES } = Utils;
     let currentData = [];
-
-    const COUNTRIES = [
-        'GB', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'CH',
-        'US', 'IE', 'PT', 'SE', 'DK', 'NO', 'PL'
-    ];
 
     async function load() {
         try {
@@ -152,7 +147,7 @@ const DistributorsPage = (() => {
                 label: 'Countries (hold Ctrl/Cmd to select multiple)',
                 type: 'select',
                 multiple: true,
-                options: COUNTRIES.map(c => ({ value: c, label: c }))
+                options: COUNTRY_CODES.map(c => ({ value: c, label: c }))
             }
         ];
 
@@ -188,7 +183,7 @@ const DistributorsPage = (() => {
                 label: 'Countries (hold Ctrl/Cmd to select multiple)',
                 type: 'select',
                 multiple: true,
-                options: COUNTRIES.map(c => ({ value: c, label: c })),
+                options: COUNTRY_CODES.map(c => ({ value: c, label: c })),
                 value: distributor.countries || []
             },
             {

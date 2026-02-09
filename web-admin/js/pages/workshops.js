@@ -1,10 +1,8 @@
 /** Workshops Page */
 const WorkshopsPage = (() => {
-    const { $, toast, exportCSV, formatDate } = Utils;
+    const { $, toast, exportCSV, formatDate, COUNTRY_CODES } = Utils;
     let currentData = [];
     let distributorsList = [];
-
-    const COUNTRIES = ['US', 'GB', 'IE', 'DE', 'FR', 'ES', 'IT', 'NL', 'BE', 'SE', 'NO', 'DK', 'FI', 'AT', 'CH', 'PL'];
 
     async function load() {
         try {
@@ -562,7 +560,7 @@ const WorkshopsPage = (() => {
                 label: 'Service Area Countries (hold Ctrl/Cmd to select multiple)',
                 type: 'select',
                 multiple: true,
-                options: COUNTRIES.map(c => ({ value: c, label: c }))
+                options: COUNTRY_CODES.map(c => ({ value: c, label: c }))
             }
         ];
 
@@ -615,7 +613,7 @@ const WorkshopsPage = (() => {
                 type: 'select',
                 multiple: true,
                 value: workshop.service_area_countries || [],
-                options: COUNTRIES.map(c => ({ value: c, label: c }))
+                options: COUNTRY_CODES.map(c => ({ value: c, label: c }))
             }
         ];
 

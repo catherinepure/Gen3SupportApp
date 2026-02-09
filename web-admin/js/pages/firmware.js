@@ -2,67 +2,138 @@
 const FirmwarePage = (() => {
     const { $, toast, exportCSV, formatDate } = Utils;
     let currentData = [];
+    let allData = [];
+    let currentFilter = '';
 
     async function load() {
         try {
             $('#firmware-content').innerHTML = Utils.loading();
-            const result = await API.call('firmware', 'list', { limit: 50 });
-            currentData = result.firmware || result.data || [];
-
-            TableComponent.render('#firmware-content', currentData, [
-                { key: 'version_label', label: 'Version' },
-                { key: 'target_hw_version', label: 'Hardware' },
-                { key: 'file_size_bytes', label: 'Size', format: (val) => val ? `${(val / 1024).toFixed(1)} KB` : 'N/A' },
-                { key: 'access_level', label: 'Access Level' },
-                { key: 'is_active', label: 'Status', format: (val) => val ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>' },
-                { key: 'created_at', label: 'Released', format: formatDate }
-            ], {
-                onRowClick: showFirmwareDetail
-            });
+            const result = await API.call('firmware', 'list', { limit: 100 });
+            allData = result.firmware || result.data || [];
+            applyFilter();
         } catch (err) {
             toast(err.message, 'error');
             $('#firmware-content').innerHTML = Utils.errorState('Failed to load firmware');
         }
     }
 
+    function applyFilter() {
+        if (currentFilter === 'active') {
+            currentData = allData.filter(f => f.is_active !== false);
+        } else if (currentFilter === 'inactive') {
+            currentData = allData.filter(f => f.is_active === false);
+        } else {
+            currentData = allData;
+        }
+        renderTable();
+    }
+
+    function renderTable() {
+        TableComponent.render('#firmware-content', currentData, [
+            { key: 'version_label', label: 'Version' },
+            { key: 'target_hw_version', label: 'Hardware', format: (val) => val || 'All' },
+            { key: 'file_size_bytes', label: 'Size', format: (val) => val ? Utils.formatBytes(val) : 'N/A' },
+            { key: 'access_level', label: 'Access Level', format: (val) => val || 'N/A' },
+            { key: 'is_active', label: 'Status', format: (val) =>
+                val === false
+                    ? '<span class="badge badge-inactive">Inactive</span>'
+                    : '<span class="badge badge-active">Active</span>'
+            },
+            { key: 'created_at', label: 'Released', format: formatDate }
+        ], {
+            onRowClick: showFirmwareDetail
+        });
+    }
+
     function showFirmwareDetail(firmware) {
-        let html = '<div class="detail-grid">';
+        const sections = [
+            {
+                title: 'Firmware Information',
+                fields: [
+                    { label: 'Version', value: firmware.version_label },
+                    { label: 'Target Hardware', value: firmware.target_hw_version || 'All' },
+                    { label: 'Min SW Version', value: firmware.min_sw_version || 'None' },
+                    { label: 'Access Level', value: firmware.access_level || 'N/A' },
+                    { label: 'Status', value: firmware.is_active === false ? 'inactive' : 'active', type: 'badge-status' }
+                ]
+            },
+            {
+                title: 'File Details',
+                fields: [
+                    { label: 'File Path', value: firmware.file_path, type: 'code' },
+                    { label: 'File Size', value: firmware.file_size_bytes ? Utils.formatBytes(firmware.file_size_bytes) : 'N/A' }
+                ]
+            }
+        ];
 
-        html += '<div class="detail-section">';
-        html += '<h4>Firmware Information</h4>';
-        html += `<p><strong>Version:</strong> ${firmware.version_label}</p>`;
-        html += `<p><strong>Target Hardware:</strong> ${firmware.target_hw_version}</p>`;
-        html += `<p><strong>Min SW Version:</strong> ${firmware.min_sw_version || 'None'}</p>`;
-        html += `<p><strong>Status:</strong> ${firmware.is_active ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>'}</p>`;
-        html += `<p><strong>Access Level:</strong> ${firmware.access_level || 'N/A'}</p>`;
-        html += '</div>';
-
-        html += '<div class="detail-section">';
-        html += '<h4>File Details</h4>';
-        html += `<p><strong>Path:</strong> ${firmware.file_path || 'N/A'}</p>`;
-        html += `<p><strong>Size:</strong> ${firmware.file_size_bytes ? `${(firmware.file_size_bytes / 1024).toFixed(2)} KB` : 'N/A'}</p>`;
-        html += '</div>';
-
+        // Release notes
         if (firmware.release_notes) {
-            html += '<div class="detail-section">';
-            html += '<h4>Release Notes</h4>';
-            html += `<p>${firmware.release_notes}</p>`;
-            html += '</div>';
+            sections.push({
+                title: 'Release Notes',
+                html: `<div style="white-space: pre-wrap; font-size: 0.9em; color: #555;">${Utils.escapeHtml(firmware.release_notes)}</div>`
+            });
         }
 
-        html += '<div class="detail-section">';
-        html += '<h4>Timestamps</h4>';
-        html += `<p><strong>Created:</strong> ${formatDate(firmware.created_at)}</p>`;
-        html += `<p><strong>Updated:</strong> ${formatDate(firmware.updated_at)}</p>`;
-        html += '</div>';
+        // Metadata
+        sections.push(DetailModal.metadataSection(firmware));
 
-        html += '</div>';
+        // Actions
+        const actions = [];
 
-        ModalComponent.show('Firmware Detail', html);
+        if (firmware.is_active === false) {
+            actions.push({
+                label: 'Reactivate',
+                class: 'btn-success',
+                onClick: async () => {
+                    try {
+                        await API.call('firmware', 'reactivate', { id: firmware.id });
+                        toast('Firmware reactivated', 'success');
+                        ModalComponent.close();
+                        await load();
+                    } catch (err) {
+                        toast(err.message, 'error');
+                    }
+                }
+            });
+        } else {
+            actions.push({
+                label: 'Deactivate',
+                class: 'btn-danger',
+                onClick: async () => {
+                    if (!confirm(`Deactivate firmware ${firmware.version_label}? Devices will no longer receive this update.`)) return;
+                    try {
+                        await API.call('firmware', 'deactivate', { id: firmware.id });
+                        toast('Firmware deactivated', 'success');
+                        ModalComponent.close();
+                        await load();
+                    } catch (err) {
+                        toast(err.message, 'error');
+                    }
+                }
+            });
+        }
+
+        DetailModal.show('Firmware Detail', {
+            sections,
+            actions,
+            breadcrumbs: [
+                { label: 'Firmware', onClick: () => { ModalComponent.close(); } },
+                { label: firmware.version_label || 'Unknown' }
+            ]
+        });
     }
 
     function init() {
         $('#firmware-export-btn')?.addEventListener('click', () => exportCSV(currentData, 'firmware.csv'));
+
+        // Set up status filter if the element exists
+        const filterEl = $('#firmware-filter');
+        if (filterEl) {
+            filterEl.addEventListener('change', (e) => {
+                currentFilter = e.target.value;
+                applyFilter();
+            });
+        }
     }
 
     return { init, onNavigate: load };

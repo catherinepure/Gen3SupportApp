@@ -9,31 +9,8 @@ const UsersPage = (() => {
 
     const PAGE_SIZE = 50;
 
-    const COUNTRY_OPTIONS = [
-        { value: 'GB', label: 'United Kingdom' },
-        { value: 'DE', label: 'Germany' },
-        { value: 'FR', label: 'France' },
-        { value: 'IT', label: 'Italy' },
-        { value: 'ES', label: 'Spain' },
-        { value: 'NL', label: 'Netherlands' },
-        { value: 'BE', label: 'Belgium' },
-        { value: 'AT', label: 'Austria' },
-        { value: 'CH', label: 'Switzerland' },
-        { value: 'US', label: 'United States' },
-        { value: 'IE', label: 'Ireland' },
-        { value: 'PT', label: 'Portugal' },
-        { value: 'SE', label: 'Sweden' },
-        { value: 'DK', label: 'Denmark' },
-        { value: 'NO', label: 'Norway' },
-        { value: 'PL', label: 'Poland' }
-    ];
-
-    const ROLE_OPTIONS = [
-        { value: 'customer', label: 'Customer' },
-        { value: 'distributor_staff', label: 'Distributor Staff' },
-        { value: 'workshop_staff', label: 'Workshop Staff' },
-        { value: 'manufacturer_admin', label: 'Manufacturer Admin' }
-    ];
+    const COUNTRY_OPTIONS = Utils.COUNTRIES.map(c => ({ value: c.code, label: c.name }));
+    const ROLE_OPTIONS = Utils.ROLES;
 
     let currentUsers = [];
     let currentFilters = {};

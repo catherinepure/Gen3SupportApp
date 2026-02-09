@@ -215,6 +215,61 @@ const Utils = (() => {
         }
     }
 
+    // ========================================================================
+    // Shared Constants (single source of truth for dropdowns/filters)
+    // ========================================================================
+
+    const COUNTRIES = [
+        { code: 'US', name: 'United States' },
+        { code: 'GB', name: 'United Kingdom' },
+        { code: 'IE', name: 'Ireland' },
+        { code: 'DE', name: 'Germany' },
+        { code: 'FR', name: 'France' },
+        { code: 'ES', name: 'Spain' },
+        { code: 'IT', name: 'Italy' },
+        { code: 'NL', name: 'Netherlands' },
+        { code: 'BE', name: 'Belgium' },
+        { code: 'SE', name: 'Sweden' },
+        { code: 'NO', name: 'Norway' },
+        { code: 'DK', name: 'Denmark' },
+        { code: 'FI', name: 'Finland' },
+        { code: 'AT', name: 'Austria' },
+        { code: 'CH', name: 'Switzerland' },
+        { code: 'PL', name: 'Poland' },
+        { code: 'PT', name: 'Portugal' }
+    ];
+
+    const COUNTRY_CODES = COUNTRIES.map(c => c.code);
+
+    const ROLES = [
+        { value: 'customer', label: 'Customer' },
+        { value: 'workshop_staff', label: 'Workshop Staff' },
+        { value: 'distributor_staff', label: 'Distributor Staff' },
+        { value: 'manufacturer_admin', label: 'Manufacturer Admin' }
+    ];
+
+    const USER_LEVELS = [
+        { value: 'normal', label: 'Normal' },
+        { value: 'manager', label: 'Manager' },
+        { value: 'admin', label: 'Admin' }
+    ];
+
+    const SCOOTER_STATUSES = [
+        { value: 'active', label: 'Active' },
+        { value: 'in_service', label: 'In Service' },
+        { value: 'stolen', label: 'Stolen' },
+        { value: 'decommissioned', label: 'Decommissioned' }
+    ];
+
+    const SERVICE_JOB_STATUSES = [
+        { value: 'booked', label: 'Booked' },
+        { value: 'in_progress', label: 'In Progress' },
+        { value: 'awaiting_parts', label: 'Awaiting Parts' },
+        { value: 'ready_for_collection', label: 'Ready for Collection' },
+        { value: 'completed', label: 'Completed' },
+        { value: 'cancelled', label: 'Cancelled' }
+    ];
+
     // Public API
     return {
         $,
@@ -237,6 +292,12 @@ const Utils = (() => {
         truncate,
         formatBytes,
         escapeHtml,
-        parseJSON
+        parseJSON,
+        COUNTRIES,
+        COUNTRY_CODES,
+        ROLES,
+        USER_LEVELS,
+        SCOOTER_STATUSES,
+        SERVICE_JOB_STATUSES
     };
 })();

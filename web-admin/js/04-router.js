@@ -66,16 +66,7 @@ const Router = (() => {
             });
         });
 
-        // Set up logout button
-        const logoutBtn = $('#logout-btn');
-        if (logoutBtn) {
-            logoutBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (confirm('Are you sure you want to logout?')) {
-                    Auth.handleLogout();
-                }
-            });
-        }
+        // Logout is handled by Auth.setupLogoutButton() — do not duplicate here
     }
 
     function getCurrentPage() {

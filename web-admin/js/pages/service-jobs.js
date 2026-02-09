@@ -2,23 +2,15 @@
 const ServiceJobsPage = (() => {
     const { $, toast, exportCSV, formatDate } = Utils;
     let currentData = [];
-    let scootersList = [];
-    let workshopsList = [];
+    let scootersList = null;
+    let workshopsList = null;
 
     async function load() {
         try {
             $('#service-jobs-content').innerHTML = Utils.loading();
 
-            // Load service jobs and related data in parallel
-            const [jobsResult, scootersResult, workshopsResult] = await Promise.all([
-                API.call('service-jobs', 'list', { limit: 100 }),
-                API.call('scooters', 'list', { limit: 1000 }),
-                API.call('workshops', 'list', { limit: 100 })
-            ]);
-
+            const jobsResult = await API.call('service-jobs', 'list', { limit: 100 });
             currentData = jobsResult.jobs || jobsResult['service-jobs'] || jobsResult.data || [];
-            scootersList = scootersResult.scooters || scootersResult.data || [];
-            workshopsList = workshopsResult.workshops || workshopsResult.data || [];
 
             TableComponent.render('#service-jobs-content', currentData, [
                 { key: 'scooters', label: 'Scooter', format: (val) => val ? (val.zyd_serial || val.id?.substring(0, 8) + '...') : 'N/A' },
@@ -37,47 +29,68 @@ const ServiceJobsPage = (() => {
         }
     }
 
-    async function createServiceJob() {
-        const fields = [
-            {
-                name: 'scooter_id',
-                label: 'Scooter *',
-                type: 'select',
-                required: true,
-                options: scootersList.map(s => ({
-                    value: s.id,
-                    label: `${s.zyd_serial || s.id.substring(0, 8)} - ${s.model || 'Unknown'}`
-                }))
-            },
-            {
-                name: 'workshop_id',
-                label: 'Workshop *',
-                type: 'select',
-                required: true,
-                options: workshopsList.map(w => ({
-                    value: w.id,
-                    label: w.name
-                }))
-            },
-            {
-                name: 'issue_description',
-                label: 'Issue Description *',
-                type: 'textarea',
-                required: true,
-                placeholder: 'Describe the problem with the scooter...'
-            }
-        ];
+    /** Lazy-load scooters and workshops lists (only when needed for create form) */
+    async function ensureReferenceData() {
+        if (scootersList && workshopsList) return;
 
-        FormComponent.show('Create Service Job', fields, async (formData) => {
-            try {
-                const result = await API.call('service-jobs', 'create', formData);
-                toast('Service job created successfully', 'success');
-                ModalComponent.close();
-                await load();
-            } catch (err) {
-                toast(err.message, 'error');
-            }
-        });
+        const [scootersResult, workshopsResult] = await Promise.all([
+            API.call('scooters', 'list', { limit: 1000 }),
+            API.call('workshops', 'list', { limit: 100 })
+        ]);
+
+        scootersList = scootersResult.scooters || scootersResult.data || [];
+        workshopsList = workshopsResult.workshops || workshopsResult.data || [];
+    }
+
+    async function createServiceJob() {
+        try {
+            // Show a loading toast while fetching reference data
+            toast('Loading form data...', 'info');
+            await ensureReferenceData();
+
+            const fields = [
+                {
+                    name: 'scooter_id',
+                    label: 'Scooter *',
+                    type: 'select',
+                    required: true,
+                    options: scootersList.map(s => ({
+                        value: s.id,
+                        label: `${s.zyd_serial || s.id.substring(0, 8)} - ${s.model || 'Unknown'}`
+                    }))
+                },
+                {
+                    name: 'workshop_id',
+                    label: 'Workshop *',
+                    type: 'select',
+                    required: true,
+                    options: workshopsList.map(w => ({
+                        value: w.id,
+                        label: w.name
+                    }))
+                },
+                {
+                    name: 'issue_description',
+                    label: 'Issue Description *',
+                    type: 'textarea',
+                    required: true,
+                    placeholder: 'Describe the problem with the scooter...'
+                }
+            ];
+
+            FormComponent.show('Create Service Job', fields, async (formData) => {
+                try {
+                    await API.call('service-jobs', 'create', formData);
+                    toast('Service job created successfully', 'success');
+                    ModalComponent.close();
+                    await load();
+                } catch (err) {
+                    toast(err.message, 'error');
+                }
+            });
+        } catch (err) {
+            toast('Failed to load form data: ' + err.message, 'error');
+        }
     }
 
     async function editServiceJob(job) {
@@ -150,7 +163,7 @@ const ServiceJobsPage = (() => {
                     }
                 }
 
-                const result = await API.call('service-jobs', 'update', {
+                await API.call('service-jobs', 'update', {
                     id: job.id,
                     ...formData
                 });
@@ -164,57 +177,76 @@ const ServiceJobsPage = (() => {
     }
 
     function showServiceJobDetail(job) {
-        const scooterInfo = job.scooters ? `${job.scooters.zyd_serial || 'Unknown Serial'} (${job.scooters.model || 'Unknown Model'})` : job.scooter_id?.substring(0, 8) + '...';
+        const scooterInfo = job.scooters
+            ? `${job.scooters.zyd_serial || 'Unknown Serial'} (${job.scooters.model || 'Unknown Model'})`
+            : job.scooter_id?.substring(0, 8) + '...';
         const workshopInfo = job.workshops?.name || job.workshop_id?.substring(0, 8) + '...';
-        const customerInfo = job.users ? `${job.users.first_name || ''} ${job.users.last_name || ''} (${job.users.email})`.trim() : job.customer_id?.substring(0, 8) + '...';
+        const customerName = job.users
+            ? `${job.users.first_name || ''} ${job.users.last_name || ''}`.trim()
+            : null;
 
-        let html = '<div class="detail-grid">';
+        const sections = [
+            {
+                title: 'Service Job Information',
+                fields: [
+                    { label: 'Job ID', value: job.id, type: 'code' },
+                    { label: 'Status', value: job.status, type: 'badge-status' },
+                    { label: 'Scooter', value: scooterInfo },
+                    { label: 'Workshop', value: workshopInfo },
+                    { label: 'Customer', value: job.users ? `${customerName || ''} (${job.users.email})`.trim() : 'N/A' },
+                    { label: 'Technician', value: job.technician_id ? job.technician_id.substring(0, 8) + '...' : 'Not assigned' }
+                ]
+            },
+            {
+                title: 'Timeline',
+                fields: [
+                    { label: 'Booked', value: job.booked_date, type: 'date' },
+                    { label: 'Started', value: job.started_date || 'Not started' },
+                    { label: 'Completed', value: job.completed_date || 'Not completed' }
+                ]
+            },
+            {
+                title: 'Issue Description',
+                fields: [
+                    { label: 'Description', value: job.issue_description || 'No description provided' }
+                ]
+            }
+        ];
 
-        html += '<div class="detail-section">';
-        html += '<h4>Service Job Information</h4>';
-        html += `<p><strong>Job ID:</strong> ${job.id}</p>`;
-        html += `<p><strong>Status:</strong> ${getStatusBadge(job.status)}</p>`;
-        html += `<p><strong>Scooter:</strong> ${scooterInfo}</p>`;
-        html += `<p><strong>Workshop:</strong> ${workshopInfo}</p>`;
-        html += `<p><strong>Customer:</strong> ${customerInfo}</p>`;
-        html += `<p><strong>Technician:</strong> ${job.technician_id ? job.technician_id.substring(0, 8) + '...' : 'Not assigned'}</p>`;
-        html += '</div>';
-
-        html += '<div class="detail-section">';
-        html += '<h4>Timeline</h4>';
-        html += `<p><strong>Booked:</strong> ${formatDate(job.booked_date)}</p>`;
-        html += `<p><strong>Started:</strong> ${job.started_date ? formatDate(job.started_date) : 'Not started'}</p>`;
-        html += `<p><strong>Completed:</strong> ${job.completed_date ? formatDate(job.completed_date) : 'Not completed'}</p>`;
-        html += '</div>';
-
-        html += '<div class="detail-section">';
-        html += '<h4>Issue Description</h4>';
-        html += `<p>${job.issue_description || 'No description provided'}</p>`;
+        // Technician notes
         if (job.technician_notes) {
-            html += '<h4>Technician Notes</h4>';
-            html += `<p>${job.technician_notes}</p>`;
+            sections.push({
+                title: 'Technician Notes',
+                fields: [
+                    { label: 'Notes', value: job.technician_notes }
+                ]
+            });
         }
-        html += '</div>';
 
-        html += '<div class="detail-section">';
-        html += '<h4>Firmware Update</h4>';
-        html += `<p><strong>Updated:</strong> ${job.firmware_updated ? 'Yes' : 'No'}</p>`;
-        if (job.firmware_updated) {
-            html += `<p><strong>Before:</strong> ${job.firmware_version_before || 'N/A'}</p>`;
-            html += `<p><strong>After:</strong> ${job.firmware_version_after || 'N/A'}</p>`;
-        }
-        html += '</div>';
+        // Firmware update
+        sections.push({
+            title: 'Firmware Update',
+            fields: [
+                { label: 'Updated', value: job.firmware_updated ? 'Yes' : 'No' },
+                ...(job.firmware_updated ? [
+                    { label: 'Before', value: job.firmware_version_before || 'N/A' },
+                    { label: 'After', value: job.firmware_version_after || 'N/A' }
+                ] : [])
+            ]
+        });
 
+        // Parts used
         if (job.parts_used) {
-            html += '<div class="detail-section">';
-            html += '<h4>Parts Used</h4>';
-            html += `<pre>${JSON.stringify(job.parts_used, null, 2)}</pre>`;
-            html += '</div>';
+            sections.push({
+                title: 'Parts Used',
+                html: `<pre>${JSON.stringify(job.parts_used, null, 2)}</pre>`
+            });
         }
 
-        html += '</div>';
+        // Metadata
+        sections.push(DetailModal.metadataSection(job));
 
-        // Add action buttons if job is not completed/cancelled
+        // Action buttons
         const actions = [];
         if (job.status !== 'completed' && job.status !== 'cancelled') {
             actions.push({
@@ -227,7 +259,14 @@ const ServiceJobsPage = (() => {
             });
         }
 
-        ModalComponent.show('Service Job Detail', html, actions);
+        DetailModal.show('Service Job Detail', {
+            sections,
+            actions,
+            breadcrumbs: [
+                { label: 'Service Jobs', onClick: () => { ModalComponent.close(); } },
+                { label: `Job #${job.id.substring(0, 8)}` }
+            ]
+        });
     }
 
     function getStatusBadge(status) {
@@ -248,5 +287,12 @@ const ServiceJobsPage = (() => {
         $('#service-jobs-create-btn')?.addEventListener('click', createServiceJob);
     }
 
-    return { init, onNavigate: load };
+    function onNavigate() {
+        // Clear cached reference data so it's fresh next time create is used
+        scootersList = null;
+        workshopsList = null;
+        load();
+    }
+
+    return { init, onNavigate };
 })();
