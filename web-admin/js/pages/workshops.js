@@ -8,6 +8,9 @@ const WorkshopsPage = (() => {
 
     async function load() {
         try {
+            // Clear breadcrumbs when returning to main list
+            Breadcrumbs.clear();
+
             $('#workshops-content').innerHTML = Utils.loading();
 
             // Load workshops and distributors in parallel
@@ -200,6 +203,12 @@ const WorkshopsPage = (() => {
                 });
             }
 
+            // Show breadcrumbs
+            Breadcrumbs.show([
+                {label: 'Workshops', onClick: () => { ModalComponent.close(); }},
+                {label: w.name}
+            ]);
+
             ModalComponent.show('Workshop Detail', html, actions);
         } catch (err) {
             toast(err.message, 'error');
@@ -248,6 +257,13 @@ const WorkshopsPage = (() => {
                     <!-- Summary will be shown here -->
                 </div>
             `;
+
+            // Show breadcrumbs
+            Breadcrumbs.show([
+                {label: 'Workshops', onClick: () => { ModalComponent.close(); }},
+                {label: workshop.name, onClick: () => { ModalComponent.close(); setTimeout(() => showWorkshopDetail(workshop), 100); }},
+                {label: 'Service Jobs'}
+            ]);
 
             ModalComponent.show('Workshop Service Jobs', html, [
                 {
@@ -498,6 +514,14 @@ const WorkshopsPage = (() => {
                     }
                 }
             ];
+
+            // Show breadcrumbs
+            Breadcrumbs.show([
+                {label: 'Workshops', onClick: () => { ModalComponent.close(); }},
+                {label: workshop.name, onClick: () => { ModalComponent.close(); setTimeout(() => showWorkshopDetail(workshop), 100); }},
+                {label: 'Service Jobs', onClick: () => { ModalComponent.close(); setTimeout(() => showWorkshopJobs(workshop), 100); }},
+                {label: `Job #${j.id.substring(0, 8)}...`}
+            ]);
 
             ModalComponent.show('Service Job Detail', html, actions);
         } catch (err) {

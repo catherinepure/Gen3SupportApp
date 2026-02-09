@@ -10,7 +10,8 @@ const State = (() => {
         currentPage: 'dashboard',
         filters: {},
         cache: {},
-        pagination: {}
+        pagination: {},
+        navigationStack: []  // Stack for drill-down navigation
     };
 
     const listeners = {};
@@ -127,6 +128,31 @@ const State = (() => {
         return state.pagination[page] || { pageNum: 1, pageSize: 50 };
     }
 
+    // Navigation stack helpers
+    function pushNavigation(item) {
+        state.navigationStack.push(item);
+        set('navigationStack', [...state.navigationStack]);
+    }
+
+    function popNavigation() {
+        const item = state.navigationStack.pop();
+        set('navigationStack', [...state.navigationStack]);
+        return item;
+    }
+
+    function getNavigationStack() {
+        return [...state.navigationStack];
+    }
+
+    function clearNavigationStack() {
+        state.navigationStack = [];
+        set('navigationStack', []);
+    }
+
+    function peekNavigation() {
+        return state.navigationStack[state.navigationStack.length - 1];
+    }
+
     return {
         get,
         set,
@@ -141,6 +167,11 @@ const State = (() => {
         getFilter,
         clearFilters,
         setPagination,
-        getPagination
+        getPagination,
+        pushNavigation,
+        popNavigation,
+        getNavigationStack,
+        clearNavigationStack,
+        peekNavigation
     };
 })();

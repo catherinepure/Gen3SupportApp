@@ -523,6 +523,49 @@ tr { cursor: pointer; }
 .validation-warn { background: var(--warning-light); border: 1px solid var(--warning); }
 .validation-error { background: var(--danger-light); border: 1px solid var(--danger); }
 
+/* ---- Breadcrumbs ---- */
+#breadcrumb-container {
+    display: none;
+    padding: 0.75rem 1.5rem;
+    background: white;
+    border-bottom: 1px solid var(--gray-200);
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+}
+
+.crumb {
+    display: inline-block;
+    color: var(--gray-600);
+    transition: color 0.2s;
+}
+
+.crumb-link {
+    color: var(--primary);
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.crumb-link:hover {
+    color: var(--primary-dark);
+    text-decoration: underline;
+}
+
+.crumb-current {
+    color: var(--gray-900);
+    font-weight: 500;
+}
+
+.crumb-separator {
+    display: inline-block;
+    margin: 0 0.5rem;
+    color: var(--gray-400);
+    user-select: none;
+}
+
+.crumb-icon {
+    margin-right: 0.25rem;
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
     #sidebar { width: 60px; }
