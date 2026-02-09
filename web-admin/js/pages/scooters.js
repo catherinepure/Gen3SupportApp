@@ -85,63 +85,91 @@ const ScootersPage = (() => {
             const result = await API.call('scooters', 'get', { id: scooter.id });
             const fullScooter = result.scooter || scooter;
 
-            let html = '<div class="detail-grid">';
-
-            // Basic Information
-            html += '<div class="detail-section">';
-            html += '<h4>Scooter Information</h4>';
-            html += `<p><strong>Serial Number:</strong> ${fullScooter.serial_number || 'N/A'}</p>`;
-            html += `<p><strong>Type:</strong> ${fullScooter.scooter_type || 'N/A'}</p>`;
-            html += `<p><strong>Status:</strong> ${getStatusBadge(fullScooter.status)}</p>`;
-            html += `<p><strong>Firmware Version:</strong> ${fullScooter.firmware_version || 'N/A'}</p>`;
-            html += `<p><strong>Hardware Version:</strong> ${fullScooter.hardware_version || 'N/A'}</p>`;
-            html += '</div>';
-
-            // Registration Information
-            html += '<div class="detail-section">';
-            html += '<h4>Registration</h4>';
-            html += `<p><strong>Country:</strong> ${fullScooter.country_of_registration || 'N/A'}</p>`;
-            html += `<p><strong>Registration Date:</strong> ${formatDate(fullScooter.registration_date)}</p>`;
-            html += `<p><strong>Created:</strong> ${formatDate(fullScooter.created_at)}</p>`;
-            html += '</div>';
+            // Build sections using DetailModal component
+            const sections = [
+                // Basic Information
+                {
+                    title: 'Scooter Information',
+                    fields: [
+                        { label: 'Serial Number', value: fullScooter.zyd_serial || fullScooter.serial_number || 'N/A', type: 'code' },
+                        { label: 'Model', value: fullScooter.model || fullScooter.scooter_type || 'N/A' },
+                        { label: 'Status', value: getStatusBadge(fullScooter.status), type: 'html' },
+                        { label: 'Firmware Version', value: fullScooter.firmware_version || 'N/A' },
+                        { label: 'Hardware Version', value: fullScooter.hw_version || fullScooter.hardware_version || 'N/A' }
+                    ]
+                },
+                // Registration Information
+                {
+                    title: 'Registration',
+                    fields: [
+                        { label: 'Country', value: fullScooter.country_of_registration || 'N/A' },
+                        { label: 'Registration Date', value: fullScooter.registration_date, type: 'date' },
+                        { label: 'Created', value: fullScooter.created_at, type: 'date' }
+                    ]
+                }
+            ];
 
             // Owner Information (if available)
-            if (fullScooter.owner_id || result.owner) {
-                html += '<div class="detail-section">';
-                html += '<h4>Owner</h4>';
-                if (result.owner) {
-                    html += `<p><strong>Name:</strong> ${result.owner.first_name || ''} ${result.owner.last_name || ''}</p>`;
-                    html += `<p><strong>Email:</strong> ${result.owner.email || 'N/A'}</p>`;
-                } else {
-                    html += `<p><strong>Owner ID:</strong> ${fullScooter.owner_id}</p>`;
-                }
-                html += '</div>';
+            if (result.owners && result.owners.length > 0) {
+                const ownerFields = [];
+                result.owners.forEach((ownerLink, idx) => {
+                    const owner = ownerLink.users || ownerLink;
+                    const isPrimary = ownerLink.is_primary ? ' (Primary)' : '';
+                    ownerFields.push({
+                        label: `Owner ${idx + 1}${isPrimary}`,
+                        value: `${owner.first_name || ''} ${owner.last_name || ''} - ${owner.email}`.trim()
+                    });
+                });
+                sections.push({
+                    title: 'Owners',
+                    fields: ownerFields
+                });
+            } else if (fullScooter.owner_id || result.owner) {
+                const owner = result.owner;
+                sections.push({
+                    title: 'Owner',
+                    fields: [
+                        { label: 'Name', value: owner ? `${owner.first_name || ''} ${owner.last_name || ''}`.trim() : 'N/A' },
+                        { label: 'Email', value: owner?.email || 'N/A' }
+                    ]
+                });
             }
 
             // Service History (if available)
             if (result.service_jobs && result.service_jobs.length > 0) {
-                html += '<div class="detail-section">';
-                html += '<h4>Recent Service History</h4>';
-                html += '<ul>';
+                let jobsHtml = '<ul style="list-style-type: none; padding-left: 0;">';
                 result.service_jobs.slice(0, 5).forEach(job => {
-                    html += `<li>${formatDate(job.booked_date)} - ${job.status} ${job.issue_description ? `(${job.issue_description})` : ''}</li>`;
+                    const statusBadge = getStatusBadge(job.status);
+                    jobsHtml += `
+                        <li style="margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
+                            <strong>${formatDate(job.booked_date)}</strong> ${statusBadge}<br>
+                            <span class="text-muted">${job.issue_description || 'No description'}</span>
+                        </li>
+                    `;
                 });
-                html += '</ul>';
-                html += '</div>';
+                jobsHtml += '</ul>';
+                sections.push({
+                    title: `Recent Service History (${result.service_jobs.length})`,
+                    html: jobsHtml
+                });
             }
 
             // Telemetry Summary (if available)
             if (result.latest_telemetry) {
-                html += '<div class="detail-section">';
-                html += '<h4>Latest Telemetry</h4>';
-                html += `<p><strong>Last Seen:</strong> ${formatDate(result.latest_telemetry.timestamp)}</p>`;
-                if (result.latest_telemetry.battery_voltage) {
-                    html += `<p><strong>Battery:</strong> ${result.latest_telemetry.battery_voltage}V</p>`;
-                }
-                html += '</div>';
+                const tel = result.latest_telemetry;
+                sections.push({
+                    title: 'Latest Telemetry',
+                    fields: [
+                        { label: 'Last Seen', value: tel.scanned_at || tel.timestamp, type: 'date' },
+                        { label: 'Battery Voltage', value: tel.battery_voltage ? `${tel.battery_voltage}V` : 'N/A' },
+                        { label: 'Battery SOC', value: tel.battery_soc !== null && tel.battery_soc !== undefined ? `${tel.battery_soc}%` : 'N/A' },
+                        { label: 'Battery Health', value: tel.battery_health !== null && tel.battery_health !== undefined ? `${tel.battery_health}%` : 'N/A' }
+                    ]
+                });
             }
 
-            html += '</div>';
+            // Metadata
+            sections.push(DetailModal.metadataSection(fullScooter));
 
             // Add action buttons
             const actions = [
@@ -166,7 +194,11 @@ const ScootersPage = (() => {
                 });
             }
 
-            ModalComponent.show(`Scooter: ${fullScooter.serial_number}`, html, actions);
+            // Show with DetailModal
+            DetailModal.show(`Scooter: ${fullScooter.zyd_serial || fullScooter.serial_number}`, {
+                sections,
+                actions
+            });
         } catch (err) {
             toast('Failed to load scooter details', 'error');
         }

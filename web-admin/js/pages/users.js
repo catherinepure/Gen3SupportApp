@@ -203,75 +203,118 @@ const UsersPage = (() => {
     // ---- Detail Modal ----
 
     async function showUserDetail(user) {
-        ModalComponent.show(`User: ${user.email}`, Utils.loading('Loading user details...'));
-
         try {
             const result = await API.call('users', 'get', { id: user.id });
             const fullUser = result.user;
             const scooters = result.scooters || [];
             const sessions = result.sessions || [];
 
-            let html = '<div class="detail-grid">';
+            // Resolve distributor and workshop names
+            const distName = fullUser.distributor_id
+                ? (distributorsList.find(d => d.id === fullUser.distributor_id)?.name
+                    || fullUser.distributors?.name || fullUser.distributor_id)
+                : 'N/A';
+            const workshopName = fullUser.workshop_id
+                ? (workshopsList.find(w => w.id === fullUser.workshop_id)?.name
+                    || fullUser.workshops?.name || fullUser.workshop_id)
+                : 'N/A';
 
-            html += detailSection('Account Information');
-            html += detailRow('Email', fullUser.email);
-            html += detailRow('Name', `${fullUser.first_name || ''} ${fullUser.last_name || ''}`.trim() || '-');
-            html += detailRow('User Level', fullUser.user_level);
-            html += detailRow('Roles', fullUser.roles?.map(r => Utils.roleBadge(r)).join(' ') || '-');
-            html += detailRow('Verified', fullUser.is_verified ? '✓ Yes' : '✗ No');
-            html += detailRow('Active', fullUser.is_active ? '✓ Yes' : '✗ No');
+            // Build sections using DetailModal component
+            const sections = [
+                // Account Information
+                {
+                    title: 'Account Information',
+                    fields: [
+                        { label: 'Email', value: fullUser.email },
+                        { label: 'Name', value: `${fullUser.first_name || ''} ${fullUser.last_name || ''}`.trim() || 'N/A' },
+                        { label: 'User Level', value: fullUser.user_level },
+                        { label: 'Roles', value: fullUser.roles?.map(r => Utils.roleBadge(r)).join(' ') || 'N/A', type: 'html' },
+                        { label: 'Verified', value: fullUser.is_verified ? 'Yes ✓' : 'No ✗' },
+                        { label: 'Active', value: fullUser.is_active, type: 'badge-boolean' }
+                    ]
+                },
+                // Location
+                {
+                    title: 'Location',
+                    fields: [
+                        { label: 'Home Country', value: fullUser.home_country || 'N/A' },
+                        { label: 'Current Country', value: fullUser.current_country || 'N/A' }
+                    ]
+                }
+            ];
 
-            html += detailSection('Location');
-            html += detailRow('Home Country', fullUser.home_country || '-');
-            html += detailRow('Current Country', fullUser.current_country || '-');
-
+            // Assignments (only show if assigned)
             if (fullUser.distributor_id || fullUser.workshop_id) {
-                html += detailSection('Assignments');
-                const distName = distributorsList.find(d => d.id === fullUser.distributor_id)?.name
-                    || fullUser.distributors?.name || fullUser.distributor_id || '-';
-                const workshopName = workshopsList.find(w => w.id === fullUser.workshop_id)?.name
-                    || fullUser.workshops?.name || fullUser.workshop_id || '-';
-                html += detailRow('Distributor', distName);
-                html += detailRow('Workshop', workshopName);
+                sections.push({
+                    title: 'Assignments',
+                    fields: [
+                        { label: 'Distributor', value: distName },
+                        { label: 'Workshop', value: workshopName }
+                    ]
+                });
             }
 
             // Linked Scooters
             if (scooters.length > 0) {
-                html += detailSection(`Linked Scooters (${scooters.length})`);
+                let scootersHtml = '<div>';
                 scooters.forEach(link => {
                     const scooter = link.scooters;
-                    const isPrimary = link.is_primary ? ' ⭐' : '';
-                    html += detailRow(
-                        scooter.zyd_serial + isPrimary,
-                        `${scooter.model || '-'} • ${Utils.statusBadge(scooter.status)}`
-                    );
+                    const isPrimary = link.is_primary ? ' ⭐ Primary' : '';
+                    scootersHtml += `
+                        <div style="margin-bottom: 10px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
+                            <strong>${scooter.zyd_serial}${isPrimary}</strong><br>
+                            <span class="text-muted">${scooter.model || 'Unknown Model'}</span>
+                            ${Utils.statusBadge(scooter.status)}
+                        </div>
+                    `;
+                });
+                scootersHtml += '</div>';
+                sections.push({
+                    title: `Linked Scooters (${scooters.length})`,
+                    html: scootersHtml
                 });
             }
 
-            // Active Sessions
+            // Recent Sessions
             if (sessions.length > 0) {
-                html += detailSection(`Recent Sessions (${sessions.length})`);
+                let sessionsHtml = '<div>';
                 sessions.slice(0, 5).forEach(session => {
                     const isExpired = new Date(session.expires_at) < new Date();
-                    html += detailRow(
-                        session.device_info || 'Unknown Device',
-                        `Created: ${formatDate(session.created_at)}${isExpired ? ' (expired)' : ' ✓'}`
-                    );
+                    sessionsHtml += `
+                        <div style="margin-bottom: 8px; padding: 6px; background: #f9f9f9; border-radius: 4px;">
+                            <strong>${session.device_info || 'Unknown Device'}</strong><br>
+                            <span class="text-muted">Created: ${formatDate(session.created_at)}</span>
+                            ${isExpired ? ' <span class="badge badge-inactive">Expired</span>' : ' <span class="badge badge-active">Active</span>'}
+                        </div>
+                    `;
+                });
+                sessionsHtml += '</div>';
+                sections.push({
+                    title: `Recent Sessions (${sessions.length})`,
+                    html: sessionsHtml
                 });
             }
 
-            html += detailSection('Account Activity');
-            html += detailRow('Created', formatDate(fullUser.created_at));
-            html += detailRow('Last Login', formatDate(fullUser.last_login) || 'Never');
+            // Account Activity
+            sections.push({
+                title: 'Account Activity',
+                fields: [
+                    { label: 'Created', value: formatDate(fullUser.created_at), type: 'date' },
+                    { label: 'Last Login', value: fullUser.last_login ? formatDate(fullUser.last_login) : 'Never' }
+                ]
+            });
 
-            html += detailSection('Additional Info');
-            html += detailRow('Date of Birth', formatDate(fullUser.date_of_birth) || '-');
-            html += detailRow('Gender', fullUser.gender || '-');
-            html += detailRow('User ID', fullUser.id);
+            // Additional Info
+            sections.push({
+                title: 'Additional Info',
+                fields: [
+                    { label: 'Date of Birth', value: fullUser.date_of_birth, type: 'date' },
+                    { label: 'Gender', value: fullUser.gender || 'N/A' },
+                    { label: 'User ID', value: fullUser.id, type: 'code' }
+                ]
+            });
 
-            html += '</div>';
-
-            // Add action buttons
+            // Action buttons
             const actions = [
                 {
                     label: 'Edit User',
@@ -303,10 +346,14 @@ const UsersPage = (() => {
                 });
             }
 
-            ModalComponent.show(`User: ${fullUser.email}`, html, actions);
+            // Show with DetailModal
+            DetailModal.show(`User: ${fullUser.email}`, {
+                sections,
+                actions
+            });
 
         } catch (err) {
-            ModalComponent.show(`User: ${user.email}`, `<p class="error-msg">${err.message}</p>`);
+            toast(err.message, 'error');
         }
     }
 
