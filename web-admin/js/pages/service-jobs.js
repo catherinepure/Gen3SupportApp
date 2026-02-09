@@ -201,8 +201,12 @@ const ServiceJobsPage = (() => {
                 title: 'Timeline',
                 fields: [
                     { label: 'Booked', value: job.booked_date, type: 'date' },
-                    { label: 'Started', value: job.started_date || 'Not started' },
-                    { label: 'Completed', value: job.completed_date || 'Not completed' }
+                    job.started_date
+                        ? { label: 'Started', value: job.started_date, type: 'date' }
+                        : { label: 'Started', value: 'Not started' },
+                    job.completed_date
+                        ? { label: 'Completed', value: job.completed_date, type: 'date' }
+                        : { label: 'Completed', value: 'Not completed' }
                 ]
             },
             {

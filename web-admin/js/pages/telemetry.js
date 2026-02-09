@@ -29,19 +29,16 @@ const TelemetryPage = (() => {
                 if (val && val.zyd_serial) return val.zyd_serial;
                 return row.scooter_id ? row.scooter_id.substring(0, 8) + '...' : 'N/A';
             }},
-            { key: 'timestamp', label: 'Timestamp', format: formatDate },
-            { key: 'battery_voltage', label: 'Battery', format: (val) => val ? `${val}V` : 'N/A' },
-            { key: 'battery_percentage', label: 'Charge', format: (val) => {
+            { key: 'scanned_at', label: 'Scanned', format: formatDate },
+            { key: 'voltage', label: 'Battery', format: (val) => val ? `${val}V` : 'N/A' },
+            { key: 'battery_soc', label: 'Charge', format: (val) => {
                 if (val === undefined || val === null) return 'N/A';
                 const color = val > 50 ? '#22c55e' : val > 20 ? '#f59e0b' : '#ef4444';
                 return `<span style="color: ${color}; font-weight: 500;">${val}%</span>`;
             }},
-            { key: 'speed', label: 'Speed', format: (val) => val !== undefined ? `${val} km/h` : '-' },
-            { key: 'odometer', label: 'Odometer', format: (val) => val !== undefined ? `${val.toLocaleString()} km` : '-' },
-            { key: 'error_codes', label: 'Errors', format: (val) => {
-                if (!val || !Array.isArray(val) || val.length === 0) return '-';
-                return `<span class="badge badge-danger">${val.length}</span>`;
-            }}
+            { key: 'speed_kmh', label: 'Speed', format: (val) => val !== undefined ? `${val} km/h` : '-' },
+            { key: 'odometer_km', label: 'Odometer', format: (val) => val !== undefined ? `${val.toLocaleString()} km` : '-' },
+            { key: 'scan_type', label: 'Type', format: (val) => val ? `<span class="badge badge-primary">${val.replace(/_/g, ' ')}</span>` : '-' }
         ], {
             onRowClick: showTelemetryDetail
         });
@@ -56,56 +53,43 @@ const TelemetryPage = (() => {
                 fields: [
                     { label: 'Scooter', value: scooterLabel },
                     { label: 'Scooter ID', value: t.scooter_id, type: 'code' },
-                    { label: 'Timestamp', value: t.timestamp, type: 'date' }
+                    { label: 'Scanned At', value: t.scanned_at, type: 'date' },
+                    { label: 'Scan Type', value: t.scan_type ? t.scan_type.replace(/_/g, ' ') : 'N/A' },
+                    { label: 'HW Version', value: t.hw_version || 'N/A' },
+                    { label: 'SW Version', value: t.sw_version || 'N/A' }
                 ]
             },
             {
                 title: 'Battery',
                 fields: [
-                    { label: 'Voltage', value: t.battery_voltage !== undefined ? `${t.battery_voltage}V` : 'N/A' },
-                    { label: 'Charge', value: t.battery_percentage !== undefined ? `${t.battery_percentage}%` : 'N/A' },
-                    { label: 'Temperature', value: t.battery_temperature !== undefined ? `${t.battery_temperature}°C` : 'N/A' },
-                    { label: 'Current', value: t.battery_current !== undefined ? `${t.battery_current}A` : 'N/A' },
-                    { label: 'Cycles', value: t.battery_cycles ?? 'N/A' }
+                    { label: 'Voltage', value: t.voltage !== undefined ? `${t.voltage}V` : 'N/A' },
+                    { label: 'State of Charge', value: t.battery_soc !== undefined ? `${t.battery_soc}%` : 'N/A' },
+                    { label: 'Temperature', value: t.battery_temp !== undefined ? `${t.battery_temp}°C` : 'N/A' },
+                    { label: 'Current', value: t.current !== undefined ? `${t.current}A` : 'N/A' },
+                    { label: 'Health', value: t.battery_health ?? 'N/A' },
+                    { label: 'Charge Cycles', value: t.battery_charge_cycles ?? 'N/A' },
+                    { label: 'Discharge Cycles', value: t.battery_discharge_cycles ?? 'N/A' },
+                    { label: 'Remaining Capacity', value: t.remaining_capacity_mah !== undefined ? `${t.remaining_capacity_mah} mAh` : 'N/A' },
+                    { label: 'Full Capacity', value: t.full_capacity_mah !== undefined ? `${t.full_capacity_mah} mAh` : 'N/A' }
                 ]
             },
             {
                 title: 'Performance',
                 fields: [
-                    { label: 'Speed', value: t.speed !== undefined ? `${t.speed} km/h` : 'N/A' },
-                    { label: 'Odometer', value: t.odometer !== undefined ? `${t.odometer.toLocaleString()} km` : 'N/A' },
-                    { label: 'Motor Temperature', value: t.motor_temperature !== undefined ? `${t.motor_temperature}°C` : 'N/A' },
-                    { label: 'Controller Temperature', value: t.controller_temperature !== undefined ? `${t.controller_temperature}°C` : 'N/A' }
+                    { label: 'Speed', value: t.speed_kmh !== undefined ? `${t.speed_kmh} km/h` : 'N/A' },
+                    { label: 'Odometer', value: t.odometer_km !== undefined ? `${t.odometer_km.toLocaleString()} km` : 'N/A' },
+                    { label: 'Motor Temperature', value: t.motor_temp !== undefined ? `${t.motor_temp}°C` : 'N/A' }
                 ]
             }
         ];
 
-        // Error codes
-        if (t.error_codes && Array.isArray(t.error_codes) && t.error_codes.length > 0) {
+        // Notes
+        if (t.notes) {
             sections.push({
-                title: 'Error Codes',
-                fields: t.error_codes.map((code, i) => ({
-                    label: `Error ${i + 1}`, value: code
-                }))
-            });
-        }
-
-        // Location data (if available)
-        if (t.latitude !== undefined && t.longitude !== undefined) {
-            sections.push({
-                title: 'Location',
+                title: 'Notes',
                 fields: [
-                    { label: 'Latitude', value: t.latitude },
-                    { label: 'Longitude', value: t.longitude }
+                    { label: 'Notes', value: t.notes }
                 ]
-            });
-        }
-
-        // Raw metadata
-        if (t.metadata) {
-            sections.push({
-                title: 'Raw Metadata',
-                html: `<pre style="max-height: 200px; overflow: auto; font-size: 0.85em;">${JSON.stringify(t.metadata, null, 2)}</pre>`
             });
         }
 

@@ -1109,7 +1109,7 @@ async function handleTelemetry(supabase: any, action: string, body: any, admin: 
   if (action === 'list') {
     let query = supabase.from('scooter_telemetry')
       .select('*, scooters(zyd_serial, model), users(email)', { count: 'exact' })
-      .order('captured_at', { ascending: false })
+      .order('scanned_at', { ascending: false })
 
     // TERRITORY FILTER: Filter via scooter country (telemetry doesn't have country directly)
     if (admin.territory.role !== 'manufacturer_admin') {
@@ -1151,17 +1151,17 @@ async function handleTelemetry(supabase: any, action: string, body: any, admin: 
     if (!body.scooter_id) return errorResponse('scooter_id required')
     const { data: records } = await supabase.from('scooter_telemetry')
       .select('*').eq('scooter_id', body.scooter_id)
-      .order('captured_at', { ascending: false }).limit(10)
+      .order('scanned_at', { ascending: false }).limit(10)
 
     if (!records || records.length === 0) return respond({ health: { status: 'no_data' } })
 
     const latest = records[0]
     const flags: string[] = []
-    if (latest.charge_cycles > 500) flags.push('High battery cycles: ' + latest.charge_cycles)
+    if (latest.battery_charge_cycles > 500) flags.push('High battery cycles: ' + latest.battery_charge_cycles)
     if (latest.battery_soc !== null && latest.battery_soc < 20) flags.push('Low battery: ' + latest.battery_soc + '%')
     if (latest.fault_codes && Object.keys(latest.fault_codes).length > 0) flags.push('Active fault codes')
 
-    const daysSince = Math.floor((Date.now() - new Date(latest.captured_at).getTime()) / 86400000)
+    const daysSince = Math.floor((Date.now() - new Date(latest.scanned_at).getTime()) / 86400000)
     if (daysSince > 90) flags.push('Stale data: ' + daysSince + ' days since last reading')
 
     return respond({
@@ -1175,7 +1175,7 @@ async function handleTelemetry(supabase: any, action: string, body: any, admin: 
 
   if (action === 'export') {
     let query = supabase.from('scooter_telemetry')
-      .select('*, scooters(zyd_serial)').order('captured_at', { ascending: false })
+      .select('*, scooters(zyd_serial)').order('scanned_at', { ascending: false })
     if (body.scooter_id) query = query.eq('scooter_id', body.scooter_id)
     const { data, error } = await query
     if (error) return errorResponse(error.message, 500)

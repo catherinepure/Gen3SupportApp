@@ -11,6 +11,11 @@ const Router = (() => {
         console.log(`Router.navigate('${page}')`);
         const previousPage = State.get('currentPage');
 
+        // Clear breadcrumbs on page navigation
+        if (typeof Breadcrumbs !== 'undefined') {
+            Breadcrumbs.clear();
+        }
+
         // Update state
         State.set('currentPage', page);
 
