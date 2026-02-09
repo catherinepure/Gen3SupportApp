@@ -24,11 +24,6 @@ const WorkshopsPage = (() => {
 
             TableComponent.render('#workshops-content', currentData, [
                 { key: 'name', label: 'Name' },
-                { key: 'activation_code_hash', label: 'Code Status', format: (val, row) => {
-                    if (val) return '<span class="badge badge-success">Encrypted</span>';
-                    if (row.activation_code) return '<span class="badge badge-warning">Legacy</span>';
-                    return '<span class="badge badge-inactive">None</span>';
-                }},
                 { key: 'service_area_countries', label: 'Service Areas', format: (val) => Array.isArray(val) ? val.join(', ') : val || 'N/A' },
                 { key: 'parent_distributor_id', label: 'Parent Distributor', format: (val) => val ? 'Linked' : 'Independent' },
                 { key: 'is_active', label: 'Status', format: (val) => val ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>' },
@@ -63,8 +58,6 @@ const WorkshopsPage = (() => {
                         { label: 'Type', value: w.parent_distributor_id ? 'Linked to Distributor' : 'Independent' }
                     ]
                 },
-                // Activation Code (using helper)
-                DetailModal.activationCodeSection(w, 'workshop'),
                 // Service Coverage
                 {
                     title: 'Service Coverage',
@@ -121,14 +114,6 @@ const WorkshopsPage = (() => {
                     onClick: () => {
                         ModalComponent.close();
                         setTimeout(() => editWorkshop(w), 100);
-                    }
-                },
-                {
-                    label: 'Regenerate Code',
-                    class: 'btn-warning',
-                    onClick: () => {
-                        ModalComponent.close();
-                        setTimeout(() => regenerateActivationCode(w), 100);
                     }
                 },
                 {
@@ -602,21 +587,6 @@ const WorkshopsPage = (() => {
 
                 toast('Workshop created successfully', 'success');
                 ModalComponent.close();
-
-                // Show activation code
-                const activationCode = result.activation_code || result.workshop?.activation_code;
-                if (activationCode) {
-                    setTimeout(() => {
-                        ModalComponent.show('Activation Code Generated',
-                            `<div style="text-align: center;">
-                                <p>Workshop created successfully!</p>
-                                <p style="margin: 20px 0;"><strong>Activation Code:</strong></p>
-                                <p><code style="font-size: 1.5em; background: #f0f0f0; padding: 15px 20px; border-radius: 4px; display: inline-block;">${activationCode}</code></p>
-                                <p class="text-muted" style="margin-top: 20px;">Save this code - it's needed for workshop registration.</p>
-                            </div>`);
-                    }, 300);
-                }
-
                 await load();
             } catch (err) {
                 toast(err.message, 'error');
@@ -702,30 +672,6 @@ const WorkshopsPage = (() => {
                 is_active: true
             });
             toast('Workshop reactivated', 'success');
-            await load();
-        } catch (err) {
-            toast(err.message, 'error');
-        }
-    }
-
-    async function regenerateActivationCode(workshop) {
-        if (!confirm(`Generate a new activation code for "${workshop.name}"? The old code will be invalidated immediately.`)) {
-            return;
-        }
-
-        try {
-            const result = await API.call('workshops', 'regenerate-code', { id: workshop.id });
-
-            // Show new code in modal (ONE TIME)
-            ModalComponent.show('New Activation Code Generated',
-                `<div style="text-align: center;">
-                    <p>The new activation code for <strong>${workshop.name}</strong> is:</p>
-                    <p style="margin: 20px 0;"><code style="font-size: 1.8em; background: #fff3cd; padding: 20px 30px; border-radius: 8px; display: inline-block; border: 2px solid #ffc107;">${result.activation_code}</code></p>
-                    <p class="text-danger" style="margin-top: 20px; font-weight: bold;">⚠️ Save this code immediately!</p>
-                    <p class="text-muted">This code cannot be retrieved later and will expire in 90 days.</p>
-                </div>`);
-
-            toast('Activation code regenerated', 'success');
             await load();
         } catch (err) {
             toast(err.message, 'error');

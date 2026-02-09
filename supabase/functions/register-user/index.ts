@@ -3,6 +3,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import bcrypt from 'https://esm.sh/bcryptjs@2.4.3'
 
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY')!
 const FROM_EMAIL = Deno.env.get('SENDGRID_FROM_EMAIL') || "noreply@pureelectric.com"
@@ -36,11 +37,8 @@ interface RegisterUserRequest {
 }
 
 async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+  const salt = await bcrypt.genSalt(10)
+  return await bcrypt.hash(password, salt)
 }
 
 function generateToken(): string {
@@ -101,11 +99,32 @@ async function sendVerificationEmail(email: string, token: string, appUrl: strin
   return true
 }
 
+// Origin validation
+const ALLOWED_ORIGINS: string[] = (() => {
+  const env = Deno.env.get('ALLOWED_ORIGINS')
+  if (env) return env.split(',').map(o => o.trim()).filter(Boolean)
+  return []
+})()
+
+function validateOrigin(req: Request): string | null {
+  if (ALLOWED_ORIGINS.length === 0) return null
+  const origin = req.headers.get('Origin') || req.headers.get('Referer')
+  if (!origin) return null
+  const originUrl = origin.replace(/\/$/, '')
+  for (const allowed of ALLOWED_ORIGINS) {
+    if (originUrl === allowed.replace(/\/$/, '')) return null
+    if (origin.startsWith(allowed.replace(/\/$/, ''))) return null
+  }
+  return `Origin '${origin}' is not allowed`
+}
+
+const corsOrigin = ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS[0] : '*'
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': corsOrigin,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
       },
@@ -113,6 +132,15 @@ serve(async (req) => {
   }
 
   try {
+    // Validate origin
+    const originError = validateOrigin(req)
+    if (originError) {
+      return new Response(
+        JSON.stringify({ error: originError }),
+        { status: 403, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin } }
+      )
+    }
+
     const body: RegisterUserRequest = await req.json()
     const {
       email,
@@ -133,21 +161,21 @@ serve(async (req) => {
     if (!email || !password) {
       return new Response(
         JSON.stringify({ error: 'Email and password required' }),
-        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin } }
       )
     }
 
     if (!scooter_serial) {
       return new Response(
         JSON.stringify({ error: 'Scooter serial required for user registration' }),
-        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin } }
       )
     }
 
     if (password.length < 8) {
       return new Response(
         JSON.stringify({ error: 'Password must be at least 8 characters' }),
-        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin } }
       )
     }
 
@@ -165,7 +193,7 @@ serve(async (req) => {
     if (existingUser) {
       return new Response(
         JSON.stringify({ error: 'Email already registered' }),
-        { status: 409, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+        { status: 409, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin } }
       )
     }
 
@@ -186,7 +214,7 @@ serve(async (req) => {
         // Scooter must be scanned by a distributor before a user can register it
         return new Response(
           JSON.stringify({ error: 'Scooter not found. The scooter must be scanned by a distributor before registration.' }),
-          { status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+          { status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin } }
         )
       }
     }
@@ -211,7 +239,7 @@ serve(async (req) => {
         home_country: home_country || null,
         current_country: current_country || null,
         roles: ['customer'],
-        user_level: 'user',
+        user_level: 'normal',
         registration_type: 'user',
         is_verified: false,
         verification_token: verificationToken,
@@ -224,7 +252,7 @@ serve(async (req) => {
       console.error('Insert error:', insertError)
       return new Response(
         JSON.stringify({ error: 'Failed to create user' }),
-        { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+        { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin } }
       )
     }
 
@@ -261,14 +289,14 @@ serve(async (req) => {
         user_id: newUser.id,
         email_sent: emailSent
       }),
-      { status: 201, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      { status: 201, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin } }
     )
 
   } catch (error) {
     console.error('Registration error:', error)
     return new Response(
       JSON.stringify({ error: error.message || 'Registration failed' }),
-      { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin } }
     )
   }
 })

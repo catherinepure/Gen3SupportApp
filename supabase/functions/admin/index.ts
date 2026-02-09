@@ -1,17 +1,19 @@
 // Supabase Edge Function: Admin API
 // Deploy with: supabase functions deploy admin
 //
-// Single endpoint for all admin operations. Requires manufacturer_admin role.
+// Single endpoint for all admin operations. Requires admin or manager role.
 // Used by the web admin dashboard (static SPA hosted on shared hosting).
 //
 // Auth: session_token in request body (same as other Edge Functions)
 // All requests are POST with JSON body: { session_token, resource, action, ...params }
 //
+// User levels: admin (global), manager (territory-scoped), normal (no admin access)
+//
 // Resources & Actions:
-//   users:        list, get, update, deactivate, export, search
+//   users:        list, get, create, update, deactivate, export, search
 //   scooters:     list, get, create, update, link-user, unlink-user, export
-//   distributors: list, get, create, update, regenerate-code, export
-//   workshops:    list, get, create, update, regenerate-code, export
+//   distributors: list, get, create, update, export
+//   workshops:    list, get, create, update, export
 //   firmware:     list, get, create, update, deactivate, reactivate, export
 //   service-jobs: list, get, create, update, cancel, export
 //   telemetry:    list, get, health-check, export
@@ -27,11 +29,45 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // Use bcrypt from esm.sh for better Deno Deploy compatibility
 import bcrypt from 'https://esm.sh/bcryptjs@2.4.3'
 
+// ============================================================================
+// Origin Validation
+// ============================================================================
+
+// Allowed origins: set ALLOWED_ORIGINS env var as comma-separated list.
+// If not set, allows all origins (development mode).
+const ALLOWED_ORIGINS: string[] = (() => {
+  const env = Deno.env.get('ALLOWED_ORIGINS')
+  if (env) return env.split(',').map(o => o.trim()).filter(Boolean)
+  return []  // empty = allow all (dev mode)
+})()
+
+function validateOrigin(req: Request): string | null {
+  const origin = req.headers.get('Origin') || req.headers.get('Referer')
+
+  // If no allowed origins configured, permit all (dev mode)
+  if (ALLOWED_ORIGINS.length === 0) return null
+
+  if (!origin) {
+    // Allow requests with no Origin header (e.g. server-to-server, mobile apps)
+    return null
+  }
+
+  // Check if origin matches any allowed origin
+  const originUrl = origin.replace(/\/$/, '')  // strip trailing slash
+  for (const allowed of ALLOWED_ORIGINS) {
+    if (originUrl === allowed.replace(/\/$/, '')) return null
+    // Also match if the Referer starts with an allowed origin
+    if (origin.startsWith(allowed.replace(/\/$/, ''))) return null
+  }
+
+  return `Origin '${origin}' is not allowed`
+}
+
 const corsHeaders = {
   'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS[0] : '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, X-Session-Token',
 }
 
 function respond(body: object, status = 200) {
@@ -43,43 +79,69 @@ function errorResponse(msg: string, status = 400) {
 }
 
 // ============================================================================
-// Activation Code Utilities
+// Rate Limiting (in-memory, per-token sliding window)
+// ============================================================================
+
+interface RateLimitEntry {
+  timestamps: number[]
+}
+
+const RATE_LIMIT_WINDOW_MS = 60_000  // 1 minute window
+const RATE_LIMIT_MAX_REQUESTS = 120  // 120 requests per minute per token
+const rateLimitMap = new Map<string, RateLimitEntry>()
+
+// Clean up stale entries every 5 minutes
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, entry] of rateLimitMap) {
+    entry.timestamps = entry.timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS)
+    if (entry.timestamps.length === 0) {
+      rateLimitMap.delete(key)
+    }
+  }
+}, 300_000)
+
+function checkRateLimit(key: string): { allowed: boolean; remaining: number; retryAfterMs?: number } {
+  const now = Date.now()
+  let entry = rateLimitMap.get(key)
+
+  if (!entry) {
+    entry = { timestamps: [] }
+    rateLimitMap.set(key, entry)
+  }
+
+  // Remove timestamps outside the window
+  entry.timestamps = entry.timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS)
+
+  if (entry.timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+    const oldestInWindow = entry.timestamps[0]
+    const retryAfterMs = RATE_LIMIT_WINDOW_MS - (now - oldestInWindow)
+    return { allowed: false, remaining: 0, retryAfterMs }
+  }
+
+  entry.timestamps.push(now)
+  return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - entry.timestamps.length }
+}
+
+// ============================================================================
+// Password Hashing Utilities
 // ============================================================================
 
 /**
- * Generate a secure activation code with specified prefix
- * @param prefix 'PURE' for distributors, 'WORK' for workshops
- * @returns Activation code in format PREFIX-XXXX-XXXX
+ * Hash a password using bcrypt
  */
-function generateActivationCode(prefix: 'PURE' | 'WORK'): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-  const randomBytes = crypto.getRandomValues(new Uint8Array(8))
-  const part1 = Array.from(randomBytes.slice(0, 4))
-    .map(b => chars[b % chars.length]).join('')
-  const part2 = Array.from(randomBytes.slice(4, 8))
-    .map(b => chars[b % chars.length]).join('')
-  return `${prefix}-${part1}-${part2}`
-}
-
-/**
- * Hash an activation code using bcrypt
- * @param code Plaintext activation code
- * @returns Bcrypt hash
- */
-async function hashActivationCode(code: string): Promise<string> {
+async function hashPassword(password: string): Promise<string> {
   const salt = await bcrypt.genSalt(10)
-  const hashed = await bcrypt.hash(code.toUpperCase(), salt)
-  return hashed
+  return await bcrypt.hash(password, salt)
 }
 
 /**
- * Verify activation code against hash
- * @param code Plaintext code to verify
- * @param hash Stored bcrypt hash
- * @returns True if code matches hash
+ * Generate a random temporary password
  */
-async function verifyActivationCode(code: string, hashValue: string): Promise<boolean> {
-  return await bcrypt.compare(code.toUpperCase(), hashValue)
+function generateTempPassword(): string {
+  const array = new Uint8Array(16)
+  crypto.getRandomValues(array)
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
 async function authenticateAdmin(supabase: any, sessionToken: string) {
@@ -101,32 +163,27 @@ async function authenticateAdmin(supabase: any, sessionToken: string) {
 
   if (!user || !user.is_active) return null
 
-  // Check admin role - support all admin-level roles
+  // Check access level - admin and manager can access the admin panel
+  // Also support legacy roles for backward compatibility during migration
   const roles: string[] = user.roles || []
-  const isManufacturerAdmin = roles.includes('manufacturer_admin') || user.user_level === 'admin'
-  const isDistributorStaff = roles.includes('distributor_staff')
-  const isWorkshopStaff = roles.includes('workshop_staff')
+  const isAdmin = user.user_level === 'admin' || roles.includes('manufacturer_admin')
+  const isManager = user.user_level === 'manager' || roles.includes('distributor_staff') || roles.includes('workshop_staff')
 
-  if (!isManufacturerAdmin && !isDistributorStaff && !isWorkshopStaff) {
-    return null  // Not an admin-level role
+  if (!isAdmin && !isManager) {
+    return null  // normal users cannot access admin panel
   }
 
-  // Determine territory based on role (pick most privileged if multiple)
+  // Determine territory based on level and assignments
   let adminRole: 'manufacturer_admin' | 'distributor_staff' | 'workshop_staff'
   let allowedCountries: string[] = []
 
-  if (isManufacturerAdmin) {
-    // Manufacturer admin: global access (no country filter)
+  if (isAdmin) {
+    // Admin: global access (no country filter)
     adminRole = 'manufacturer_admin'
     allowedCountries = []
-  } else if (isDistributorStaff) {
-    // Distributor staff: scoped to their distributor's countries
+  } else if (user.distributor_id) {
+    // Manager with distributor assignment: scoped to distributor's countries
     adminRole = 'distributor_staff'
-
-    if (!user.distributor_id) {
-      console.error('User has distributor_staff role but no distributor_id:', user.id)
-      return null  // Misconfigured account
-    }
 
     const { data: distributor } = await supabase
       .from('distributors')
@@ -137,14 +194,9 @@ async function authenticateAdmin(supabase: any, sessionToken: string) {
     if (distributor) {
       allowedCountries = distributor.countries || []
     }
-  } else if (isWorkshopStaff) {
-    // Workshop staff: scoped to workshop territory
+  } else if (user.workshop_id) {
+    // Manager with workshop assignment: scoped to workshop territory
     adminRole = 'workshop_staff'
-
-    if (!user.workshop_id) {
-      console.error('User has workshop_staff role but no workshop_id:', user.id)
-      return null  // Misconfigured account
-    }
 
     const { data: workshop } = await supabase
       .from('workshops')
@@ -154,13 +206,15 @@ async function authenticateAdmin(supabase: any, sessionToken: string) {
 
     if (workshop) {
       if (workshop.parent_distributor_id && workshop.distributors) {
-        // Linked to distributor: inherit distributor's territory
         allowedCountries = workshop.distributors.countries || []
       } else {
-        // Independent workshop: use own service area
         allowedCountries = workshop.service_area_countries || []
       }
     }
+  } else {
+    // Manager without assignment - treat as admin for now (shouldn't happen)
+    adminRole = 'manufacturer_admin'
+    allowedCountries = []
   }
 
   // Update last activity
@@ -352,6 +406,88 @@ async function handleUsers(supabase: any, action: string, body: any, admin: any)
       .limit(10)
 
     return respond({ user: data, scooters: scooters || [], sessions: sessions || [] })
+  }
+
+  if (action === 'create') {
+    // Admin-managed user creation
+    // Permission: admin can create any level, manager can create normal users only
+    if (!body.email) return errorResponse('Email is required')
+
+    const newUserLevel = body.user_level || 'normal'
+
+    // Enforce permission hierarchy
+    if (admin.territory.role !== 'manufacturer_admin') {
+      // Managers can only create normal users
+      if (newUserLevel !== 'normal') {
+        return errorResponse('Managers can only create normal-level users')
+      }
+    }
+
+    // Validate user_level
+    if (!['admin', 'manager', 'normal'].includes(newUserLevel)) {
+      return errorResponse('user_level must be admin, manager, or normal')
+    }
+
+    // Check if email already exists
+    const { data: existing } = await supabase.from('users')
+      .select('id').eq('email', body.email.toLowerCase()).single()
+    if (existing) return errorResponse('Email already registered', 409)
+
+    // Generate a temporary password and hash it with bcrypt
+    const tempPassword = generateTempPassword()
+    const passwordHash = await hashPassword(tempPassword)
+
+    const newUser: Record<string, any> = {
+      email: body.email.toLowerCase(),
+      password_hash: passwordHash,
+      first_name: body.first_name || null,
+      last_name: body.last_name || null,
+      user_level: newUserLevel,
+      roles: body.roles || [],
+      distributor_id: body.distributor_id || null,
+      workshop_id: body.workshop_id || null,
+      home_country: body.home_country || null,
+      current_country: body.current_country || null,
+      is_active: true,
+      is_verified: true,  // Admin-created users are pre-verified
+      created_by: admin.user.id,
+    }
+
+    const { data: created, error: createError } = await supabase.from('users')
+      .insert(newUser).select(selectFields).single()
+    if (createError) return errorResponse(createError.message, 500)
+
+    // Trigger password reset email so the user can set their own password
+    const resetToken = crypto.randomUUID()
+    const expiresAt = new Date()
+    expiresAt.setHours(expiresAt.getHours() + 72) // 72 hours for new accounts
+
+    await supabase.from('password_reset_tokens').insert({
+      user_id: created.id,
+      token: resetToken,
+      reset_token: resetToken,
+      expires_at: expiresAt.toISOString(),
+      used: false
+    })
+
+    // Log the event
+    await supabase.from('activity_events').insert({
+      event_type: 'user_created_by_admin',
+      user_id: created.id,
+      payload: {
+        created_by: admin.user.id,
+        created_by_email: admin.user.email,
+        user_level: newUserLevel
+      },
+      timestamp: new Date().toISOString()
+    })
+
+    return respond({
+      success: true,
+      user: created,
+      password_reset_token: resetToken,
+      message: 'User created. A password reset link should be sent to let them set their password.'
+    }, 201)
   }
 
   if (action === 'update') {
@@ -581,21 +717,9 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
   if (action === 'create') {
     if (!body.name) return errorResponse('Distributor name required')
 
-    // Generate activation code (stored as both hash and plaintext for admin viewing)
-    const code = generateActivationCode('PURE')
-    const codeHash = await hashActivationCode(code)
-
-    // Set expiry (default 90 days)
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 90)
-
     const { data, error } = await supabase.from('distributors')
       .insert({
         name: body.name,
-        activation_code_hash: codeHash,
-        activation_code_plaintext: code,  // Store for admin viewing
-        activation_code_expires_at: expiresAt.toISOString(),
-        activation_code_created_at: new Date().toISOString(),
         countries: body.countries || [],
         phone: body.phone || null,
         email: body.email || null,
@@ -604,12 +728,7 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
 
     if (error) return errorResponse(error.message, 500)
 
-    // Return plaintext code in response
-    return respond({
-      success: true,
-      distributor: data,
-      activation_code: code
-    }, 201)
+    return respond({ success: true, distributor: data }, 201)
   }
 
   if (action === 'update') {
@@ -623,36 +742,6 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
       .update(updates).eq('id', body.id).select().single()
     if (error) return errorResponse(error.message, 500)
     return respond({ success: true, distributor: data })
-  }
-
-  if (action === 'regenerate-code') {
-    if (!body.id) return errorResponse('Distributor ID required')
-
-    // Generate new code
-    const code = generateActivationCode('PURE')
-    const codeHash = await hashActivationCode(code)
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 90)
-
-    const { data, error } = await supabase.from('distributors')
-      .update({
-        activation_code_hash: codeHash,
-        activation_code_plaintext: code,  // Store for admin viewing
-        activation_code_expires_at: expiresAt.toISOString(),
-        activation_code_created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', body.id)
-      .select().single()
-
-    if (error) return errorResponse(error.message, 500)
-
-    // Return plaintext code in response
-    return respond({
-      success: true,
-      distributor: data,
-      activation_code: code
-    }, 200)
   }
 
   if (action === 'export') {
@@ -715,21 +804,9 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
   if (action === 'create') {
     if (!body.name) return errorResponse('Workshop name required')
 
-    // Generate activation code (stored as both hash and plaintext for admin viewing)
-    const code = generateActivationCode('WORK')
-    const codeHash = await hashActivationCode(code)
-
-    // Set expiry (default 90 days)
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 90)
-
     const { data, error } = await supabase.from('workshops')
       .insert({
         name: body.name,
-        activation_code_hash: codeHash,
-        activation_code_plaintext: code,  // Store for admin viewing
-        activation_code_expires_at: expiresAt.toISOString(),
-        activation_code_created_at: new Date().toISOString(),
         phone: body.phone || null,
         email: body.email || null,
         parent_distributor_id: body.parent_distributor_id || null,
@@ -739,12 +816,7 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
 
     if (error) return errorResponse(error.message, 500)
 
-    // Return plaintext code in response
-    return respond({
-      success: true,
-      workshop: data,
-      activation_code: code
-    }, 201)
+    return respond({ success: true, workshop: data }, 201)
   }
 
   if (action === 'update') {
@@ -759,36 +831,6 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
       .update(updates).eq('id', body.id).select().single()
     if (error) return errorResponse(error.message, 500)
     return respond({ success: true, workshop: data })
-  }
-
-  if (action === 'regenerate-code') {
-    if (!body.id) return errorResponse('Workshop ID required')
-
-    // Generate new code
-    const code = generateActivationCode('WORK')
-    const codeHash = await hashActivationCode(code)
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 90)
-
-    const { data, error } = await supabase.from('workshops')
-      .update({
-        activation_code_hash: codeHash,
-        activation_code_plaintext: code,  // Store for admin viewing
-        activation_code_expires_at: expiresAt.toISOString(),
-        activation_code_created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', body.id)
-      .select().single()
-
-    if (error) return errorResponse(error.message, 500)
-
-    // Return plaintext code in response
-    return respond({
-      success: true,
-      workshop: data,
-      activation_code: code
-    }, 200)
   }
 
   if (action === 'export') {
@@ -1523,11 +1565,37 @@ serve(async (req) => {
   }
 
   try {
+    // Validate origin
+    const originError = validateOrigin(req)
+    if (originError) {
+      return errorResponse(originError, 403)
+    }
+
     const body = await req.json()
-    const { session_token, resource, action } = body
+    const { resource, action } = body
 
     if (!resource || !action) {
       return errorResponse('resource and action are required')
+    }
+
+    // Extract session token: prefer X-Session-Token header, fall back to body
+    const headerToken = req.headers.get('X-Session-Token')
+    const session_token = headerToken || body.session_token
+
+    // Rate limit by session token (or by IP-like key if no token yet)
+    const rateLimitKey = session_token || req.headers.get('x-forwarded-for') || 'anonymous'
+    const rateCheck = checkRateLimit(rateLimitKey)
+    if (!rateCheck.allowed) {
+      const retryAfter = Math.ceil((rateCheck.retryAfterMs || 1000) / 1000)
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }), {
+        status: 429,
+        headers: {
+          ...corsHeaders,
+          'Retry-After': String(retryAfter),
+          'X-RateLimit-Limit': String(RATE_LIMIT_MAX_REQUESTS),
+          'X-RateLimit-Remaining': '0',
+        },
+      })
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!

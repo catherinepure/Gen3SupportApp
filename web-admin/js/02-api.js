@@ -35,7 +35,6 @@ const API = (() => {
         }
 
         const body = {
-            session_token: sessionToken,
             resource,
             action,
             ...params,
@@ -47,6 +46,7 @@ const API = (() => {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${CONFIG.anonKey}`,
                 'apikey': CONFIG.anonKey,
+                'X-Session-Token': sessionToken,
             },
             body: JSON.stringify(body),
         });
@@ -85,11 +85,10 @@ const API = (() => {
             throw new Error(data.error || 'Login failed');
         }
 
-        // Check admin role
-        const roles = data.user.roles || [];
-        const isAdmin = roles.includes('manufacturer_admin') || data.user.role === 'admin';
-        if (!isAdmin) {
-            throw new Error('Admin access required. Your role: ' + data.user.role);
+        // Check admin/manager access
+        const userLevel = data.user.role || data.user.user_level;
+        if (userLevel !== 'admin' && userLevel !== 'manager') {
+            throw new Error('Admin or manager access required. Your level: ' + userLevel);
         }
 
         sessionToken = data.session_token;
@@ -129,8 +128,9 @@ const API = (() => {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${CONFIG.anonKey}`,
                     'apikey': CONFIG.anonKey,
+                    'X-Session-Token': sessionToken,
                 },
-                body: JSON.stringify({ session_token: sessionToken }),
+                body: JSON.stringify({}),
             }).catch(() => {});
         }
 

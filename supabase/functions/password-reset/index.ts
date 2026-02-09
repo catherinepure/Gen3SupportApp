@@ -1,11 +1,33 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import bcrypt from 'https://esm.sh/bcryptjs@2.4.3'
 
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY')!
 const FROM_EMAIL = Deno.env.get('SENDGRID_FROM_EMAIL') || 'noreply@pureelectric.com'
 
+// Origin validation
+const ALLOWED_ORIGINS: string[] = (() => {
+  const env = Deno.env.get('ALLOWED_ORIGINS')
+  if (env) return env.split(',').map(o => o.trim()).filter(Boolean)
+  return []
+})()
+
+function validateOrigin(req: Request): string | null {
+  if (ALLOWED_ORIGINS.length === 0) return null
+  const origin = req.headers.get('Origin') || req.headers.get('Referer')
+  if (!origin) return null
+  const originUrl = origin.replace(/\/$/, '')
+  for (const allowed of ALLOWED_ORIGINS) {
+    if (originUrl === allowed.replace(/\/$/, '')) return null
+    if (origin.startsWith(allowed.replace(/\/$/, ''))) return null
+  }
+  return `Origin '${origin}' is not allowed`
+}
+
+const corsOrigin = ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS[0] : '*'
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': corsOrigin,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -67,6 +89,15 @@ serve(async (req) => {
   }
 
   try {
+    // Validate origin
+    const originError = validateOrigin(req)
+    if (originError) {
+      return new Response(
+        JSON.stringify({ error: originError }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const { action, email, token, new_password } = await req.json()
 
     const supabase = createClient(
@@ -248,12 +279,8 @@ serve(async (req) => {
   }
 })
 
-// Hash password using Web Crypto API (same as login Edge Function)
+// Hash password using bcrypt
 async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-  return hashHex
+  const salt = await bcrypt.genSalt(10)
+  return await bcrypt.hash(password, salt)
 }

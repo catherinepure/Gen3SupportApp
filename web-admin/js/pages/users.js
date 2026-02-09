@@ -361,6 +361,94 @@ const UsersPage = (() => {
         }
     }
 
+    // ---- Create User ----
+
+    function createUser() {
+        // Build distributor options from cached list
+        const distributorOptions = [
+            { value: '', label: '-- None --' },
+            ...distributorsList.map(d => ({ value: d.id, label: d.name || d.id }))
+        ];
+
+        // Build workshop options from cached list
+        const workshopOptions = [
+            { value: '', label: '-- None --' },
+            ...workshopsList.map(w => ({ value: w.id, label: w.name || w.id }))
+        ];
+
+        FormComponent.show('Create User', [
+            { name: 'email', label: 'Email *', type: 'email', required: true },
+            { name: 'first_name', label: 'First Name', type: 'text' },
+            { name: 'last_name', label: 'Last Name', type: 'text' },
+            {
+                name: 'user_level',
+                label: 'User Level *',
+                type: 'select',
+                required: true,
+                options: [
+                    { value: 'normal', label: 'Normal' },
+                    { value: 'manager', label: 'Manager' },
+                    { value: 'admin', label: 'Admin' }
+                ]
+            },
+            {
+                name: 'roles',
+                label: 'Roles',
+                type: 'multiselect',
+                value: [],
+                options: ROLE_OPTIONS
+            },
+            {
+                name: 'home_country',
+                label: 'Home Country',
+                type: 'select',
+                options: [{ value: '', label: '-- Select --' }, ...COUNTRY_OPTIONS]
+            },
+            {
+                name: 'distributor_id',
+                label: 'Distributor',
+                type: 'select',
+                options: distributorOptions
+            },
+            {
+                name: 'workshop_id',
+                label: 'Workshop',
+                type: 'select',
+                options: workshopOptions
+            }
+        ], async (formData) => {
+            // Clean up empty strings to null
+            ['distributor_id', 'workshop_id', 'home_country'].forEach(key => {
+                if (formData[key] === '') formData[key] = null;
+            });
+
+            try {
+                const result = await API.call('users', 'create', formData);
+
+                toast('User created successfully', 'success');
+                ModalComponent.close();
+
+                // Show password reset info
+                if (result.password_reset_token) {
+                    const resetUrl = `https://ives.org.uk/app2026?token=${result.password_reset_token}`;
+                    setTimeout(() => {
+                        ModalComponent.show('User Created',
+                            `<div style="text-align: center;">
+                                <p>User <strong>${formData.email}</strong> has been created.</p>
+                                <p style="margin: 15px 0;">They need to set their password using this link:</p>
+                                <p><code style="font-size: 0.9em; background: #f0f0f0; padding: 10px; border-radius: 4px; display: inline-block; word-break: break-all;">${resetUrl}</code></p>
+                                <p class="text-muted" style="margin-top: 15px;">This link expires in 72 hours. You can also trigger a password reset from their user detail page.</p>
+                            </div>`);
+                    }, 300);
+                }
+
+                load(currentFilters);
+            } catch (err) {
+                toast(err.message, 'error');
+            }
+        });
+    }
+
     // ---- Edit Form ----
 
     function editUser(user) {
@@ -385,9 +473,8 @@ const UsersPage = (() => {
                 type: 'select',
                 value: user.user_level,
                 options: [
-                    { value: 'user', label: 'User' },
-                    { value: 'distributor', label: 'Distributor' },
-                    { value: 'maintenance', label: 'Maintenance' },
+                    { value: 'normal', label: 'Normal' },
+                    { value: 'manager', label: 'Manager' },
                     { value: 'admin', label: 'Admin' }
                 ],
                 required: true
@@ -592,6 +679,11 @@ const UsersPage = (() => {
         const roleFilter = $('#users-role-filter');
         if (roleFilter) {
             roleFilter.addEventListener('change', handleRoleFilter);
+        }
+
+        const createBtn = $('#users-create-btn');
+        if (createBtn) {
+            createBtn.addEventListener('click', createUser);
         }
 
         const exportBtn = $('#users-export-btn');

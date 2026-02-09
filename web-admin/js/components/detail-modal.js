@@ -162,54 +162,6 @@ const DetailModal = (() => {
     }
 
     /**
-     * Helper: Render activation code section (common pattern)
-     * @param {Object} entity - Entity with activation code fields
-     * @param {string} entityType - 'distributor' or 'workshop' for messaging
-     * @returns {Object} Section configuration
-     */
-    function activationCodeSection(entity, entityType = 'entity') {
-        let html = '<div class="detail-section"><h4>Activation Code</h4>';
-
-        if (entity.activation_code_plaintext) {
-            // Show plaintext code (only visible to manufacturer_admin)
-            html += '<p><strong>Code:</strong></p>';
-            html += `<p><code style="font-size: 1.4em; background: #e8f5e9; padding: 12px 16px; border-radius: 6px; display: inline-block; font-weight: bold; letter-spacing: 1px;">${entity.activation_code_plaintext}</code></p>`;
-            html += `<p class="text-muted" style="font-size: 0.9em; margin-top: 10px;">Share this code with the ${entityType} for registration.</p>`;
-
-            if (entity.activation_code_created_at) {
-                html += `<p class="text-muted"><strong>Created:</strong> ${formatDate(entity.activation_code_created_at)}</p>`;
-            }
-
-            if (entity.activation_code_expires_at) {
-                const expires = new Date(entity.activation_code_expires_at);
-                const isExpired = expires < new Date();
-                html += `<p class="text-muted"><strong>Expires:</strong> ${formatDate(entity.activation_code_expires_at)} `;
-                if (isExpired) {
-                    html += '<span class="badge badge-danger">Expired - Regenerate Required</span>';
-                } else {
-                    html += '<span class="badge badge-success">Valid</span>';
-                }
-                html += '</p>';
-            }
-        } else if (entity.activation_code_hash) {
-            // Has hash but no plaintext (shouldn't happen with new system)
-            html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-success">Secured</span></p>';
-            html += '<p class="text-muted" style="font-size: 0.9em;">Code was created before plaintext storage. Use "Regenerate Code" button below to create a new one.</p>';
-        } else if (entity.activation_code) {
-            // Legacy plaintext code (old format)
-            html += `<p><strong>Code:</strong> <code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${entity.activation_code}</code></p>`;
-            html += '<p class="text-warning" style="font-size: 0.9em; margin-top: 10px;">⚠️ Legacy format - click "Regenerate Code" below to upgrade</p>';
-        } else {
-            html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-inactive">No Code</span></p>';
-            html += `<p class="text-muted" style="font-size: 0.9em;">Click "Regenerate Code" below to create an activation code.</p>`;
-        }
-
-        html += '</div>';
-
-        return { html };
-    }
-
-    /**
      * Helper: Render address list (common pattern)
      * @param {Array} addresses - Array of address objects
      * @returns {Object} Section configuration
@@ -257,7 +209,6 @@ const DetailModal = (() => {
         renderSection,
         renderField,
         // Helpers for common patterns
-        activationCodeSection,
         addressSection,
         metadataSection
     };

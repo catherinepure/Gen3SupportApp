@@ -16,11 +16,6 @@ const DistributorsPage = (() => {
 
             TableComponent.render('#distributors-content', currentData, [
                 { key: 'name', label: 'Name' },
-                { key: 'activation_code_hash', label: 'Code Status', format: (val, row) => {
-                    if (val) return '<span class="badge badge-success">Encrypted</span>';
-                    if (row.activation_code) return '<span class="badge badge-warning">Legacy</span>';
-                    return '<span class="badge badge-inactive">None</span>';
-                }},
                 { key: 'countries', label: 'Countries', format: (arr) => arr && arr.length > 0 ? arr.join(', ') : 'None' },
                 { key: 'phone', label: 'Phone', format: (val) => val || 'N/A' },
                 { key: 'email', label: 'Email', format: (val) => val || 'N/A' },
@@ -61,8 +56,6 @@ const DistributorsPage = (() => {
                         { label: 'Status', value: d.is_active, type: 'badge-boolean' }
                     ]
                 },
-                // Activation Code (using helper)
-                DetailModal.activationCodeSection(d, 'distributor'),
                 // Territory
                 {
                     title: 'Territory Coverage',
@@ -111,14 +104,6 @@ const DistributorsPage = (() => {
                     onClick: () => {
                         ModalComponent.close();
                         setTimeout(() => editDistributor(d), 100);
-                    }
-                },
-                {
-                    label: 'Regenerate Code',
-                    class: 'btn-warning',
-                    onClick: () => {
-                        ModalComponent.close();
-                        setTimeout(() => regenerateActivationCode(d), 100);
                     }
                 }
             ];
@@ -186,19 +171,6 @@ const DistributorsPage = (() => {
 
                 toast('Distributor created successfully', 'success');
                 ModalComponent.close();
-
-                // Show activation code
-                const activationCode = result.distributor.activation_code;
-                setTimeout(() => {
-                    ModalComponent.show('Activation Code Generated',
-                        `<div style="text-align: center;">
-                            <p>Distributor created successfully!</p>
-                            <p style="margin: 20px 0;"><strong>Activation Code:</strong></p>
-                            <p><code style="font-size: 1.5em; background: #f0f0f0; padding: 15px 20px; border-radius: 4px; display: inline-block;">${activationCode}</code></p>
-                            <p class="text-muted" style="margin-top: 20px;">Save this code - it's needed for distributor registration.</p>
-                        </div>`);
-                }, 300);
-
                 load();
             } catch (err) {
                 toast(err.message, 'error');
@@ -283,30 +255,6 @@ const DistributorsPage = (() => {
                 is_active: true
             });
             toast('Distributor reactivated', 'success');
-            load();
-        } catch (err) {
-            toast(err.message, 'error');
-        }
-    }
-
-    async function regenerateActivationCode(distributor) {
-        if (!confirm(`Generate a new activation code for "${distributor.name}"? The old code will be invalidated immediately.`)) {
-            return;
-        }
-
-        try {
-            const result = await API.call('distributors', 'regenerate-code', { id: distributor.id });
-
-            // Show new code in modal (ONE TIME)
-            ModalComponent.show('New Activation Code Generated',
-                `<div style="text-align: center;">
-                    <p>The new activation code for <strong>${distributor.name}</strong> is:</p>
-                    <p style="margin: 20px 0;"><code style="font-size: 1.8em; background: #fff3cd; padding: 20px 30px; border-radius: 8px; display: inline-block; border: 2px solid #ffc107;">${result.activation_code}</code></p>
-                    <p class="text-danger" style="margin-top: 20px; font-weight: bold;">⚠️ Save this code immediately!</p>
-                    <p class="text-muted">This code cannot be retrieved later and will expire in 90 days.</p>
-                </div>`);
-
-            toast('Activation code regenerated', 'success');
             load();
         } catch (err) {
             toast(err.message, 'error');

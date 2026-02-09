@@ -10,194 +10,63 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:padding="24dp"
+        android:gravity="center_horizontal">
 
         <!-- Header -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Distributor Registration"
+            android:text="Distributor / Workshop Staff"
             android:textSize="24sp"
             android:textStyle="bold"
             android:textColor="@color/primary"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="8dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Register with your activation code"
-            android:textSize="14sp"
-            android:textColor="@color/text_secondary"
-            android:layout_marginBottom="24dp"/>
-
-        <!-- Account Details -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Account Details"
-            android:textStyle="bold"
-            android:textSize="16sp"
+            android:layout_marginTop="48dp"
             android:layout_marginBottom="16dp"/>
 
-        <!-- Email -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:hint="Email *"
-            app:boxBackgroundMode="outline">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etEmail"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textEmailAddress"
-                android:maxLines="1"/>
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- Password -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:hint="Password *"
-            app:boxBackgroundMode="outline"
-            app:endIconMode="password_toggle"
-            app:helperText="Minimum 8 characters">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etPassword"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textPassword"
-                android:maxLines="1"/>
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- Confirm Password -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:hint="Confirm Password *"
-            app:boxBackgroundMode="outline"
-            app:endIconMode="password_toggle">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etConfirmPassword"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textPassword"
-                android:maxLines="1"/>
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- Activation Code -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
-            android:hint="Activation Code *"
-            app:boxBackgroundMode="outline"
-            app:helperText="Enter the activation code provided by your administrator">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etActivationCode"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textCapCharacters"
-                android:maxLines="1"/>
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- Optional Profile Info -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Profile Information (Optional)"
-            android:textStyle="bold"
-            android:textSize="14sp"
-            android:layout_marginBottom="12dp"/>
-
-        <!-- First Name -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            android:hint="First Name"
-            app:boxBackgroundMode="outline">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etFirstName"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textPersonName"
-                android:maxLines="1"/>
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- Last Name -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            android:hint="Last Name"
-            app:boxBackgroundMode="outline">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etLastName"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textPersonName"
-                android:maxLines="1"/>
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- Age Range Spinner -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Age Range"
-            android:textSize="12sp"
+            android:text="Staff accounts are now created by your administrator."
+            android:textSize="16sp"
             android:textColor="@color/text_secondary"
-            android:layout_marginBottom="4dp"/>
+            android:gravity="center"
+            android:layout_marginBottom="24dp"/>
 
-        <Spinner
-            android:id="@+id/spinnerAgeRange"
+        <!-- Info Card -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginBottom="12dp"
-            android:background="@drawable/spinner_background"/>
-
-        <!-- Gender Spinner -->
-        <TextView
-            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Gender"
-            android:textSize="12sp"
-            android:textColor="@color/text_secondary"
-            android:layout_marginBottom="4dp"/>
-
-        <Spinner
-            android:id="@+id/spinnerGender"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:orientation="vertical"
+            android:padding="20dp"
             android:layout_marginBottom="24dp"
-            android:background="@drawable/spinner_background"/>
+            android:background="@drawable/spinner_background">
 
-        <!-- Progress Bar -->
-        <ProgressBar
-            android:id="@+id/progressBar"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_marginVertical="16dp"
-            android:visibility="gone"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="How to get access:"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="12dp"/>
 
-        <!-- Register Button -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1. Ask your distributor or workshop manager to create your account\n\n2. You will receive an email with a link to set your password\n\n3. Once your password is set, return here and log in"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary"
+                android:lineSpacingMultiplier="1.2"/>
+
+        </LinearLayout>
+
+        <!-- Back to Login Button -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnRegister"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:text="Register"
+            android:text="Back to Login"
             android:textSize="16sp"
-            android:layout_marginTop="8dp"
             app:cornerRadius="8dp"/>
 
         <!-- Login Link -->
