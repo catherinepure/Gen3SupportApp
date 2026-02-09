@@ -1,0 +1,161 @@
+================================================================================
+DEPLOYMENT INSTRUCTIONS - Secure Activation Codes
+================================================================================
+
+All code is ready! Just need to deploy to Supabase.
+
+Node version issue: Your Node v18.18.2 is too old for Supabase CLI v2.76.6
+(requires Node v20.17.0+)
+
+SOLUTION: Deploy manually via Supabase Dashboard (20 minutes)
+
+================================================================================
+STEP 1: Apply Database Migration (5 min)
+================================================================================
+
+1. Open: https://supabase.com/dashboard/project/hhpxmlrpdharhhzwjxuc/editor
+
+2. Click "SQL Editor" in left sidebar
+
+3. Copy ALL contents from this file:
+   supabase/migrations/20260209000002_secure_activation_codes.sql
+
+4. Paste into SQL Editor
+
+5. Click "RUN" button (bottom right)
+
+6. Wait for "Success" message
+
+7. Verify by running this query:
+   SELECT column_name FROM information_schema.columns
+   WHERE table_name = 'distributors'
+   AND column_name LIKE 'activation_code%';
+
+   Expected result: 4 rows
+   - activation_code
+   - activation_code_hash
+   - activation_code_expires_at
+   - activation_code_created_at
+
+================================================================================
+STEP 2: Deploy Edge Functions (10 min)
+================================================================================
+
+Go to: https://supabase.com/dashboard/project/hhpxmlrpdharhhzwjxuc/functions
+
+--- Function 1: admin ---
+1. Click "admin" function
+2. Click "Deploy new version" or find the code editor
+3. Replace ALL code with contents from:
+   supabase/functions/admin/index.ts
+4. Deploy/Save
+5. Wait for deployment to complete
+
+--- Function 2: register-distributor ---
+1. Click "register-distributor" function
+2. Click "Deploy new version" or find the code editor
+3. Replace ALL code with contents from:
+   supabase/functions/register-distributor/index.ts
+4. Deploy/Save
+5. Wait for deployment to complete
+
+--- Function 3: register-workshop ---
+1. Click "register-workshop" function
+2. Click "Deploy new version" or find the code editor
+3. Replace ALL code with contents from:
+   supabase/functions/register-workshop/index.ts
+4. Deploy/Save
+5. Wait for deployment to complete
+
+================================================================================
+STEP 3: Upload Web Admin Files (5 min)
+================================================================================
+
+Upload these 3 files to: ives.org.uk/app2026
+
+Changed files:
+- index.html (cache version: v=20260209-3)
+- js/pages/distributors.js (regenerate button added)
+- js/pages/workshops.js (regenerate button added)
+
+Method: Use your FTP client, rsync, or file manager
+
+================================================================================
+STEP 4: Test Deployment (2 min)
+================================================================================
+
+1. Go to: https://ives.org.uk/app2026
+
+2. Login with admin credentials
+
+3. Go to "Distributors" page
+
+4. Click "Create Distributor"
+   - Name: "Test Distributor"
+   - Countries: GB
+   - Click Create
+
+5. ✅ EXPECTED: Modal shows activation code (e.g., PURE-XXXX-XXXX)
+   Copy this code!
+
+6. Close modal, refresh page
+
+7. Click on "Test Distributor"
+
+8. ✅ EXPECTED: Shows "Encrypted" instead of plaintext code
+
+9. Click "Regenerate Code" button
+
+10. ✅ EXPECTED: New code shown in modal
+
+11. DONE! Deployment successful ✅
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Issue: "bcrypt not found" in Edge Function logs
+Fix: Wait 30 seconds. Deno auto-installs on first use.
+
+Issue: Web admin shows old version
+Fix: Hard refresh browser (Ctrl+Shift+R or Cmd+Shift+R)
+
+Issue: Migration says "column already exists"
+Fix: Safe to ignore. Migration is idempotent.
+
+================================================================================
+FILES READY FOR DEPLOYMENT
+================================================================================
+
+✅ supabase/migrations/20260209000002_secure_activation_codes.sql
+✅ supabase/functions/admin/index.ts
+✅ supabase/functions/register-distributor/index.ts
+✅ supabase/functions/register-workshop/index.ts
+✅ web-admin/index.html
+✅ web-admin/js/pages/distributors.js
+✅ web-admin/js/pages/workshops.js
+
+All committed to git:
+- Commit a5b7bc9: Session 11 summary
+- Commit 3e520f9: Deployment guides
+- Commit 74ab185: Secure activation codes
+
+================================================================================
+AFTER DEPLOYMENT
+================================================================================
+
+See DEPLOYMENT.md for:
+- 5 detailed test scenarios
+- Monitoring queries
+- Migration timeline (3 weeks)
+- Rollback plan
+
+Next steps:
+1. Test thoroughly
+2. Regenerate all existing activation codes
+3. Monitor registration success rate
+
+Total deployment time: ~20 minutes
+Risk level: Low (backward compatible)
+
+================================================================================
