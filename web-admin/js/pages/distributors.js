@@ -63,9 +63,11 @@ const DistributorsPage = (() => {
             // Activation Code
             html += '<div class="detail-section">';
             html += '<h4>Activation Code</h4>';
-            if (d.activation_code_hash) {
-                html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-success">Secured</span></p>';
-                html += '<p class="text-muted" style="font-size: 0.9em;">Activation code is encrypted for security. Use "Regenerate Code" button below to create a new one.</p>';
+            if (d.activation_code_plaintext) {
+                // Show plaintext code (only visible to manufacturer_admin)
+                html += '<p><strong>Code:</strong></p>';
+                html += `<p><code style="font-size: 1.4em; background: #e8f5e9; padding: 12px 16px; border-radius: 6px; display: inline-block; font-weight: bold; letter-spacing: 1px;">${d.activation_code_plaintext}</code></p>`;
+                html += '<p class="text-muted" style="font-size: 0.9em; margin-top: 10px;">Share this code with the distributor for registration.</p>';
                 if (d.activation_code_created_at) {
                     html += `<p class="text-muted"><strong>Created:</strong> ${formatDate(d.activation_code_created_at)}</p>`;
                 }
@@ -80,10 +82,14 @@ const DistributorsPage = (() => {
                     }
                     html += '</p>';
                 }
+            } else if (d.activation_code_hash) {
+                // Has hash but no plaintext (shouldn't happen with new system)
+                html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-success">Secured</span></p>';
+                html += '<p class="text-muted" style="font-size: 0.9em;">Code was created before plaintext storage. Use "Regenerate Code" button below to create a new one.</p>';
             } else if (d.activation_code) {
-                // Legacy plaintext code (during migration)
+                // Legacy plaintext code (old format)
                 html += `<p><strong>Code:</strong> <code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${d.activation_code}</code></p>`;
-                html += '<p class="text-warning" style="font-size: 0.9em; margin-top: 10px;">⚠️ Legacy plaintext code - click "Regenerate Code" below for enhanced security</p>';
+                html += '<p class="text-warning" style="font-size: 0.9em; margin-top: 10px;">⚠️ Legacy format - click "Regenerate Code" below to upgrade</p>';
             } else {
                 html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-inactive">No Code</span></p>';
                 html += '<p class="text-muted" style="font-size: 0.9em;">Click "Regenerate Code" below to create an activation code.</p>';

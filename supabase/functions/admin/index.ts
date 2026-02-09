@@ -24,7 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts"
+import { hash, compare, genSalt } from "https://deno.land/x/bcrypt@v0.4.1/mod.ts"
 
 const corsHeaders = {
   'Content-Type': 'application/json',
@@ -66,9 +66,9 @@ function generateActivationCode(prefix: 'PURE' | 'WORK'): string {
  * @returns Bcrypt hash
  */
 async function hashActivationCode(code: string): Promise<string> {
-  const salt = await bcrypt.genSalt(10)
-  const hash = await bcrypt.hash(code.toUpperCase(), salt)
-  return hash
+  const salt = await genSalt(10)
+  const hashed = await hash(code.toUpperCase(), salt)
+  return hashed
 }
 
 /**
@@ -77,8 +77,8 @@ async function hashActivationCode(code: string): Promise<string> {
  * @param hash Stored bcrypt hash
  * @returns True if code matches hash
  */
-async function verifyActivationCode(code: string, hash: string): Promise<boolean> {
-  return await bcrypt.compare(code.toUpperCase(), hash)
+async function verifyActivationCode(code: string, hashValue: string): Promise<boolean> {
+  return await compare(code.toUpperCase(), hashValue)
 }
 
 async function authenticateAdmin(supabase: any, sessionToken: string) {
@@ -580,7 +580,7 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
   if (action === 'create') {
     if (!body.name) return errorResponse('Distributor name required')
 
-    // Generate activation code (NOT stored as plaintext)
+    // Generate activation code (stored as both hash and plaintext for admin viewing)
     const code = generateActivationCode('PURE')
     const codeHash = await hashActivationCode(code)
 
@@ -592,6 +592,7 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
       .insert({
         name: body.name,
         activation_code_hash: codeHash,
+        activation_code_plaintext: code,  // Store for admin viewing
         activation_code_expires_at: expiresAt.toISOString(),
         activation_code_created_at: new Date().toISOString(),
         countries: body.countries || [],
@@ -602,11 +603,11 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
 
     if (error) return errorResponse(error.message, 500)
 
-    // Return plaintext code ONLY in response (not stored)
+    // Return plaintext code in response
     return respond({
       success: true,
       distributor: data,
-      activation_code: code  // ONE-TIME display
+      activation_code: code
     }, 201)
   }
 
@@ -635,6 +636,7 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
     const { data, error } = await supabase.from('distributors')
       .update({
         activation_code_hash: codeHash,
+        activation_code_plaintext: code,  // Store for admin viewing
         activation_code_expires_at: expiresAt.toISOString(),
         activation_code_created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -644,11 +646,11 @@ async function handleDistributors(supabase: any, action: string, body: any, admi
 
     if (error) return errorResponse(error.message, 500)
 
-    // Return plaintext code ONLY in response (not stored)
+    // Return plaintext code in response
     return respond({
       success: true,
       distributor: data,
-      activation_code: code  // ONE-TIME display
+      activation_code: code
     }, 200)
   }
 
@@ -712,7 +714,7 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
   if (action === 'create') {
     if (!body.name) return errorResponse('Workshop name required')
 
-    // Generate activation code (NOT stored as plaintext)
+    // Generate activation code (stored as both hash and plaintext for admin viewing)
     const code = generateActivationCode('WORK')
     const codeHash = await hashActivationCode(code)
 
@@ -724,6 +726,7 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
       .insert({
         name: body.name,
         activation_code_hash: codeHash,
+        activation_code_plaintext: code,  // Store for admin viewing
         activation_code_expires_at: expiresAt.toISOString(),
         activation_code_created_at: new Date().toISOString(),
         phone: body.phone || null,
@@ -735,11 +738,11 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
 
     if (error) return errorResponse(error.message, 500)
 
-    // Return plaintext code ONLY in response (not stored)
+    // Return plaintext code in response
     return respond({
       success: true,
       workshop: data,
-      activation_code: code  // ONE-TIME display
+      activation_code: code
     }, 201)
   }
 
@@ -769,6 +772,7 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
     const { data, error } = await supabase.from('workshops')
       .update({
         activation_code_hash: codeHash,
+        activation_code_plaintext: code,  // Store for admin viewing
         activation_code_expires_at: expiresAt.toISOString(),
         activation_code_created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -778,11 +782,11 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
 
     if (error) return errorResponse(error.message, 500)
 
-    // Return plaintext code ONLY in response (not stored)
+    // Return plaintext code in response
     return respond({
       success: true,
       workshop: data,
-      activation_code: code  // ONE-TIME display
+      activation_code: code
     }, 200)
   }
 
