@@ -146,6 +146,26 @@
                     <h2>Scooters</h2>
                     <div class="page-actions">
                         <input type="text" id="scooters-search" placeholder="Search scooters..." class="search-input">
+                        <select id="scooters-status-filter" class="filter-select">
+                            <option value="">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="in_service">In Service</option>
+                            <option value="stolen">Stolen</option>
+                            <option value="decommissioned">Decommissioned</option>
+                        </select>
+                        <select id="scooters-country-filter" class="filter-select">
+                            <option value="">All Countries</option>
+                            <option value="GB">GB</option>
+                            <option value="DE">DE</option>
+                            <option value="FR">FR</option>
+                            <option value="IT">IT</option>
+                            <option value="ES">ES</option>
+                            <option value="NL">NL</option>
+                            <option value="BE">BE</option>
+                            <option value="AT">AT</option>
+                            <option value="CH">CH</option>
+                            <option value="US">US</option>
+                        </select>
                         <button class="btn btn-secondary" id="scooters-export-btn">Export CSV</button>
                     </div>
                 </div>
