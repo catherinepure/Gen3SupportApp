@@ -123,7 +123,39 @@ const DistributorsPage = (() => {
 
             html += '</div>';
 
-            ModalComponent.show('Distributor Detail', html);
+            // Add action buttons
+            const actions = [
+                {
+                    label: 'Edit Distributor',
+                    class: 'btn-primary',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => editDistributor(d), 100);
+                    }
+                }
+            ];
+
+            if (d.is_active) {
+                actions.push({
+                    label: 'Deactivate',
+                    class: 'btn-danger',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => deactivateDistributor(d), 100);
+                    }
+                });
+            } else {
+                actions.push({
+                    label: 'Reactivate',
+                    class: 'btn-success',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => reactivateDistributor(d), 100);
+                    }
+                });
+            }
+
+            ModalComponent.show('Distributor Detail', html, actions);
         } catch (err) {
             toast(err.message, 'error');
         }

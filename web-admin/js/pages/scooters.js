@@ -143,9 +143,101 @@ const ScootersPage = (() => {
 
             html += '</div>';
 
-            ModalComponent.show(`Scooter: ${fullScooter.serial_number}`, html);
+            // Add action buttons
+            const actions = [
+                {
+                    label: 'Edit Scooter',
+                    class: 'btn-primary',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => editScooter(fullScooter), 100);
+                    }
+                }
+            ];
+
+            if (fullScooter.status !== 'decommissioned') {
+                actions.push({
+                    label: 'Decommission',
+                    class: 'btn-danger',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => changeScooterStatus(fullScooter, 'decommissioned'), 100);
+                    }
+                });
+            }
+
+            ModalComponent.show(`Scooter: ${fullScooter.serial_number}`, html, actions);
         } catch (err) {
             toast('Failed to load scooter details', 'error');
+        }
+    }
+
+    function editScooter(scooter) {
+        const statusOptions = [
+            { value: 'active', label: 'Active' },
+            { value: 'in_service', label: 'In Service' },
+            { value: 'stolen', label: 'Stolen' },
+            { value: 'decommissioned', label: 'Decommissioned' }
+        ];
+
+        const fields = [
+            {
+                name: 'status',
+                label: 'Status',
+                type: 'select',
+                value: scooter.status,
+                options: statusOptions
+            },
+            {
+                name: 'model',
+                label: 'Model',
+                type: 'text',
+                value: scooter.model || ''
+            },
+            {
+                name: 'firmware_version',
+                label: 'Firmware Version',
+                type: 'text',
+                value: scooter.firmware_version || ''
+            },
+            {
+                name: 'country_of_registration',
+                label: 'Country of Registration',
+                type: 'text',
+                value: scooter.country_of_registration || '',
+                placeholder: 'US, GB, etc.'
+            }
+        ];
+
+        FormComponent.show('Edit Scooter', fields, async (formData) => {
+            try {
+                await API.call('scooters', 'update', {
+                    id: scooter.id,
+                    ...formData
+                });
+                toast('Scooter updated successfully', 'success');
+                ModalComponent.close();
+                await load(currentFilters);
+            } catch (err) {
+                toast(err.message, 'error');
+            }
+        });
+    }
+
+    async function changeScooterStatus(scooter, newStatus) {
+        if (!confirm(`Are you sure you want to change this scooter's status to "${newStatus}"?`)) {
+            return;
+        }
+
+        try {
+            await API.call('scooters', 'update', {
+                id: scooter.id,
+                status: newStatus
+            });
+            toast(`Scooter status changed to ${newStatus}`, 'success');
+            await load(currentFilters);
+        } catch (err) {
+            toast(err.message, 'error');
         }
     }
 

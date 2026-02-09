@@ -271,7 +271,39 @@ const UsersPage = (() => {
 
             html += '</div>';
 
-            ModalComponent.show(`User: ${fullUser.email}`, html);
+            // Add action buttons
+            const actions = [
+                {
+                    label: 'Edit User',
+                    class: 'btn-primary',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => editUser(fullUser), 100);
+                    }
+                }
+            ];
+
+            if (fullUser.is_active) {
+                actions.push({
+                    label: 'Deactivate',
+                    class: 'btn-danger',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => deactivateUser(fullUser), 100);
+                    }
+                });
+            } else {
+                actions.push({
+                    label: 'Reactivate',
+                    class: 'btn-success',
+                    onClick: () => {
+                        ModalComponent.close();
+                        setTimeout(() => reactivateUser(fullUser), 100);
+                    }
+                });
+            }
+
+            ModalComponent.show(`User: ${fullUser.email}`, html, actions);
 
         } catch (err) {
             ModalComponent.show(`User: ${user.email}`, `<p class="error-msg">${err.message}</p>`);
