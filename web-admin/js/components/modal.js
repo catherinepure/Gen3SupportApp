@@ -6,10 +6,11 @@
 const ModalComponent = (() => {
     const { $ } = Utils;
 
-    function show(title, content, options = {}) {
+    function show(title, content, actions) {
         const modal = $('#detail-modal');
         const modalTitle = $('#modal-title');
         const modalBody = $('#modal-body');
+        const modalFooter = modal?.querySelector('.modal-footer');
 
         if (!modal || !modalTitle || !modalBody) {
             console.error('Modal elements not found');
@@ -19,18 +20,31 @@ const ModalComponent = (() => {
         modalTitle.textContent = title;
         modalBody.innerHTML = content;
 
+        // Clear and render action buttons if provided
+        if (modalFooter) {
+            // Clear existing buttons except close button
+            modalFooter.innerHTML = '';
+
+            // Add action buttons if provided
+            if (actions && Array.isArray(actions) && actions.length > 0) {
+                actions.forEach(action => {
+                    const btn = document.createElement('button');
+                    btn.className = `btn btn-sm ${action.class || 'btn-primary'}`;
+                    btn.textContent = action.label;
+                    btn.addEventListener('click', action.onClick);
+                    modalFooter.appendChild(btn);
+                });
+            }
+
+            // Always add close button last
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'btn btn-sm btn-outline';
+            closeBtn.textContent = 'Close';
+            closeBtn.addEventListener('click', hide);
+            modalFooter.appendChild(closeBtn);
+        }
+
         modal.classList.remove('hidden');
-
-        // Handle custom buttons if provided
-        if (options.buttons) {
-            renderButtons(options.buttons);
-        }
-
-        // Handle close callback
-        if (options.onClose) {
-            modal.dataset.onClose = 'custom';
-            modal._customCloseCallback = options.onClose;
-        }
     }
 
     function hide() {
@@ -109,6 +123,7 @@ const ModalComponent = (() => {
     return {
         show,
         hide,
+        close: hide,  // Alias for consistency
         confirm,
         init
     };
