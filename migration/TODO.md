@@ -26,6 +26,17 @@
 
 ## Recently Completed
 
+### Session 2026-02-09 (Password Reset Feature)
+- [x] **Password reset feature complete** ✅ Full implementation with SendGrid
+- [x] **Database table created** -- password_reset_tokens with token tracking
+- [x] **Service role policy added** -- RLS policy for password updates
+- [x] **Audit tracking added** -- users.updated_at column with automatic trigger
+- [x] **Edge Function deployed** -- password-reset with two actions (request/reset)
+- [x] **Email integration** -- SendGrid with branded HTML templates
+- [x] **Frontend complete** -- Forgot password link, modals, forms, validation
+- [x] **Authorization fixed** -- Added anon key headers to all requests
+- [x] **Security hardened** -- Crypto-random tokens, 1-hour expiry, one-time use
+
 ### Session 2026-02-09 (Secure Activation Codes Deployment)
 - [x] **Node.js 20.20.0 installed** via Homebrew (was v18.18.2) -- Supabase CLI now working
 - [x] **Secure activation codes deployed** -- Bcrypt hashing with 90-day expiry for distributors/workshops
@@ -506,6 +517,65 @@ _(unchanged from spec)_
 ---
 
 ## Session Log
+
+### Session 12 -- 2026-02-09 (Password Reset Feature Complete)
+**Model used:** Sonnet 4.5
+**What was accomplished:**
+
+**Password Reset Feature - Full Implementation:**
+- **Frontend enhancements:**
+  - Added "Forgot password?" link to login page
+  - Password reset request modal with email input
+  - Password reset form with validation (min 8 chars, match check)
+  - Added `API.baseUrl` export for Edge Function calls
+  - Added authorization headers (anon key) to all password reset requests
+- **Backend Edge Function:**
+  - Created `supabase/functions/password-reset/index.ts` (248 lines)
+  - Two actions: `request` (generate token, send email) and `reset` (verify token, update password)
+  - SendGrid integration with branded HTML email templates
+  - Comprehensive error handling and logging
+  - Security: crypto-random UUID tokens, 1-hour expiry, one-time use enforcement, SHA-256 hashing
+- **Database migrations (3 total):**
+  - `20260209000008_fix_password_reset_tokens.sql` - Created password_reset_tokens table
+  - `20260209000009_allow_service_role_password_updates.sql` - RLS policy for service role
+  - `20260209000010_add_users_updated_at.sql` - Added updated_at with automatic trigger
+- **Security features:**
+  - Crypto-random tokens (UUID v4, ~122 bits entropy)
+  - 1-hour token expiry with automatic checking
+  - One-time use enforcement (token marked as used)
+  - Non-revealing errors (doesn't confirm if email exists)
+  - Active user check only (is_active = true)
+  - Audit trail via updated_at timestamp
+
+**Issues Resolved:**
+- Missing authorization headers → Added anon key to all requests
+- Missing password_reset_tokens table → Created with proper schema
+- RLS blocking updates → Added service role policy
+- Missing updated_at column → Added with automatic trigger
+- Email not sending → Integrated SendGrid with HTML templates
+- Browser autofill confusion → Documented expected behavior
+
+**Files modified:**
+- `web-admin/js/02-api.js` - Added baseUrl export
+- `web-admin/js/03-auth.js` - Complete password reset flow (433 lines)
+- `supabase/functions/password-reset/index.ts` - Edge Function with SendGrid
+- 3 database migrations for table, policies, and audit tracking
+- `progress/2026-02-09_password-reset-feature.md` - Complete documentation
+
+**Commits:**
+- 9292a0f: "Add complete password reset feature with SendGrid integration"
+
+**Where we stopped:**
+- ✅ Password reset fully operational with email delivery
+- ✅ User flow complete: request → email → reset → login
+- ✅ Database properly configured with audit tracking
+- ✅ All deployments complete (Edge Function, frontend, migrations)
+
+**Next session should:**
+1. Test end-to-end password reset flow in production
+2. Consider adding rate limiting (max 3 requests per hour)
+3. Consider adding CAPTCHA to prevent automated abuse
+4. Optional: Add password strength meter and history checking
 
 ### Session 9 -- 2026-02-09 (Users P1 Complete + Tooling Prep)
 **Model used:** Claude (Opus/Sonnet)

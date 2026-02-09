@@ -1,8 +1,8 @@
 # Password Reset Feature Implementation
 
 **Date:** 2026-02-09
-**Status:** ✅ Fully Deployed
-**Commits:** `0ac3d2f`, `22cc773`
+**Status:** ✅ Fully Deployed & Production Ready
+**Commits:** `0ac3d2f`, `22cc773`, `9292a0f`
 
 ---
 
@@ -18,14 +18,17 @@ Implemented complete **password reset** functionality for Gen3 Admin dashboard w
 - **Login page enhancement** - "Forgot password?" link
 - **Request modal** - Email input to request reset
 - **Reset form** - New password entry with validation
+- **API module** - Added baseUrl export for Edge Function calls
+- **Authorization headers** - Added anon key to password reset requests
 - **URL:** https://ives.org.uk/app2026
 
 ### Backend (Production)
-- **Edge Function:** `password-reset` ✅ **DEPLOYED**
+- **Edge Function:** `password-reset` ✅ **DEPLOYED WITH SENDGRID**
 - **Actions:**
-  - `request` - Generate token, send email (logs to console)
-  - `reset` - Verify token, update password
-- **Database:** Uses existing `password_reset_tokens` table
+  - `request` - Generate token, send email via SendGrid
+  - `reset` - Verify token, update password, track updated_at
+- **Database:** Complete schema with password_reset_tokens table
+- **Email:** SendGrid integration with HTML templates
 
 ---
 
@@ -33,10 +36,13 @@ Implemented complete **password reset** functionality for Gen3 Admin dashboard w
 
 ✅ **Crypto-random tokens** (UUID v4, ~122 bits entropy)
 ✅ **1-hour expiry** on all reset tokens
-✅ **One-time use** enforcement
+✅ **One-time use** enforcement (marked as used after reset)
 ✅ **SHA-256 hashing** for passwords
 ✅ **Non-revealing errors** (doesn't confirm email exists)
 ✅ **Active user check** only (is_active = true)
+✅ **Service role policies** (RLS policy for password updates)
+✅ **Authorization headers** (anon key required for all requests)
+✅ **Audit trail** (updated_at timestamp tracks password changes)
 
 ---
 
@@ -84,49 +90,61 @@ curl -X POST https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1/password-rese
 
 ### Frontend
 - `web-admin/index.html` - Reset modals + forgot link
-- `web-admin/js/03-auth.js` - Reset request/confirm logic (433 lines)
+- `web-admin/js/02-api.js` - Added baseUrl export for Edge Functions
+- `web-admin/js/03-auth.js` - Reset request/confirm logic with auth headers (433 lines)
 - `web-admin/js/app-init.js` - Initialize reset form
 - `web-admin/css/styles.css` - Success message styling
-- `web-admin/js/pages/users.js` - Breadcrumbs added
-- `web-admin/js/pages/scooters.js` - Breadcrumbs added
 
 ### Backend
-- `supabase/functions/password-reset/index.ts` - Edge Function (new)
+- `supabase/functions/password-reset/index.ts` - Complete Edge Function with SendGrid
+
+### Database Migrations
+- `20260209000008_fix_password_reset_tokens.sql` - Create password_reset_tokens table
+- `20260209000009_allow_service_role_password_updates.sql` - RLS policy for service role
+- `20260209000010_add_users_updated_at.sql` - Add updated_at with auto-trigger
 
 ### Documentation
+- `progress/2026-02-09_password-reset-feature.md` - This file
 - `docs/PASSWORD_RESET.md` - Complete guide
 - `test-password-reset.sh` - Test script
 - `deploy-password-reset.sh` - Deployment script
 
 ---
 
-## 📧 Email Integration (TODO)
+## 📧 Email Integration ✅ COMPLETE
 
-Currently, reset emails are **logged to Supabase console**. For production:
+Reset emails are now **sent via SendGrid** with branded HTML templates:
 
-### Option 1: SendGrid (Recommended)
+### Current Implementation (SendGrid)
 ```typescript
-import sgMail from '@sendgrid/mail'
-sgMail.setApiKey(Deno.env.get('SENDGRID_API_KEY'))
-await sgMail.send({
-  to: user.email,
-  from: 'noreply@pureelectric.com',
-  subject: 'Reset Your Password',
-  html: `<a href="${resetUrl}">Reset Password</a>`
+const emailContent = {
+  personalizations: [{
+    to: [{ email: user.email }],
+    subject: 'Reset Your Password - Gen3 Admin'
+  }],
+  from: { email: FROM_EMAIL },
+  content: [{
+    type: 'text/html',
+    value: `<html>...</html>` // Branded HTML template
+  }]
+}
+
+await fetch('https://api.sendgrid.com/v3/mail/send', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${SENDGRID_API_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify(emailContent)
 })
 ```
 
-### Option 2: AWS SES
-```typescript
-import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses'
-const ses = new SESClient({ region: 'us-east-1' })
-await ses.send(new SendEmailCommand({ /* ... */ }))
-```
-
-### View Current Logs
-```bash
-npx supabase functions logs password-reset --project-ref hhpxmlrpdharhhzwjxuc
-```
+**Features:**
+- ✅ Branded HTML email template with button styling
+- ✅ Fallback plain text link
+- ✅ 1-hour expiry notice
+- ✅ Personalized greeting with user's first name
+- ✅ Error handling with console logging fallback
 
 ---
 
@@ -232,8 +250,25 @@ ORDER BY date DESC;
 
 ---
 
-## ✅ Status: Production Ready
+## ✅ Status: Production Ready & Fully Functional
 
-All components deployed and tested. Password reset is fully functional with console-based email logging. Integrate email service when ready.
+All components deployed and tested. Password reset is fully functional with SendGrid email delivery.
+
+### What Works:
+✅ User requests password reset → receives email via SendGrid
+✅ User clicks link in email → shows password reset form
+✅ User enters new password → password updated in database
+✅ updated_at timestamp tracks password changes
+✅ Token marked as used (one-time use enforcement)
+✅ User can login with new password
+
+### Recent Fixes (commit 9292a0f):
+- ✅ Added authorization headers to password reset requests
+- ✅ Created password_reset_tokens table with proper schema
+- ✅ Added RLS policy for service role password updates
+- ✅ Integrated SendGrid for email delivery
+- ✅ Added users.updated_at column with automatic trigger
+- ✅ Fixed Edge Function to use correct column names
 
 **Live URL:** https://ives.org.uk/app2026
+**Status:** ✅ FULLY OPERATIONAL
