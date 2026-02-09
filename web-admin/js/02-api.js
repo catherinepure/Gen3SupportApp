@@ -143,5 +143,13 @@ const API = (() => {
     function getUser() { return currentUser; }
     function isLoggedIn() { return !!sessionToken; }
 
-    return { call, login, logout, restoreSession, getUser, isLoggedIn };
+    return {
+        call,
+        login,
+        logout,
+        restoreSession,
+        getUser,
+        isLoggedIn,
+        baseUrl: `${CONFIG.supabaseUrl}/functions/v1`  // Expose baseUrl for direct function calls
+    };
 })();
