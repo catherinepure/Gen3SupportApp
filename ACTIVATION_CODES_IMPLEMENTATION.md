@@ -1,7 +1,7 @@
 # Activation Codes Implementation Guide
 
 **Date:** 2026-02-09
-**Status:** ✅ Backend Complete, SQL Migration Pending
+**Status:** ✅ COMPLETE - Backend Deployed, Database Migrated
 
 ---
 
@@ -13,15 +13,20 @@ Implemented unique activation code system for distributors and workshops. Each o
 
 ## Database Schema Changes
 
-### SQL Migration Required
+### ✅ SQL Migration Applied Successfully
 
-**File:** `sql/006_workshop_activation_codes.sql`
+**File:** `supabase/migrations/20260209000001_workshop_activation_codes.sql`
 
-**Apply this SQL manually in Supabase Dashboard:**
-1. Go to: https://supabase.com/dashboard/project/hhpxmlrpdharhhzwjxuc/sql
-2. Click "New Query"
-3. Copy and paste the SQL below
-4. Click "Run"
+**Applied via:** Supabase CLI (`supabase db push`)
+
+**Verification:**
+All existing workshops now have activation codes:
+- Pure Electric Service Centre London: `WORK-149f-de88`
+- EcoRide Austin Service Hub: `WORK-b1ce-3343`
+- VoltWerk Berlin Werkstatt: `WORK-01d0-c975`
+- Independent Scooter Shop NYC: `WORK-586d-b5eb`
+
+**SQL Applied:**
 
 ```sql
 -- Migration: Add activation codes for workshops
