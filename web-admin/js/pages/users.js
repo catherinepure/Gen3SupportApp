@@ -89,24 +89,12 @@ const UsersPage = (() => {
         });
     }
 
-    // ---- Client-Side Filtering ----
+    // ---- Client-Side Filtering (deprecated - now using server-side) ----
 
     function getDisplayUsers() {
-        let users = [...currentUsers];
-
-        // Client-side country filter
-        const country = currentFilters._clientCountry;
-        if (country) {
-            users = users.filter(u => u.home_country === country);
-        }
-
-        // Client-side role filter
-        const role = currentFilters._clientRole;
-        if (role) {
-            users = users.filter(u => Array.isArray(u.roles) && u.roles.includes(role));
-        }
-
-        return users;
+        // All filtering now happens server-side
+        // This function kept for compatibility but just returns the data as-is
+        return currentUsers;
     }
 
     // ---- Load & Render ----
@@ -448,9 +436,9 @@ const UsersPage = (() => {
         const country = e.target.value;
         const filters = { ...currentFilters };
         if (country) {
-            filters._clientCountry = country;
+            filters.home_country = country;  // Server-side filter
         } else {
-            delete filters._clientCountry;
+            delete filters.home_country;
         }
         resetPagination();
         load(filters);
@@ -472,9 +460,9 @@ const UsersPage = (() => {
         const role = e.target.value;
         const filters = { ...currentFilters };
         if (role) {
-            filters._clientRole = role;
+            filters.role = role;  // Server-side filter
         } else {
-            delete filters._clientRole;
+            delete filters.role;
         }
         resetPagination();
         load(filters);

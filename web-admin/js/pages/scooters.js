@@ -41,19 +41,9 @@ const ScootersPage = (() => {
     }
 
     function getDisplayScooters() {
-        let filtered = currentScooters;
-
-        // Client-side status filter
-        if (currentFilters._clientStatus) {
-            filtered = filtered.filter(s => s.status === currentFilters._clientStatus);
-        }
-
-        // Client-side country filter
-        if (currentFilters._clientCountry) {
-            filtered = filtered.filter(s => s.country_of_registration === currentFilters._clientCountry);
-        }
-
-        return filtered;
+        // All filtering now happens server-side
+        // This function kept for compatibility but just returns the data as-is
+        return currentScooters;
     }
 
     function renderTable(scooters) {
@@ -173,8 +163,8 @@ const ScootersPage = (() => {
     function applyFilters() {
         const filters = {
             search: $('#scooters-search')?.value.trim() || undefined,
-            _clientStatus: $('#scooters-status-filter')?.value || undefined,
-            _clientCountry: $('#scooters-country-filter')?.value || undefined
+            status: $('#scooters-status-filter')?.value || undefined,  // Server-side filter
+            country_of_registration: $('#scooters-country-filter')?.value || undefined  // Server-side filter
         };
 
         // Remove undefined values

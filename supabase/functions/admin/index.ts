@@ -90,6 +90,11 @@ async function handleUsers(supabase: any, action: string, body: any) {
     if (body.user_level) query = query.eq('user_level', body.user_level)
     if (body.distributor_id) query = query.eq('distributor_id', body.distributor_id)
     if (body.is_active !== undefined) query = query.eq('is_active', body.is_active)
+    if (body.home_country) query = query.eq('home_country', body.home_country)
+    if (body.role) {
+      // Filter by role (roles is a text[] array in PostgreSQL)
+      query = query.contains('roles', [body.role])
+    }
 
     const limit = body.limit || 50
     const offset = body.offset || 0
@@ -171,6 +176,7 @@ async function handleScooters(supabase: any, action: string, body: any) {
     }
     if (body.distributor_id) query = query.eq('distributor_id', body.distributor_id)
     if (body.status) query = query.eq('status', body.status)
+    if (body.country_of_registration) query = query.eq('country_of_registration', body.country_of_registration)
 
     const limit = body.limit || 50
     const offset = body.offset || 0
