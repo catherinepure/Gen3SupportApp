@@ -11,12 +11,13 @@ const DashboardPage = (() => {
             $('#dashboard-content').innerHTML = Utils.loading('Loading dashboard...');
 
             // Fetch stats, recent events, and recent service jobs in parallel
-            const [stats, eventsResult, jobsResult] = await Promise.all([
+            const [statsResult, eventsResult, jobsResult] = await Promise.all([
                 API.call('dashboard', 'stats', {}),
                 API.call('events', 'list', { limit: 10 }),
                 API.call('service-jobs', 'list', { limit: 5 })
             ]);
 
+            const stats = statsResult.dashboard || statsResult;
             const events = eventsResult.events || eventsResult.data || [];
             const jobs = jobsResult.jobs || jobsResult['service-jobs'] || jobsResult.data || [];
 
@@ -32,7 +33,7 @@ const DashboardPage = (() => {
         let html = '';
 
         // --- Top Stats Row ---
-        html += '<div class="dashboard-grid">';
+        html += '<div class="stats-grid">';
         html += renderStatCard('Users', stats.users || 0, 'primary', 'users');
         html += renderStatCard('Scooters', stats.scooters || 0, 'active', 'scooters');
         html += renderStatCard('Distributors', stats.distributors || 0, 'warning', 'distributors');
