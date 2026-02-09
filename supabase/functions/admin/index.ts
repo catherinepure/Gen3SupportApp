@@ -59,10 +59,67 @@ async function authenticateAdmin(supabase: any, sessionToken: string) {
 
   if (!user || !user.is_active) return null
 
-  // Check admin role
+  // Check admin role - support all admin-level roles
   const roles: string[] = user.roles || []
-  const isAdmin = roles.includes('manufacturer_admin') || user.user_level === 'admin'
-  if (!isAdmin) return null
+  const isManufacturerAdmin = roles.includes('manufacturer_admin') || user.user_level === 'admin'
+  const isDistributorStaff = roles.includes('distributor_staff')
+  const isWorkshopStaff = roles.includes('workshop_staff')
+
+  if (!isManufacturerAdmin && !isDistributorStaff && !isWorkshopStaff) {
+    return null  // Not an admin-level role
+  }
+
+  // Determine territory based on role (pick most privileged if multiple)
+  let adminRole: 'manufacturer_admin' | 'distributor_staff' | 'workshop_staff'
+  let allowedCountries: string[] = []
+
+  if (isManufacturerAdmin) {
+    // Manufacturer admin: global access (no country filter)
+    adminRole = 'manufacturer_admin'
+    allowedCountries = []
+  } else if (isDistributorStaff) {
+    // Distributor staff: scoped to their distributor's countries
+    adminRole = 'distributor_staff'
+
+    if (!user.distributor_id) {
+      console.error('User has distributor_staff role but no distributor_id:', user.id)
+      return null  // Misconfigured account
+    }
+
+    const { data: distributor } = await supabase
+      .from('distributors')
+      .select('countries')
+      .eq('id', user.distributor_id)
+      .single()
+
+    if (distributor) {
+      allowedCountries = distributor.countries || []
+    }
+  } else if (isWorkshopStaff) {
+    // Workshop staff: scoped to workshop territory
+    adminRole = 'workshop_staff'
+
+    if (!user.workshop_id) {
+      console.error('User has workshop_staff role but no workshop_id:', user.id)
+      return null  // Misconfigured account
+    }
+
+    const { data: workshop } = await supabase
+      .from('workshops')
+      .select('parent_distributor_id, service_area_countries, distributors(countries)')
+      .eq('id', user.workshop_id)
+      .single()
+
+    if (workshop) {
+      if (workshop.parent_distributor_id && workshop.distributors) {
+        // Linked to distributor: inherit distributor's territory
+        allowedCountries = workshop.distributors.countries || []
+      } else {
+        // Independent workshop: use own service area
+        allowedCountries = workshop.service_area_countries || []
+      }
+    }
+  }
 
   // Update last activity
   await supabase
@@ -70,19 +127,147 @@ async function authenticateAdmin(supabase: any, sessionToken: string) {
     .update({ last_activity: new Date().toISOString() })
     .eq('session_token', sessionToken)
 
-  return user
+  // Return admin context with territory info
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      user_level: user.user_level,
+      roles: user.roles,
+      distributor_id: user.distributor_id,
+      workshop_id: user.workshop_id,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      is_active: user.is_active
+    },
+    territory: {
+      role: adminRole,
+      allowed_countries: allowedCountries,
+      distributor_id: user.distributor_id,
+      workshop_id: user.workshop_id
+    }
+  }
+}
+
+// ============================================================================
+// TERRITORY FILTER UTILITIES
+// ============================================================================
+
+interface TerritoryFilter {
+  countryField?: string
+  countries?: string[]
+  workshopId?: string
+  distributorId?: string
+  additionalConditions?: Record<string, any>
+}
+
+function buildTerritoryFilter(resource: string, admin: any): TerritoryFilter | null {
+  if (!admin || !admin.territory) return null
+
+  const { territory } = admin
+
+  // Manufacturer admin: no filtering (global access)
+  if (territory.role === 'manufacturer_admin') {
+    return null
+  }
+
+  // Distributor staff filtering
+  if (territory.role === 'distributor_staff') {
+    const countries = territory.allowed_countries
+
+    switch (resource) {
+      case 'users':
+        return { countryField: 'home_country', countries }
+      case 'scooters':
+        return { countryField: 'country_of_registration', countries }
+      case 'distributors':
+        return { distributorId: territory.distributor_id }
+      case 'workshops':
+        return { additionalConditions: { parent_distributor_id: territory.distributor_id } }
+      case 'events':
+        return { countryField: 'country', countries }
+      case 'telemetry':
+        // Will be applied via scooter join
+        return { countryField: 'country_of_registration', countries }
+      case 'logs':
+        // Firmware upload logs - filter via distributor_id
+        return { distributorId: territory.distributor_id }
+      default:
+        return { countryField: 'country', countries }
+    }
+  }
+
+  // Workshop staff filtering
+  if (territory.role === 'workshop_staff') {
+    switch (resource) {
+      case 'service-jobs':
+        return { workshopId: territory.workshop_id }
+      case 'workshops':
+        return { additionalConditions: { id: territory.workshop_id } }
+      case 'scooters':
+        // Only scooters with active service jobs at this workshop
+        return { workshopId: territory.workshop_id, additionalConditions: { status: 'in_service' } }
+      case 'distributors':
+        // If linked to distributor, can view parent distributor
+        if (territory.distributor_id) {
+          return { distributorId: territory.distributor_id }
+        }
+        return null
+      default:
+        return null  // Workshop staff has limited resource access
+    }
+  }
+
+  return null
+}
+
+function applyTerritoryFilter(query: any, filter: TerritoryFilter | null): any {
+  if (!filter) return query  // No filtering needed
+
+  // Country-based filtering (users, scooters, events)
+  if (filter.countries && filter.countryField) {
+    if (filter.countries.length > 0) {
+      query = query.in(filter.countryField, filter.countries)
+    } else {
+      // Empty countries array = no access to any records
+      query = query.eq('id', '00000000-0000-0000-0000-000000000000')  // Always false
+    }
+  }
+
+  // Workshop-based filtering (service jobs)
+  if (filter.workshopId) {
+    query = query.eq('workshop_id', filter.workshopId)
+  }
+
+  // Distributor self-filtering (viewing own distributor only)
+  if (filter.distributorId) {
+    query = query.eq('id', filter.distributorId)
+  }
+
+  // Additional conditions (status, etc.)
+  if (filter.additionalConditions) {
+    for (const [key, value] of Object.entries(filter.additionalConditions)) {
+      query = query.eq(key, value)
+    }
+  }
+
+  return query
 }
 
 // ============================================================================
 // RESOURCE HANDLERS
 // ============================================================================
 
-async function handleUsers(supabase: any, action: string, body: any) {
+async function handleUsers(supabase: any, action: string, body: any, admin: any) {
   const selectFields = 'id, email, first_name, last_name, user_level, roles, distributor_id, workshop_id, is_active, is_verified, home_country, current_country, created_at, last_login'
 
   if (action === 'list' || action === 'search') {
     let query = supabase.from('users').select(selectFields, { count: 'exact' })
       .order('created_at', { ascending: false })
+
+    // APPLY TERRITORY FILTER FIRST (before user-supplied filters)
+    const territoryFilter = buildTerritoryFilter('users', admin)
+    query = applyTerritoryFilter(query, territoryFilter)
 
     if (body.search) {
       query = query.or(`email.ilike.%${body.search}%,first_name.ilike.%${body.search}%,last_name.ilike.%${body.search}%`)
@@ -164,12 +349,32 @@ async function handleUsers(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for users: ' + action)
 }
 
-async function handleScooters(supabase: any, action: string, body: any) {
+async function handleScooters(supabase: any, action: string, body: any, admin: any) {
   const selectFields = '*, distributors(name)'
 
   if (action === 'list') {
     let query = supabase.from('scooters').select(selectFields, { count: 'exact' })
       .order('created_at', { ascending: false })
+
+    // SPECIAL CASE: Workshop staff can only see scooters with active service jobs at their workshop
+    if (admin.territory.role === 'workshop_staff') {
+      const { data: activeJobs } = await supabase
+        .from('service_jobs')
+        .select('scooter_id')
+        .eq('workshop_id', admin.territory.workshop_id)
+        .not('status', 'in', '("completed","cancelled")')
+
+      const scooterIds = activeJobs?.map((j: any) => j.scooter_id) || []
+      if (scooterIds.length > 0) {
+        query = query.in('id', scooterIds)
+      } else {
+        query = query.eq('id', '00000000-0000-0000-0000-000000000000')
+      }
+    } else {
+      // APPLY TERRITORY FILTER FIRST (before user-supplied filters)
+      const territoryFilter = buildTerritoryFilter('scooters', admin)
+      query = applyTerritoryFilter(query, territoryFilter)
+    }
 
     if (body.search) {
       query = query.or(`zyd_serial.ilike.%${body.search}%,model.ilike.%${body.search}%`)
@@ -276,12 +481,17 @@ async function handleScooters(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for scooters: ' + action)
 }
 
-async function handleDistributors(supabase: any, action: string, body: any) {
+async function handleDistributors(supabase: any, action: string, body: any, admin: any) {
   const selectFields = '*'
 
   if (action === 'list') {
     let query = supabase.from('distributors').select(selectFields, { count: 'exact' })
       .order('name', { ascending: true })
+
+    // APPLY TERRITORY FILTER FIRST (before user-supplied filters)
+    const territoryFilter = buildTerritoryFilter('distributors', admin)
+    query = applyTerritoryFilter(query, territoryFilter)
+
     if (body.is_active !== undefined) query = query.eq('is_active', body.is_active)
     if (body.search) query = query.ilike('name', `%${body.search}%`)
 
@@ -365,11 +575,16 @@ async function handleDistributors(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for distributors: ' + action)
 }
 
-async function handleWorkshops(supabase: any, action: string, body: any) {
+async function handleWorkshops(supabase: any, action: string, body: any, admin: any) {
   if (action === 'list') {
     let query = supabase.from('workshops')
       .select('*, distributors:parent_distributor_id(name)', { count: 'exact' })
       .order('name', { ascending: true })
+
+    // APPLY TERRITORY FILTER FIRST (before user-supplied filters)
+    const territoryFilter = buildTerritoryFilter('workshops', admin)
+    query = applyTerritoryFilter(query, territoryFilter)
+
     if (body.distributor_id) query = query.eq('parent_distributor_id', body.distributor_id)
     if (body.is_active !== undefined) query = query.eq('is_active', body.is_active)
 
@@ -444,7 +659,7 @@ async function handleWorkshops(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for workshops: ' + action)
 }
 
-async function handleFirmware(supabase: any, action: string, body: any) {
+async function handleFirmware(supabase: any, action: string, body: any, _admin: any) {
   if (action === 'list') {
     let query = supabase.from('firmware_versions')
       .select('*', { count: 'exact' })
@@ -567,13 +782,33 @@ async function handleFirmware(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for firmware: ' + action)
 }
 
-async function handleServiceJobs(supabase: any, action: string, body: any) {
+async function handleServiceJobs(supabase: any, action: string, body: any, admin: any) {
   const selectFields = '*, scooters(zyd_serial, model, status), workshops(name), users!service_jobs_customer_id_fkey(email, first_name, last_name)'
 
   if (action === 'list') {
     let query = supabase.from('service_jobs')
       .select(selectFields, { count: 'exact' })
       .order('booked_date', { ascending: false })
+
+    // SPECIAL CASE: Distributor staff needs to join through scooters for territory filtering
+    if (admin.territory.role === 'distributor_staff') {
+      const { data: territoryScooters } = await supabase
+        .from('scooters')
+        .select('id')
+        .in('country_of_registration', admin.territory.allowed_countries)
+
+      const scooterIds = territoryScooters?.map((s: any) => s.id) || []
+      if (scooterIds.length > 0) {
+        query = query.in('scooter_id', scooterIds)
+      } else {
+        query = query.eq('id', '00000000-0000-0000-0000-000000000000')
+      }
+    } else {
+      // APPLY TERRITORY FILTER FIRST (before user-supplied filters)
+      const territoryFilter = buildTerritoryFilter('service-jobs', admin)
+      query = applyTerritoryFilter(query, territoryFilter)
+    }
+
     if (body.status) query = query.eq('status', body.status)
     if (body.workshop_id) query = query.eq('workshop_id', body.workshop_id)
 
@@ -685,11 +920,28 @@ async function handleServiceJobs(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for service-jobs: ' + action)
 }
 
-async function handleTelemetry(supabase: any, action: string, body: any) {
+async function handleTelemetry(supabase: any, action: string, body: any, admin: any) {
   if (action === 'list') {
     let query = supabase.from('scooter_telemetry')
       .select('*, scooters(zyd_serial, model), users(email)', { count: 'exact' })
       .order('captured_at', { ascending: false })
+
+    // TERRITORY FILTER: Filter via scooter country (telemetry doesn't have country directly)
+    if (admin.territory.role !== 'manufacturer_admin') {
+      let scooterQuery = supabase.from('scooters').select('id')
+      const territoryFilter = buildTerritoryFilter('scooters', admin)
+      scooterQuery = applyTerritoryFilter(scooterQuery, territoryFilter)
+
+      const { data: scooters } = await scooterQuery
+      const scooterIds = scooters?.map((s: any) => s.id) || []
+
+      if (scooterIds.length > 0) {
+        query = query.in('scooter_id', scooterIds)
+      } else {
+        query = query.eq('id', '00000000-0000-0000-0000-000000000000')
+      }
+    }
+
     if (body.scooter_id) query = query.eq('scooter_id', body.scooter_id)
     if (body.user_id) query = query.eq('user_id', body.user_id)
 
@@ -748,13 +1000,18 @@ async function handleTelemetry(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for telemetry: ' + action)
 }
 
-async function handleLogs(supabase: any, action: string, body: any) {
+async function handleLogs(supabase: any, action: string, body: any, admin: any) {
   const selectFields = '*, scooters(zyd_serial), firmware_versions(version_label), distributors(name)'
 
   if (action === 'list') {
     let query = supabase.from('firmware_uploads')
       .select(selectFields, { count: 'exact' })
       .order('started_at', { ascending: false })
+
+    // APPLY TERRITORY FILTER FIRST (before user-supplied filters)
+    const territoryFilter = buildTerritoryFilter('logs', admin)
+    query = applyTerritoryFilter(query, territoryFilter)
+
     if (body.status) query = query.eq('status', body.status)
     if (body.distributor_id) query = query.eq('distributor_id', body.distributor_id)
     if (body.scooter_id) query = query.eq('scooter_id', body.scooter_id)
@@ -786,11 +1043,16 @@ async function handleLogs(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for logs: ' + action)
 }
 
-async function handleEvents(supabase: any, action: string, body: any) {
+async function handleEvents(supabase: any, action: string, body: any, admin: any) {
   if (action === 'list') {
     let query = supabase.from('activity_events')
       .select('*, users(email), scooters(zyd_serial)', { count: 'exact' })
       .order('timestamp', { ascending: false })
+
+    // APPLY TERRITORY FILTER FIRST (before user-supplied filters)
+    const territoryFilter = buildTerritoryFilter('events', admin)
+    query = applyTerritoryFilter(query, territoryFilter)
+
     if (body.event_type) query = query.eq('event_type', body.event_type)
     if (body.country) query = query.eq('country', body.country)
     if (body.scooter_id) query = query.eq('scooter_id', body.scooter_id)
@@ -845,7 +1107,7 @@ async function handleEvents(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for events: ' + action)
 }
 
-async function handleAddresses(supabase: any, action: string, body: any) {
+async function handleAddresses(supabase: any, action: string, body: any, _admin: any) {
   if (action === 'list') {
     let query = supabase.from('addresses').select('*').order('created_at', { ascending: false })
     if (body.entity_type) query = query.eq('entity_type', body.entity_type)
@@ -903,7 +1165,7 @@ async function handleAddresses(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for addresses: ' + action)
 }
 
-async function handleSessions(supabase: any, action: string, body: any) {
+async function handleSessions(supabase: any, action: string, body: any, _admin: any) {
   if (action === 'list') {
     let query = supabase.from('user_sessions')
       .select('*, users(email, first_name, last_name)', { count: 'exact' })
@@ -930,7 +1192,7 @@ async function handleSessions(supabase: any, action: string, body: any) {
   return errorResponse('Invalid action for sessions: ' + action)
 }
 
-async function handleValidation(supabase: any, action: string, _body: any) {
+async function handleValidation(supabase: any, action: string, _body: any, _admin: any) {
   if (action === 'orphaned-scooters') {
     const { data, error } = await supabase.from('scooters')
       .select('id, zyd_serial, model, created_at')
@@ -979,31 +1241,86 @@ async function handleValidation(supabase: any, action: string, _body: any) {
   return errorResponse('Invalid action for validation: ' + action)
 }
 
-async function handleDashboard(supabase: any, _action: string, _body: any) {
-  // Gather summary stats for the dashboard
-  const { count: userCount } = await supabase.from('users')
-    .select('id', { count: 'exact', head: true }).eq('is_active', true)
-  const { count: scooterCount } = await supabase.from('scooters')
-    .select('id', { count: 'exact', head: true })
-  const { count: distributorCount } = await supabase.from('distributors')
-    .select('id', { count: 'exact', head: true }).eq('is_active', true)
-  const { count: workshopCount } = await supabase.from('workshops')
-    .select('id', { count: 'exact', head: true }).eq('is_active', true)
-  const { count: activeJobCount } = await supabase.from('service_jobs')
-    .select('id', { count: 'exact', head: true })
+async function handleDashboard(supabase: any, _action: string, _body: any, admin: any) {
+  // Gather summary stats for the dashboard (with territory filtering)
+
+  // Users count - apply territory filter
+  let userQuery = supabase.from('users').select('id', { count: 'exact', head: true }).eq('is_active', true)
+  const userTerritoryFilter = buildTerritoryFilter('users', admin)
+  userQuery = applyTerritoryFilter(userQuery, userTerritoryFilter)
+  const { count: userCount } = await userQuery
+
+  // Scooters count - apply territory filter
+  let scooterQuery = supabase.from('scooters').select('id', { count: 'exact', head: true })
+  if (admin.territory.role === 'workshop_staff') {
+    // Workshop staff: only count scooters with active service jobs at their workshop
+    const { data: activeJobs } = await supabase
+      .from('service_jobs')
+      .select('scooter_id')
+      .eq('workshop_id', admin.territory.workshop_id)
+      .not('status', 'in', '("completed","cancelled")')
+    const scooterIds = activeJobs?.map((j: any) => j.scooter_id) || []
+    if (scooterIds.length > 0) {
+      scooterQuery = scooterQuery.in('id', scooterIds)
+    } else {
+      scooterQuery = scooterQuery.eq('id', '00000000-0000-0000-0000-000000000000')
+    }
+  } else {
+    const scooterTerritoryFilter = buildTerritoryFilter('scooters', admin)
+    scooterQuery = applyTerritoryFilter(scooterQuery, scooterTerritoryFilter)
+  }
+  const { count: scooterCount } = await scooterQuery
+
+  // Distributors count - apply territory filter
+  let distributorQuery = supabase.from('distributors').select('id', { count: 'exact', head: true }).eq('is_active', true)
+  const distributorTerritoryFilter = buildTerritoryFilter('distributors', admin)
+  distributorQuery = applyTerritoryFilter(distributorQuery, distributorTerritoryFilter)
+  const { count: distributorCount } = await distributorQuery
+
+  // Workshops count - apply territory filter
+  let workshopQuery = supabase.from('workshops').select('id', { count: 'exact', head: true }).eq('is_active', true)
+  const workshopTerritoryFilter = buildTerritoryFilter('workshops', admin)
+  workshopQuery = applyTerritoryFilter(workshopQuery, workshopTerritoryFilter)
+  const { count: workshopCount } = await workshopQuery
+
+  // Active service jobs count - apply territory filter
+  let jobQuery = supabase.from('service_jobs').select('id', { count: 'exact', head: true })
     .not('status', 'in', '("completed","cancelled")')
+  if (admin.territory.role === 'distributor_staff') {
+    // Distributor staff: filter via scooters in their territory
+    const { data: territoryScooters } = await supabase
+      .from('scooters')
+      .select('id')
+      .in('country_of_registration', admin.territory.allowed_countries)
+    const scooterIds = territoryScooters?.map((s: any) => s.id) || []
+    if (scooterIds.length > 0) {
+      jobQuery = jobQuery.in('scooter_id', scooterIds)
+    } else {
+      jobQuery = jobQuery.eq('id', '00000000-0000-0000-0000-000000000000')
+    }
+  } else {
+    const jobTerritoryFilter = buildTerritoryFilter('service-jobs', admin)
+    jobQuery = applyTerritoryFilter(jobQuery, jobTerritoryFilter)
+  }
+  const { count: activeJobCount } = await jobQuery
+
+  // Firmware count - no territory filter (global resource)
   const { count: firmwareCount } = await supabase.from('firmware_versions')
     .select('id', { count: 'exact', head: true }).eq('is_active', true)
 
-  // Recent events (last 24h)
+  // Recent events (last 24h) - apply territory filter
   const yesterday = new Date(Date.now() - 86400000).toISOString()
-  const { count: recentEvents } = await supabase.from('activity_events')
-    .select('id', { count: 'exact', head: true }).gte('timestamp', yesterday)
+  let eventsQuery = supabase.from('activity_events').select('id', { count: 'exact', head: true }).gte('timestamp', yesterday)
+  const eventsTerritoryFilter = buildTerritoryFilter('events', admin)
+  eventsQuery = applyTerritoryFilter(eventsQuery, eventsTerritoryFilter)
+  const { count: recentEvents } = await eventsQuery
 
-  // Recent uploads (last 7 days)
+  // Recent uploads (last 7 days) - apply territory filter
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString()
-  const { count: recentUploads } = await supabase.from('firmware_uploads')
-    .select('id', { count: 'exact', head: true }).gte('started_at', weekAgo)
+  let uploadsQuery = supabase.from('firmware_uploads').select('id', { count: 'exact', head: true }).gte('started_at', weekAgo)
+  const uploadsTerritoryFilter = buildTerritoryFilter('logs', admin)
+  uploadsQuery = applyTerritoryFilter(uploadsQuery, uploadsTerritoryFilter)
+  const { count: recentUploads } = await uploadsQuery
 
   return respond({
     dashboard: {
@@ -1046,21 +1363,21 @@ serve(async (req) => {
       return errorResponse('Admin authentication required', 401)
     }
 
-    // Route to resource handler
+    // Route to resource handler (pass admin context for territory scoping)
     switch (resource) {
-      case 'users':        return await handleUsers(supabase, action, body)
-      case 'scooters':     return await handleScooters(supabase, action, body)
-      case 'distributors': return await handleDistributors(supabase, action, body)
-      case 'workshops':    return await handleWorkshops(supabase, action, body)
-      case 'firmware':     return await handleFirmware(supabase, action, body)
-      case 'service-jobs': return await handleServiceJobs(supabase, action, body)
-      case 'telemetry':    return await handleTelemetry(supabase, action, body)
-      case 'logs':         return await handleLogs(supabase, action, body)
-      case 'events':       return await handleEvents(supabase, action, body)
-      case 'addresses':    return await handleAddresses(supabase, action, body)
-      case 'sessions':     return await handleSessions(supabase, action, body)
-      case 'validation':   return await handleValidation(supabase, action, body)
-      case 'dashboard':    return await handleDashboard(supabase, action, body)
+      case 'users':        return await handleUsers(supabase, action, body, admin)
+      case 'scooters':     return await handleScooters(supabase, action, body, admin)
+      case 'distributors': return await handleDistributors(supabase, action, body, admin)
+      case 'workshops':    return await handleWorkshops(supabase, action, body, admin)
+      case 'firmware':     return await handleFirmware(supabase, action, body, admin)
+      case 'service-jobs': return await handleServiceJobs(supabase, action, body, admin)
+      case 'telemetry':    return await handleTelemetry(supabase, action, body, admin)
+      case 'logs':         return await handleLogs(supabase, action, body, admin)
+      case 'events':       return await handleEvents(supabase, action, body, admin)
+      case 'addresses':    return await handleAddresses(supabase, action, body, admin)
+      case 'sessions':     return await handleSessions(supabase, action, body, admin)
+      case 'validation':   return await handleValidation(supabase, action, body, admin)
+      case 'dashboard':    return await handleDashboard(supabase, action, body, admin)
       default:
         return errorResponse('Unknown resource: ' + resource + '. Available: users, scooters, distributors, workshops, firmware, service-jobs, telemetry, logs, events, addresses, sessions, validation, dashboard')
     }
