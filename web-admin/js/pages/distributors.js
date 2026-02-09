@@ -64,7 +64,8 @@ const DistributorsPage = (() => {
             html += '<div class="detail-section">';
             html += '<h4>Activation Code</h4>';
             if (d.activation_code_hash) {
-                html += '<p class="text-muted">Activation code is encrypted and cannot be displayed.</p>';
+                html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-success">Secured</span></p>';
+                html += '<p class="text-muted" style="font-size: 0.9em;">Activation code is encrypted for security. Use "Regenerate Code" button below to create a new one.</p>';
                 if (d.activation_code_created_at) {
                     html += `<p class="text-muted"><strong>Created:</strong> ${formatDate(d.activation_code_created_at)}</p>`;
                 }
@@ -73,16 +74,19 @@ const DistributorsPage = (() => {
                     const isExpired = expires < new Date();
                     html += `<p class="text-muted"><strong>Expires:</strong> ${formatDate(d.activation_code_expires_at)} `;
                     if (isExpired) {
-                        html += '<span class="badge badge-danger">Expired</span>';
+                        html += '<span class="badge badge-danger">Expired - Regenerate Required</span>';
+                    } else {
+                        html += '<span class="badge badge-success">Valid</span>';
                     }
                     html += '</p>';
                 }
             } else if (d.activation_code) {
                 // Legacy plaintext code (during migration)
-                html += `<p><code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${d.activation_code}</code></p>`;
-                html += '<p class="text-warning" style="font-size: 0.9em;">⚠️ Legacy plaintext code - regenerate for security</p>';
+                html += `<p><strong>Code:</strong> <code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${d.activation_code}</code></p>`;
+                html += '<p class="text-warning" style="font-size: 0.9em; margin-top: 10px;">⚠️ Legacy plaintext code - click "Regenerate Code" below for enhanced security</p>';
             } else {
-                html += '<p class="text-muted">No activation code</p>';
+                html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-inactive">No Code</span></p>';
+                html += '<p class="text-muted" style="font-size: 0.9em;">Click "Regenerate Code" below to create an activation code.</p>';
             }
             html += '</div>';
 

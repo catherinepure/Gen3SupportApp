@@ -62,7 +62,8 @@ const WorkshopsPage = (() => {
             html += '<div class="detail-section">';
             html += '<h4>Activation Code</h4>';
             if (w.activation_code_hash) {
-                html += '<p class="text-muted">Activation code is encrypted and cannot be displayed.</p>';
+                html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-success">Secured</span></p>';
+                html += '<p class="text-muted" style="font-size: 0.9em;">Activation code is encrypted for security. Use "Regenerate Code" button below to create a new one.</p>';
                 if (w.activation_code_created_at) {
                     html += `<p class="text-muted"><strong>Created:</strong> ${formatDate(w.activation_code_created_at)}</p>`;
                 }
@@ -71,16 +72,19 @@ const WorkshopsPage = (() => {
                     const isExpired = expires < new Date();
                     html += `<p class="text-muted"><strong>Expires:</strong> ${formatDate(w.activation_code_expires_at)} `;
                     if (isExpired) {
-                        html += '<span class="badge badge-danger">Expired</span>';
+                        html += '<span class="badge badge-danger">Expired - Regenerate Required</span>';
+                    } else {
+                        html += '<span class="badge badge-success">Valid</span>';
                     }
                     html += '</p>';
                 }
             } else if (w.activation_code) {
                 // Legacy plaintext code (during migration)
-                html += `<p><code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${w.activation_code}</code></p>`;
-                html += '<p class="text-warning" style="font-size: 0.9em;">⚠️ Legacy plaintext code - regenerate for security</p>';
+                html += `<p><strong>Code:</strong> <code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${w.activation_code}</code></p>`;
+                html += '<p class="text-warning" style="font-size: 0.9em; margin-top: 10px;">⚠️ Legacy plaintext code - click "Regenerate Code" below for enhanced security</p>';
             } else {
-                html += '<p class="text-muted">No activation code</p>';
+                html += '<p class="text-muted"><strong>Status:</strong> <span class="badge badge-inactive">No Code</span></p>';
+                html += '<p class="text-muted" style="font-size: 0.9em;">Click "Regenerate Code" below to create an activation code.</p>';
             }
             html += '</div>';
 
@@ -216,9 +220,35 @@ const WorkshopsPage = (() => {
                     formData.parent_distributor_id = null;
                 }
 
-                const result = await API.call('workshops', 'create', formData);
+                // Convert service_area_countries from select values to array
+                const countries = formData.service_area_countries ?
+                    (Array.isArray(formData.service_area_countries) ? formData.service_area_countries : [formData.service_area_countries]) : [];
+
+                const result = await API.call('workshops', 'create', {
+                    name: formData.name,
+                    email: formData.email || null,
+                    phone: formData.phone || null,
+                    parent_distributor_id: formData.parent_distributor_id,
+                    service_area_countries: countries
+                });
+
                 toast('Workshop created successfully', 'success');
                 ModalComponent.close();
+
+                // Show activation code
+                const activationCode = result.activation_code || result.workshop?.activation_code;
+                if (activationCode) {
+                    setTimeout(() => {
+                        ModalComponent.show('Activation Code Generated',
+                            `<div style="text-align: center;">
+                                <p>Workshop created successfully!</p>
+                                <p style="margin: 20px 0;"><strong>Activation Code:</strong></p>
+                                <p><code style="font-size: 1.5em; background: #f0f0f0; padding: 15px 20px; border-radius: 4px; display: inline-block;">${activationCode}</code></p>
+                                <p class="text-muted" style="margin-top: 20px;">Save this code - it's needed for workshop registration.</p>
+                            </div>`);
+                    }, 300);
+                }
+
                 await load();
             } catch (err) {
                 toast(err.message, 'error');
@@ -258,9 +288,18 @@ const WorkshopsPage = (() => {
                     formData.parent_distributor_id = null;
                 }
 
+                // Convert service_area_countries from select values to array
+                const countries = formData.service_area_countries ?
+                    (Array.isArray(formData.service_area_countries) ? formData.service_area_countries : [formData.service_area_countries]) : [];
+
                 await API.call('workshops', 'update', {
                     id: workshop.id,
-                    ...formData
+                    name: formData.name,
+                    email: formData.email || null,
+                    phone: formData.phone || null,
+                    parent_distributor_id: formData.parent_distributor_id,
+                    service_area_countries: countries,
+                    is_active: workshop.is_active
                 });
                 toast('Workshop updated successfully', 'success');
                 ModalComponent.close();
