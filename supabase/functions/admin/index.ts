@@ -24,7 +24,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { hash, compare, genSalt } from "https://deno.land/x/bcrypt@v0.4.1/mod.ts"
+// Use bcrypt from esm.sh for better Deno Deploy compatibility
+import bcrypt from 'https://esm.sh/bcryptjs@2.4.3'
 
 const corsHeaders = {
   'Content-Type': 'application/json',
@@ -66,8 +67,8 @@ function generateActivationCode(prefix: 'PURE' | 'WORK'): string {
  * @returns Bcrypt hash
  */
 async function hashActivationCode(code: string): Promise<string> {
-  const salt = await genSalt(10)
-  const hashed = await hash(code.toUpperCase(), salt)
+  const salt = await bcrypt.genSalt(10)
+  const hashed = await bcrypt.hash(code.toUpperCase(), salt)
   return hashed
 }
 
@@ -78,7 +79,7 @@ async function hashActivationCode(code: string): Promise<string> {
  * @returns True if code matches hash
  */
 async function verifyActivationCode(code: string, hashValue: string): Promise<boolean> {
-  return await compare(code.toUpperCase(), hashValue)
+  return await bcrypt.compare(code.toUpperCase(), hashValue)
 }
 
 async function authenticateAdmin(supabase: any, sessionToken: string) {

@@ -3,7 +3,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts"
+// Use bcrypt from esm.sh for better Deno Deploy compatibility
+import bcrypt from 'https://esm.sh/bcryptjs@2.4.3'
 
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY')!
 const FROM_EMAIL = Deno.env.get('SENDGRID_FROM_EMAIL') || "noreply@pureelectric.com"
