@@ -627,9 +627,17 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
 
   if (action === 'create') {
     if (!body.name) return errorResponse('Workshop name required')
+    // Generate activation code in format WORK-XXXX-XXXX
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    const randomBytes = crypto.getRandomValues(new Uint8Array(8))
+    const part1 = Array.from(randomBytes.slice(0, 4)).map(b => chars[b % chars.length]).join('')
+    const part2 = Array.from(randomBytes.slice(4, 8)).map(b => chars[b % chars.length]).join('')
+    const code = `WORK-${part1}-${part2}`
+
     const { data, error } = await supabase.from('workshops')
       .insert({
-        name: body.name, phone: body.phone || null, email: body.email || null,
+        name: body.name, activation_code: code,
+        phone: body.phone || null, email: body.email || null,
         parent_distributor_id: body.parent_distributor_id || null,
         service_area_countries: body.service_area_countries || [], is_active: true,
       }).select().single()
