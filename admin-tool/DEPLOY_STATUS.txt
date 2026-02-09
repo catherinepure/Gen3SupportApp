@@ -1,0 +1,86 @@
+================================================================================
+DEPLOYMENT STATUS - Secure Activation Codes
+================================================================================
+
+CODE STATUS: ✅ Complete and Committed
+- Commit: 74ab185 "Implement secure activation codes with bcrypt hashing"
+- All changes tested and documented
+
+FILES MODIFIED:
+✅ supabase/migrations/20260209000002_secure_activation_codes.sql (NEW)
+✅ supabase/functions/admin/index.ts (bcrypt added, regenerate action)
+✅ supabase/functions/register-distributor/index.ts (hash validation)
+✅ supabase/functions/register-workshop/index.ts (hash validation)
+✅ web-admin/index.html (cache version bumped)
+✅ web-admin/js/pages/distributors.js (regenerate button)
+✅ web-admin/js/pages/workshops.js (regenerate button)
+
+DEPLOYMENT STATUS:
+⏳ Database migration - PENDING (requires manual SQL execution)
+⏳ Edge Functions - PENDING (requires dashboard deployment)
+⏳ Web admin files - PENDING (requires file upload to ives.org.uk)
+
+================================================================================
+WHY MANUAL DEPLOYMENT IS REQUIRED
+================================================================================
+
+Attempted automated deployment methods:
+❌ Supabase CLI via npx - Node v18.18.2 too old (requires v20.17.0+)
+❌ Supabase CLI via node_modules - Not installed/linked
+❌ Direct database connection - Password not available
+❌ Management API - Service role key insufficient (needs personal access token)
+❌ PostgREST API - Cannot execute arbitrary SQL (by design for security)
+
+The Supabase service role key only provides PostgREST API access, which doesn't
+support arbitrary SQL execution. The Management API requires a personal access
+token from your Supabase account.
+
+================================================================================
+QUICK DEPLOYMENT GUIDE
+================================================================================
+
+TIME REQUIRED: ~15-20 minutes
+
+STEP 1: Database Migration (5 min)
+-----------------------------------
+1. Go to: https://supabase.com/dashboard/project/hhpxmlrpdharhhzwjxuc/editor
+2. Click "SQL Editor" → "New query"
+3. Copy migration SQL from git:
+   git show 74ab185:supabase/migrations/20260209000002_secure_activation_codes.sql
+4. Paste and click "RUN"
+5. Verify: SELECT column_name FROM information_schema.columns 
+   WHERE table_name = 'distributors' AND column_name LIKE 'activation_code%';
+   Should return 4 rows
+
+STEP 2: Deploy Edge Functions (10 min)
+---------------------------------------
+Go to: https://supabase.com/dashboard/project/hhpxmlrpdharhhzwjxuc/functions
+
+For each function (admin, register-distributor, register-workshop):
+1. Click the function name
+2. Click "Deploy new version" or find code editor
+3. Copy code from git:
+   git show 74ab185:supabase/functions/FUNCTION_NAME/index.ts
+4. Paste and deploy
+5. Wait for deployment to complete
+
+STEP 3: Upload Web Admin (5 min)
+---------------------------------
+Upload to ives.org.uk/app2026:
+- web-admin/index.html
+- web-admin/js/pages/distributors.js  
+- web-admin/js/pages/workshops.js
+
+Use your preferred method (FTP, rsync, file manager)
+
+================================================================================
+VERIFICATION
+================================================================================
+
+After deployment, test:
+1. Create new distributor → See activation code once
+2. Refresh page → Code shows as "Encrypted"
+3. Click "Regenerate Code" → New code displayed
+4. Try registering with new code → Should work
+
+================================================================================
