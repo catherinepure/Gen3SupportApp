@@ -205,37 +205,26 @@ if (needsMigration) {
 
 ---
 
-## Deployment Checklist
+## Deployment Status: COMPLETE
 
-### Database
-```bash
-# Apply migrations in order
-supabase db push
-# Or manually:
-# Migration 011: Remove activation codes, update user levels
-# Migration 012: Fix CASCADE delete behavior
-```
+All changes deployed to production on 2026-02-09.
 
-### Edge Functions
-```bash
-supabase functions deploy admin
-supabase functions deploy login
-supabase functions deploy logout
-supabase functions deploy password-reset
-supabase functions deploy register-user
-# Delete old functions:
-supabase functions delete register-distributor
-supabase functions delete register-workshop
-```
+### Database — Deployed
+- Migration 011 applied (required fix: `DROP CONSTRAINT IF EXISTS users_user_level_check` before updating values, and `DROP VIEW IF EXISTS unmigrated_activation_codes` before dropping columns)
+- Migration 012 applied (required fix: `DO $$ ... IF EXISTS` blocks for `scooter_telemetry` FKs since some columns don't exist in remote schema)
 
-### Environment Variables (for production)
-```bash
-# Set allowed origins for CORS/origin validation
-supabase secrets set ALLOWED_ORIGINS=https://ives.org.uk
-```
+### Edge Functions — Deployed
+- `admin`, `login`, `logout`, `password-reset`, `register-user` deployed via `npx supabase functions deploy --use-api`
+- `register-distributor`, `register-workshop` deleted from Supabase
 
-### Web Admin
-Deploy updated files to web host (all JS/HTML files listed above).
+### Environment Variables — Set
+- `ALLOWED_ORIGINS=https://ives.org.uk` set via `supabase secrets set`
+
+### Web Admin — Deployed
+- 6 files uploaded via FTP to ives.org.uk/app2026: `index.html`, `02-api.js`, `detail-modal.js`, `distributors.js`, `users.js`, `workshops.js`
+
+### Git — Pushed
+- Commit `bce5d14` pushed to `main` on GitHub (31 commits total)
 
 ---
 
@@ -272,7 +261,7 @@ Deploy updated files to web host (all JS/HTML files listed above).
 
 ## Summary
 
-All security recommendations implemented:
+All security recommendations implemented and deployed to production:
 1. Activation codes removed, replaced with admin-managed user creation
 2. Three-tier permission system (admin/manager/normal)
 3. Bcrypt password hashing with SHA-256 auto-migration
@@ -280,3 +269,22 @@ All security recommendations implemented:
 5. Rate limiting (120 req/min) on admin API
 6. Session token moved from body to X-Session-Token header
 7. Origin validation on all auth Edge Functions (configurable via ALLOWED_ORIGINS env var)
+
+---
+
+## Next Steps (for next session)
+
+### Testing (Priority)
+- Test login flow end-to-end (SHA-256 → bcrypt auto-migration)
+- Test admin user creation + password reset token flow
+- Test manager permissions (can create normal users, cannot create admins)
+- Verify rate limiting returns 429 after 120 req/min
+- Verify origin validation returns 403 from non-allowed origins
+- Test web admin UI: distributors/workshops pages have no activation code sections
+- Test web admin UI: Users page Create User button works
+
+### Potential Follow-ups
+- Apply DetailModal pattern to Service Jobs and Firmware pages
+- Component serial management UI in Scooters page
+- Begin Flutter migration for Android app
+- Add analytics dashboard for component failure rates
