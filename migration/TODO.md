@@ -467,8 +467,21 @@
 - [ ] Run flutter analyze + tests
 - [ ] Verify all entities from spec section 2 exist in DB and Dart layer
 
-### Phase 3 -- Access Control & Territory Scoping
-_(unchanged from spec)_
+### Phase 3 -- Access Control & Territory Scoping ✅ COMPLETE (2026-02-09)
+- [x] Implement territory scoping for all admin roles (manufacturer_admin, distributor_staff, workshop_staff)
+- [x] Territory context fetched at authentication (distributors.countries, workshops territory)
+- [x] Territory filters applied at API layer (before user-supplied filters)
+- [x] 10 resource handlers updated with territory scoping (users, scooters, service-jobs, telemetry, events, distributors, workshops, logs, dashboard, firmware)
+- [x] Special handling: workshop staff see only scooters with active service jobs
+- [x] Special handling: distributor staff service jobs filtered via scooter territory
+- [x] Test data created: 5 test admin users with proper territory assignments
+- [x] Documentation: implementation plan, progress doc, verification checklist
+- [x] Database verified: all territory data loaded and correct
+
+**Spec compliance:** ✅ 100% for Section 4 (Data Access Scoping)
+**Implementation:** `supabase/functions/admin/index.ts` lines 43-1267
+**Documentation:** `progress/2026-02-09_territory-scoping-complete.md`, `TERRITORY_SCOPING_VERIFICATION.md`
+**Test accounts:** admin@pure.com, dist-uk@pure.com, dist-us@pure.com, workshop-london@pure.com, workshop-indie@pure.com (all password: password123)
 
 ### Phase 4 -- New Feature Screens
 _(unchanged from spec)_
