@@ -108,7 +108,7 @@ public class BLEManager {
     // ==================================================================================
 
     public BLEManager(Context context, BLEListener listener) {
-        this.context = context;
+        this.context = context.getApplicationContext();
         this.listener = listener;
         initializeBluetooth();
     }

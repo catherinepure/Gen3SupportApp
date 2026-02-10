@@ -154,6 +154,17 @@ public class SupabaseClient {
                 runningData, bmsData, embeddedSerial, scanType, wrapCallback(callback));
     }
 
+    public void createTelemetryRecord(String scooterSerial, String distributorId,
+                                       String hwVersion, String swVersion,
+                                       RunningDataInfo runningData, BMSDataInfo bmsData,
+                                       String embeddedSerial, String scanType,
+                                       VersionInfo versionInfo, String model,
+                                       Callback<String> callback) {
+        telemetry.createTelemetryRecord(scooterSerial, distributorId, hwVersion, swVersion,
+                runningData, bmsData, embeddedSerial, scanType, versionInfo, model,
+                wrapCallback(callback));
+    }
+
     public void getScooterTelemetry(String scooterSerial, int limit, int offset,
                                      Callback<List<TelemetryRecord>> callback) {
         telemetry.getScooterTelemetry(scooterSerial, limit, offset, wrapCallback(callback));

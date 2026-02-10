@@ -112,8 +112,20 @@ const ScootersPage = (() => {
                         { label: 'Battery Variant', value: variantInfo ? `${variantInfo.code} - ${variantInfo.name} (${variantInfo.capacity_ah}Ah)` : 'N/A' },
                         { label: 'Colour', value: colourInfo ? `${colourInfo.code} - ${colourInfo.name}` : 'N/A' },
                         { label: 'Block/Region', value: blockInfo ? `${blockInfo.code} - ${blockInfo.name}` : 'N/A' },
-                        { label: 'Firmware Version', value: fullScooter.firmware_version || 'N/A' },
-                        { label: 'Hardware Version', value: fullScooter.hw_version || 'N/A' }
+                        { label: 'Embedded Serial', value: fullScooter.embedded_serial || 'N/A', type: 'code' }
+                    ]
+                },
+                // Firmware Versions (from BLE 0xB0 packet, updated on each connection)
+                {
+                    title: 'Firmware Versions',
+                    fields: [
+                        { label: 'Controller HW', value: fullScooter.controller_hw_version || 'N/A' },
+                        { label: 'Controller SW', value: fullScooter.controller_sw_version || 'N/A' },
+                        { label: 'Meter HW', value: fullScooter.meter_hw_version || 'N/A' },
+                        { label: 'Meter SW', value: fullScooter.meter_sw_version || 'N/A' },
+                        { label: 'BMS HW', value: fullScooter.bms_hw_version || 'N/A' },
+                        { label: 'BMS SW', value: fullScooter.bms_sw_version || 'N/A' },
+                        { label: 'Last Connected', value: fullScooter.last_connected_at, type: 'date' }
                     ]
                 },
                 // Registration Information

@@ -106,6 +106,9 @@ public class ScooterConnectionService implements BLEListener, PacketRouter.Packe
     private String connectedDeviceName = "";
     private String connectedSerial = "";
     private String deviceHardwareRevision = "";
+    private String deviceFirmwareRevision = "";
+    private String deviceModelNumber = "";
+    private String deviceManufacturer = "";
     private boolean isConnected = false;
 
     /**
@@ -184,6 +187,9 @@ public class ScooterConnectionService implements BLEListener, PacketRouter.Packe
     public String getConnectedDeviceName() { return connectedDeviceName; }
     public String getConnectedSerial() { return connectedSerial; }
     public String getDeviceHardwareRevision() { return deviceHardwareRevision; }
+    public String getDeviceFirmwareRevision() { return deviceFirmwareRevision; }
+    public String getDeviceModelNumber() { return deviceModelNumber; }
+    public String getDeviceManufacturer() { return deviceManufacturer; }
     public boolean isConnected() { return isConnected; }
 
     // ==================================================================================
@@ -224,8 +230,9 @@ public class ScooterConnectionService implements BLEListener, PacketRouter.Packe
         if (serialNumber != null && !serialNumber.isEmpty()) {
             connectedSerial = serialNumber;
         }
-        // Start version request after serial number is read
-        handler.postDelayed(this::sendVersionRequest, 1000);
+        // Start version request shortly after serial number is read
+        // 500ms gives BLE stack time to settle after device info reads
+        handler.postDelayed(this::sendVersionRequest, 500);
     }
 
     @Override
@@ -234,6 +241,9 @@ public class ScooterConnectionService implements BLEListener, PacketRouter.Packe
         Log.d(TAG, "Device Info: hwRev='" + hardwareRevision + "' fwRev='" + firmwareRevision
                 + "' model='" + modelNumber + "' mfr='" + manufacturer + "'");
         deviceHardwareRevision = hardwareRevision != null ? hardwareRevision : "";
+        deviceFirmwareRevision = firmwareRevision != null ? firmwareRevision : "";
+        deviceModelNumber = modelNumber != null ? modelNumber : "";
+        deviceManufacturer = manufacturer != null ? manufacturer : "";
         if (listener != null) listener.onDeviceInfoRead(hardwareRevision, firmwareRevision,
                 modelNumber, manufacturer);
     }
@@ -349,6 +359,9 @@ public class ScooterConnectionService implements BLEListener, PacketRouter.Packe
         connectedDeviceName = "";
         connectedSerial = "";
         deviceHardwareRevision = "";
+        deviceFirmwareRevision = "";
+        deviceModelNumber = "";
+        deviceManufacturer = "";
         isConnected = false;
         if (versionRequestHelper != null) {
             versionRequestHelper.cancel();

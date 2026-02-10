@@ -27,6 +27,10 @@ public class ServiceFactory {
     private static SessionManager sessionManager;
     private static TermsManager termsManager;
 
+    // Shared BLE connection service (persists across activity transitions)
+    private static ScooterConnectionService sharedConnectionService;
+    private static BLEManager sharedBleManager;
+
     /**
      * Initialize the factory with application context.
      * Safe to call multiple times (only initializes once).
@@ -108,11 +112,53 @@ public class ServiceFactory {
         return termsManager;
     }
 
-    // --- Factory methods for BLE services ---
+    // --- Shared BLE connection service (persists across activity transitions) ---
 
     /**
-     * Create a new ScooterConnectionService.
-     * Each Activity gets its own BLEManager and connection service.
+     * Get or create the shared ScooterConnectionService singleton.
+     * The connection persists across activity transitions (e.g. ScanScooterActivity → ScooterDetailsActivity).
+     * Use setListener() on the returned service to receive callbacks in the current activity.
+     *
+     * @param context Android context for BLEManager (getApplicationContext() is used internally)
+     * @param handler Main thread handler for version request timing
+     * @return shared ScooterConnectionService instance
+     */
+    public static synchronized ScooterConnectionService getConnectionService(Context context, Handler handler) {
+        if (sharedConnectionService == null) {
+            sharedBleManager = new BLEManager(context, null);
+            sharedConnectionService = new ScooterConnectionService(sharedBleManager, handler);
+            sharedBleManager.setListener(sharedConnectionService);
+        }
+        return sharedConnectionService;
+    }
+
+    /**
+     * Release the shared connection service.
+     * Disconnects BLE and destroys the singleton.
+     * Call when the user is done with the scooter (e.g. closing details screen).
+     */
+    public static synchronized void releaseConnectionService() {
+        if (sharedConnectionService != null) {
+            sharedConnectionService.setListener(null);
+            sharedConnectionService.cleanup();
+            sharedConnectionService = null;
+        }
+        sharedBleManager = null;
+    }
+
+    /**
+     * Check if the shared connection service exists and has an active BLE connection.
+     */
+    public static boolean isConnectionServiceActive() {
+        return sharedConnectionService != null && sharedConnectionService.isConnected();
+    }
+
+    // --- Factory methods for independent BLE services (firmware upload) ---
+
+    /**
+     * Create a new independent ScooterConnectionService.
+     * Used by FirmwareUpdaterActivity which needs its own BLE connection.
+     * NOT shared — each call creates a fresh instance.
      *
      * @param context Android context for BLEManager
      * @param handler Main thread handler for version request timing
@@ -130,6 +176,7 @@ public class ServiceFactory {
      * Call from Application.onTerminate() or last Activity.onDestroy().
      */
     public static synchronized void shutdown() {
+        releaseConnectionService();
         if (supabaseClient != null) {
             supabaseClient.shutdown();
             supabaseClient = null;

@@ -9,7 +9,13 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.pure.gen3firmwareupdater.ScooterRegistrationInfo;
 
+import com.pure.gen3firmwareupdater.VersionInfo;
+
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 
 import okhttp3.OkHttpClient;
@@ -139,7 +145,62 @@ public class SupabaseScooterRepository extends SupabaseBaseRepository {
     }
 
     /**
+     * Update a scooter record with version info from the latest BLE connection.
+     * PATCHes the scooters row with firmware versions, model, embedded serial, and last_connected_at.
+     * This is a synchronous call - must be called from a background thread.
+     */
+    public void updateScooterRecord(String scooterId, VersionInfo version,
+                                     String embeddedSerial, String model) throws IOException {
+        JsonObject body = new JsonObject();
+
+        if (version != null) {
+            if (version.controllerHwVersion != null) body.addProperty("controller_hw_version", version.controllerHwVersion);
+            if (version.controllerSwVersion != null) body.addProperty("controller_sw_version", version.controllerSwVersion);
+            if (version.meterHwVersion != null) body.addProperty("meter_hw_version", version.meterHwVersion);
+            if (version.meterSwVersion != null) body.addProperty("meter_sw_version", version.meterSwVersion);
+            if (version.bmsHwVersion != null) body.addProperty("bms_hw_version", version.bmsHwVersion);
+            if (version.bmsSwVersion != null) body.addProperty("bms_sw_version", version.bmsSwVersion);
+        }
+
+        if (embeddedSerial != null && !embeddedSerial.isEmpty()) {
+            body.addProperty("embedded_serial", embeddedSerial);
+        }
+
+        if (model != null && !model.isEmpty()) {
+            body.addProperty("model", model);
+        }
+
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+        body.addProperty("last_connected_at", sdf.format(new Date()));
+
+        String url = supabaseUrl + "/rest/v1/scooters?id=eq." + scooterId;
+        RequestBody requestBody = RequestBody.create(body.toString(), JSON_MEDIA_TYPE);
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("apikey", supabaseKey)
+                .addHeader("Authorization", "Bearer " + supabaseKey)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .patch(requestBody)
+                .build();
+
+        Log.d(TAG, "updateScooterRecord PATCH: " + body);
+        Response response = httpClient.newCall(request).execute();
+
+        if (!response.isSuccessful()) {
+            String responseBody = getResponseBody(response);
+            Log.w(TAG, "updateScooterRecord failed: HTTP " + response.code() + " - " + responseBody);
+        } else {
+            Log.d(TAG, "updateScooterRecord success for " + scooterId);
+            if (response.body() != null) response.body().close();
+        }
+    }
+
+    /**
      * Get registration status for a scooter - check if it's registered to a customer.
+     * Looks up scooter ID by serial first — use getScooterRegistrationStatusById if you
+     * already have the scooter ID to save a network round-trip.
      */
     public void getScooterRegistrationStatus(String scooterSerial, Callback<ScooterRegistrationInfo> callback) {
         executor.execute(() -> {
@@ -149,81 +210,117 @@ public class SupabaseScooterRepository extends SupabaseBaseRepository {
                     postError(callback, "Scooter not found in database");
                     return;
                 }
-
-                // Query user_scooters table with JOIN to users table
-                String url = supabaseUrl + "/rest/v1/user_scooters"
-                        + "?scooter_id=eq." + scooterId
-                        + "&select=*,users(first_name,last_name,email)"
-                        + "&order=registered_at.desc"
-                        + "&limit=1";
-
-                Request request = buildGetRequest(url);
-                Response response = httpClient.newCall(request).execute();
-                String body = getResponseBody(response);
-
-                Log.d(TAG, "getScooterRegistrationStatus HTTP " + response.code() + ": " + body);
-
-                if (!response.isSuccessful()) {
-                    postError(callback, "Server error: HTTP " + response.code());
-                    return;
-                }
-
-                JsonArray array = JsonParser.parseString(body).getAsJsonArray();
-                if (array.size() == 0) {
-                    // Not registered to any user
-                    postError(callback, "Scooter not registered to any customer");
-                    return;
-                }
-
-                JsonObject obj = array.get(0).getAsJsonObject();
-                ScooterRegistrationInfo info = new ScooterRegistrationInfo();
-                info.scooterId = scooterId;
-
-                info.userId = obj.has("user_id") ? obj.get("user_id").getAsString() : null;
-                info.registeredDate = obj.has("registered_at") ? obj.get("registered_at").getAsString() : null;
-                info.lastConnectedDate = obj.has("last_connected_at") && !obj.get("last_connected_at").isJsonNull()
-                        ? obj.get("last_connected_at").getAsString() : null;
-                info.isPrimary = obj.has("is_primary") && obj.get("is_primary").getAsBoolean();
-                info.nickname = obj.has("nickname") && !obj.get("nickname").isJsonNull()
-                        ? obj.get("nickname").getAsString() : null;
-
-                // Parse user info from JOIN
-                if (obj.has("users") && !obj.get("users").isJsonNull()) {
-                    JsonObject userObj = obj.get("users").getAsJsonObject();
-                    String firstName = userObj.has("first_name") && !userObj.get("first_name").isJsonNull()
-                            ? userObj.get("first_name").getAsString() : "";
-                    String lastName = userObj.has("last_name") && !userObj.get("last_name").isJsonNull()
-                            ? userObj.get("last_name").getAsString() : "";
-                    info.ownerName = (firstName + " " + lastName).trim();
-                    info.ownerEmail = userObj.has("email") ? userObj.get("email").getAsString() : "";
-                }
-
-                // Check if scooter has a PIN set
-                try {
-                    String pinUrl = supabaseUrl + "/rest/v1/scooters"
-                            + "?id=eq." + scooterId
-                            + "&select=pin_encrypted";
-                    Request pinReq = buildGetRequest(pinUrl);
-                    Response pinResp = httpClient.newCall(pinReq).execute();
-                    String pinBody = getResponseBody(pinResp);
-                    if (pinResp.isSuccessful()) {
-                        JsonArray pinArr = JsonParser.parseString(pinBody).getAsJsonArray();
-                        if (pinArr.size() > 0) {
-                            JsonObject scooterObj = pinArr.get(0).getAsJsonObject();
-                            info.hasPinSet = scooterObj.has("pin_encrypted")
-                                    && !scooterObj.get("pin_encrypted").isJsonNull();
-                        }
-                    }
-                } catch (Exception pinEx) {
-                    Log.w(TAG, "Could not check PIN status: " + pinEx.getMessage());
-                }
-
-                postSuccess(callback, info);
-
+                fetchRegistrationStatus(scooterId, callback);
             } catch (Exception e) {
                 Log.e(TAG, "getScooterRegistrationStatus error: " + e.getMessage());
                 postError(callback, formatError(e));
             }
         });
+    }
+
+    /**
+     * Get registration status when scooter ID is already known.
+     * Saves one HTTP round-trip vs getScooterRegistrationStatus(serial).
+     */
+    public void getScooterRegistrationStatusById(String scooterId, Callback<ScooterRegistrationInfo> callback) {
+        executor.execute(() -> {
+            try {
+                fetchRegistrationStatus(scooterId, callback);
+            } catch (Exception e) {
+                Log.e(TAG, "getScooterRegistrationStatusById error: " + e.getMessage());
+                postError(callback, formatError(e));
+            }
+        });
+    }
+
+    /**
+     * Internal: fetch registration status for a known scooter ID.
+     * Single query with JOIN to users and scooters (for PIN status) — 1 HTTP call.
+     */
+    private void fetchRegistrationStatus(String scooterId, Callback<ScooterRegistrationInfo> callback) throws IOException {
+        // Single query: user_scooters with JOIN to users AND scooters (for pin_encrypted)
+        String url = supabaseUrl + "/rest/v1/user_scooters"
+                + "?scooter_id=eq." + scooterId
+                + "&select=*,users(first_name,last_name,email),scooters(pin_encrypted)"
+                + "&order=registered_at.desc"
+                + "&limit=1";
+
+        Request request = buildGetRequest(url);
+        Response response = httpClient.newCall(request).execute();
+        String body = getResponseBody(response);
+
+        Log.d(TAG, "fetchRegistrationStatus HTTP " + response.code() + ": " + body);
+
+        if (!response.isSuccessful()) {
+            postError(callback, "Server error: HTTP " + response.code());
+            return;
+        }
+
+        JsonArray array = JsonParser.parseString(body).getAsJsonArray();
+        if (array.size() == 0) {
+            // Not registered — still return info with scooterId and PIN status
+            ScooterRegistrationInfo info = new ScooterRegistrationInfo();
+            info.scooterId = scooterId;
+            // Check PIN status even if unregistered (distributors need this)
+            checkPinStatusFallback(scooterId, info);
+            postSuccess(callback, info);
+            return;
+        }
+
+        JsonObject obj = array.get(0).getAsJsonObject();
+        ScooterRegistrationInfo info = new ScooterRegistrationInfo();
+        info.scooterId = scooterId;
+
+        info.userId = obj.has("user_id") ? obj.get("user_id").getAsString() : null;
+        info.registeredDate = obj.has("registered_at") ? obj.get("registered_at").getAsString() : null;
+        info.lastConnectedDate = obj.has("last_connected_at") && !obj.get("last_connected_at").isJsonNull()
+                ? obj.get("last_connected_at").getAsString() : null;
+        info.isPrimary = obj.has("is_primary") && obj.get("is_primary").getAsBoolean();
+        info.nickname = obj.has("nickname") && !obj.get("nickname").isJsonNull()
+                ? obj.get("nickname").getAsString() : null;
+
+        // Parse user info from JOIN
+        if (obj.has("users") && !obj.get("users").isJsonNull()) {
+            JsonObject userObj = obj.get("users").getAsJsonObject();
+            String firstName = userObj.has("first_name") && !userObj.get("first_name").isJsonNull()
+                    ? userObj.get("first_name").getAsString() : "";
+            String lastName = userObj.has("last_name") && !userObj.get("last_name").isJsonNull()
+                    ? userObj.get("last_name").getAsString() : "";
+            info.ownerName = (firstName + " " + lastName).trim();
+            info.ownerEmail = userObj.has("email") ? userObj.get("email").getAsString() : "";
+        }
+
+        // PIN status from scooters JOIN (no extra HTTP call)
+        if (obj.has("scooters") && !obj.get("scooters").isJsonNull()) {
+            JsonObject scooterObj = obj.get("scooters").getAsJsonObject();
+            info.hasPinSet = scooterObj.has("pin_encrypted")
+                    && !scooterObj.get("pin_encrypted").isJsonNull();
+        }
+
+        postSuccess(callback, info);
+    }
+
+    /**
+     * Fallback PIN check for unregistered scooters (no user_scooters row so no JOIN available).
+     */
+    private void checkPinStatusFallback(String scooterId, ScooterRegistrationInfo info) {
+        try {
+            String pinUrl = supabaseUrl + "/rest/v1/scooters"
+                    + "?id=eq." + scooterId
+                    + "&select=pin_encrypted";
+            Request pinReq = buildGetRequest(pinUrl);
+            Response pinResp = httpClient.newCall(pinReq).execute();
+            String pinBody = getResponseBody(pinResp);
+            if (pinResp.isSuccessful()) {
+                JsonArray pinArr = JsonParser.parseString(pinBody).getAsJsonArray();
+                if (pinArr.size() > 0) {
+                    JsonObject scooterObj = pinArr.get(0).getAsJsonObject();
+                    info.hasPinSet = scooterObj.has("pin_encrypted")
+                            && !scooterObj.get("pin_encrypted").isJsonNull();
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not check PIN status: " + e.getMessage());
+        }
     }
 }

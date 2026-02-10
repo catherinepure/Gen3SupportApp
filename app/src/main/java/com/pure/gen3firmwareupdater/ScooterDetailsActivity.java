@@ -1,6 +1,9 @@
 package com.pure.gen3firmwareupdater;
 
+import android.bluetooth.le.ScanResult;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
@@ -13,13 +16,19 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.button.MaterialButton;
 
+import com.pure.gen3firmwareupdater.services.ScooterConnectionService;
+import com.pure.gen3firmwareupdater.services.ServiceFactory;
+
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Activity to show scooter details and update history
+ * Activity to show scooter details and update history.
+ * Implements ConnectionListener to receive BLE disconnect events from the
+ * shared connection service singleton.
  */
-public class ScooterDetailsActivity extends AppCompatActivity {
+public class ScooterDetailsActivity extends AppCompatActivity
+        implements ScooterConnectionService.ConnectionListener {
 
     private static final String TAG = "ScooterDetails";
 
@@ -32,8 +41,11 @@ public class ScooterDetailsActivity extends AppCompatActivity {
     private ProgressBar progressBar;
     private MaterialButton btnClose;
     private MaterialButton btnViewCustomer;
+    private MaterialButton btnDisconnect;
 
     private SupabaseClient supabase;
+    private ScooterConnectionService connectionService;
+    private Handler handler = new Handler(Looper.getMainLooper());
     private String scooterSerial;
     private UpdateHistoryAdapter historyAdapter;
     private List<TelemetryRecord> updateHistory;
@@ -73,6 +85,7 @@ public class ScooterDetailsActivity extends AppCompatActivity {
         progressBar = findViewById(R.id.progressBar);
         btnClose = findViewById(R.id.btnClose);
         btnViewCustomer = findViewById(R.id.btnViewCustomer);
+        btnDisconnect = findViewById(R.id.btnDisconnect);
 
         tvScooterSerial.setText("Scooter: " + scooterSerial);
 
@@ -94,13 +107,118 @@ public class ScooterDetailsActivity extends AppCompatActivity {
         }
 
         // Initialize Supabase client
-        com.pure.gen3firmwareupdater.services.ServiceFactory.init(this);
-        supabase = com.pure.gen3firmwareupdater.services.ServiceFactory.getSupabaseClient();
+        ServiceFactory.init(this);
+        supabase = ServiceFactory.getSupabaseClient();
+
+        // Attach to shared BLE connection service
+        setupBleConnection();
 
         // Load scooter details and history
         displayCurrentData();
         loadUpdateHistory();
     }
+
+    // ==================================================================================
+    // BLE CONNECTION MANAGEMENT
+    // ==================================================================================
+
+    private void setupBleConnection() {
+        // Get the shared connection service (same singleton from ScanScooterActivity)
+        connectionService = ServiceFactory.getConnectionService(this, handler);
+        connectionService.setListener(this);
+
+        // Show disconnect button if BLE is currently connected
+        if (connectionService.isConnected()) {
+            btnDisconnect.setVisibility(View.VISIBLE);
+            btnDisconnect.setOnClickListener(v -> {
+                Log.d(TAG, "User pressed Disconnect");
+                ServiceFactory.releaseConnectionService();
+            });
+        } else {
+            btnDisconnect.setVisibility(View.GONE);
+        }
+    }
+
+    private void updateDisconnectButton(boolean connected) {
+        runOnUiThread(() -> {
+            btnDisconnect.setVisibility(connected ? View.VISIBLE : View.GONE);
+        });
+    }
+
+    // ==================================================================================
+    // ScooterConnectionService.ConnectionListener implementation
+    // ==================================================================================
+
+    @Override
+    public void onScanStarted() { /* not used */ }
+
+    @Override
+    public void onDevicesFound(List<ScanResult> devices) { /* not used */ }
+
+    @Override
+    public void onScanFailed(String error) { /* not used */ }
+
+    @Override
+    public void onConnecting(String deviceName) { /* not used */ }
+
+    @Override
+    public void onConnected(String deviceName, String serialNumber) {
+        Log.d(TAG, "BLE connected: " + deviceName);
+        updateDisconnectButton(true);
+    }
+
+    @Override
+    public void onDeviceInfoRead(String hardwareRevision, String firmwareRevision,
+                                  String modelNumber, String manufacturer) { /* not used */ }
+
+    @Override
+    public void onVersionReceived(VersionInfo version) { /* not used */ }
+
+    @Override
+    public void onRunningDataReceived(RunningDataInfo data) { /* not used */ }
+
+    @Override
+    public void onBMSDataReceived(BMSDataInfo data) { /* not used */ }
+
+    @Override
+    public void onConfigReceived(ConfigInfo config) { /* not used */ }
+
+    @Override
+    public void onStatusChanged(String status) {
+        Log.d(TAG, "BLE status: " + status);
+    }
+
+    @Override
+    public void onDisconnected(boolean wasExpected) {
+        Log.d(TAG, "BLE disconnected (expected=" + wasExpected + ")");
+        updateDisconnectButton(false);
+        runOnUiThread(() -> {
+            if (wasExpected) {
+                Toast.makeText(this, "Scooter disconnected", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Connection to scooter lost", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    @Override
+    public void onConnectionFailed(String error) {
+        Log.w(TAG, "BLE connection failed: " + error);
+        updateDisconnectButton(false);
+    }
+
+    @Override
+    public void onVersionRequestTimeout() { /* not used */ }
+
+    @Override
+    public void onRawDataReceived(byte[] data) { /* not used */ }
+
+    @Override
+    public void onCommandSent(boolean success, String message) { /* not used */ }
+
+    // ==================================================================================
+    // DATA DISPLAY
+    // ==================================================================================
 
     private void displayCurrentData() {
         // Display registration status
@@ -329,5 +447,21 @@ public class ScooterDetailsActivity extends AppCompatActivity {
                 .setMessage(details.toString())
                 .setPositiveButton("OK", null)
                 .show();
+    }
+
+    // ==================================================================================
+    // LIFECYCLE
+    // ==================================================================================
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Detach listener only — keep the BLE connection alive.
+        // Connection is only released when the user explicitly presses Disconnect
+        // or when the app shuts down (ServiceFactory.shutdown()).
+        if (connectionService != null) {
+            connectionService.setListener(null);
+        }
+        handler.removeCallbacksAndMessages(null);
     }
 }

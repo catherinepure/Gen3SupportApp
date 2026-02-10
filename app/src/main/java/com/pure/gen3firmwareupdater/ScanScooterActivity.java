@@ -56,7 +56,9 @@ public class ScanScooterActivity extends AppCompatActivity implements ScooterCon
     // Data
     private String distributorId;  // null for regular users
     private boolean userMode = false;
+    private boolean navigatingForward = false;  // true when transitioning to ScooterDetailsActivity
     private String connectedSerial;
+    private String gattModelNumber;
     private VersionInfo scooterVersion;
     private RunningDataInfo scooterRunningData;
     private BMSDataInfo scooterBMSData;
@@ -93,19 +95,15 @@ public class ScanScooterActivity extends AppCompatActivity implements ScooterCon
 
         btnScan.setOnClickListener(v -> startScanning());
         btnCancel.setOnClickListener(v -> {
-            if (currentState == State.SCANNING && connectionService != null) {
-                connectionService.cleanup();
-            }
+            ServiceFactory.releaseConnectionService();
             finish();
         });
     }
 
     private void initManagers() {
         ServiceFactory.init(this);
-        BLEManager bleManager = new BLEManager(this, null);
-        connectionService = new ScooterConnectionService(bleManager, handler);
+        connectionService = ServiceFactory.getConnectionService(this, handler);
         connectionService.setListener(this);
-        bleManager.setListener(connectionService);
         supabase = ServiceFactory.getSupabaseClient();
     }
 
@@ -210,7 +208,8 @@ public class ScanScooterActivity extends AppCompatActivity implements ScooterCon
     @Override
     public void onDeviceInfoRead(String hardwareRevision, String firmwareRevision,
                                   String modelNumber, String manufacturer) {
-        // Not used in scan flow
+        Log.d(TAG, "Device info: model=" + modelNumber);
+        gattModelNumber = modelNumber;
     }
 
     @Override
@@ -307,33 +306,29 @@ public class ScanScooterActivity extends AppCompatActivity implements ScooterCon
     private void onVersionDataReady() {
         Log.d(TAG, "Version received: " + scooterVersion);
 
-        // Create telemetry record (new approach - separate from firmware uploads)
         String embeddedSerial = (scooterVersion.embeddedSerialNumber != null && !scooterVersion.embeddedSerialNumber.isEmpty())
                 ? scooterVersion.embeddedSerialNumber : null;
 
+        // Fire-and-forget: create telemetry record + update static scooter record in background
         String scanSource = userMode ? "user_scan" : "distributor_scan";
         supabase.createTelemetryRecord(connectedSerial, distributorId,
                 scooterVersion.controllerHwVersion, scooterVersion.controllerSwVersion,
                 scooterRunningData, scooterBMSData, embeddedSerial, scanSource,
+                scooterVersion, gattModelNumber,
                 new SupabaseClient.Callback<String>() {
                     @Override
                     public void onSuccess(String recordId) {
                         Log.d(TAG, "Telemetry record created: " + recordId);
-                        // Now check registration status and show scooter details
-                        checkRegistrationAndShowDetails();
                     }
 
                     @Override
                     public void onError(String error) {
                         Log.w(TAG, "Failed to create telemetry record: " + error);
-                        // Still show details even if telemetry record fails
-                        checkRegistrationAndShowDetails();
                     }
                 });
-    }
 
-    private void checkRegistrationAndShowDetails() {
-        // Query for registration status
+        // In parallel: check registration status and navigate to details
+        // This runs concurrently with telemetry creation — UI doesn't wait for telemetry
         supabase.getScooterRegistrationStatus(connectedSerial, new SupabaseClient.Callback<ScooterRegistrationInfo>() {
             @Override
             public void onSuccess(ScooterRegistrationInfo registrationInfo) {
@@ -388,6 +383,12 @@ public class ScanScooterActivity extends AppCompatActivity implements ScooterCon
 
     private void navigateToScooterDetails(ScooterRegistrationInfo registrationInfo) {
         if (isFinishing() || isDestroyed()) return;
+
+        // Detach listener before transitioning — ScooterDetailsActivity will re-attach
+        navigatingForward = true;
+        if (connectionService != null) {
+            connectionService.setListener(null);
+        }
 
         Intent intent = new Intent(this, ScooterDetailsActivity.class);
         intent.putExtra("scooter_serial", connectedSerial);
@@ -450,9 +451,11 @@ public class ScanScooterActivity extends AppCompatActivity implements ScooterCon
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (connectionService != null) {
-            connectionService.cleanup();
+        if (!navigatingForward) {
+            // User pressed Cancel/Back — disconnect and release the shared connection
+            ServiceFactory.releaseConnectionService();
         }
+        // If navigatingForward, leave the connection alive for ScooterDetailsActivity
         // Note: supabase is managed by ServiceFactory (shared singleton), don't shutdown here
         handler.removeCallbacksAndMessages(null);
     }

@@ -11,6 +11,7 @@ import com.google.gson.JsonParser;
 import com.pure.gen3firmwareupdater.BMSDataInfo;
 import com.pure.gen3firmwareupdater.RunningDataInfo;
 import com.pure.gen3firmwareupdater.TelemetryRecord;
+import com.pure.gen3firmwareupdater.VersionInfo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -107,9 +108,30 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
                                        RunningDataInfo runningData, BMSDataInfo bmsData,
                                        String embeddedSerial, String scanType,
                                        Callback<String> callback) {
+        createTelemetryRecord(scooterSerial, distributorId, hwVersion, swVersion,
+                runningData, bmsData, embeddedSerial, scanType, null, null, callback);
+    }
+
+    /**
+     * Create a telemetry record and update the static scooter record with version info.
+     * Also updates the scooters table with firmware versions, model, and last_connected_at.
+     */
+    public void createTelemetryRecord(String scooterSerial, String distributorId,
+                                       String hwVersion, String swVersion,
+                                       RunningDataInfo runningData, BMSDataInfo bmsData,
+                                       String embeddedSerial, String scanType,
+                                       VersionInfo versionInfo, String model,
+                                       Callback<String> callback) {
         executor.execute(() -> {
             try {
                 String scooterId = scooterRepo.getOrCreateScooterId(scooterSerial, distributorId, hwVersion, swVersion);
+
+                // Update the static scooter record with latest version info
+                try {
+                    scooterRepo.updateScooterRecord(scooterId, versionInfo, embeddedSerial, model);
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to update scooter record (non-fatal): " + e.getMessage());
+                }
 
                 // Get user_id if scooter is registered
                 String userId = null;

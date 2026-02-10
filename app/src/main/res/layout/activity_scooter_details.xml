@@ -52,6 +52,18 @@
         android:layout_marginBottom="8dp"
         android:visibility="gone" />
 
+    <!-- Disconnect Button (shown when BLE connected) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnDisconnect"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Disconnect Scooter"
+        android:textSize="14sp"
+        android:padding="12dp"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone"
+        style="@style/Widget.Material3.Button.TonalButton" />
+
     <!-- View Customer Button (shown when registered) -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnViewCustomer"
