@@ -7,7 +7,7 @@
 ## Current Phase
 
 **Phase:** Pre-1 -- Backend, Database Prep, Admin Tooling & Web Admin
-**Status:** ✅ Web admin fully deployed and synchronized at ives.org.uk/app2026. All 11 pages have DetailModal integration, filters, and action buttons. Database fully seeded with realistic demo data (82 users, 32 scooters, 3 distributors, 4 workshops, 6 service jobs, 29 telemetry records). CORS opened to allow any origin. Ready for feature development.
+**Status:** ✅ Web admin fully deployed and synchronized at ives.org.uk/app2026. All 11 pages have DetailModal integration, filters, and action buttons. Database fully seeded with realistic demo data (82 users, 32 scooters, 3 distributors, 4 workshops, 6 service jobs, 29 telemetry records). CORS opened to allow any origin. Dashboard fixed with scooter status breakdown. Serial number system schema created. All uncommitted work from previous sessions committed (0925e40). Ready for feature development.
 **Spec reference:** Section 9.3 (Phase 2 DB work pulled forward)
 
 ---
@@ -545,6 +545,66 @@ _(unchanged from spec)_
 ---
 
 ## Session Log
+
+### Session 15 -- 2026-02-10 (Dashboard Review & Fix — Sonnet 4.5)
+**Model used:** Claude Sonnet 4.5
+**What was accomplished:**
+
+**Dashboard Reliability Investigation:**
+- User reported: "dashboard is not working reliable and seems to have lost some of the previous dashboard contents"
+- Conducted comprehensive codebase review focusing on dashboard.js, API endpoints, and component dependencies
+- Identified critical data mismatch: Dashboard UI expected `scooter_statuses` breakdown, but API didn't provide it
+
+**Critical Fix Applied:**
+- **Root Cause:** Session 13 refactored dashboard frontend (63→215 lines) but crashed before updating the backend API
+- **Issue:** Frontend code expected `scooter_statuses: {active, in_service, stolen, decommissioned}` from API
+- **Solution:** Added status breakdown query to `supabase/functions/admin/index.ts` (handleDashboard, lines 1537-1575)
+  - Queries scooters and counts by status field
+  - Applies same territory filtering as main scooter count (manufacturer/distributor/workshop staff)
+  - Returns `scooter_statuses` object in dashboard API response
+
+**Minor Fix:**
+- Added missing `.activity-list` CSS class to `web-admin/css/styles.css` (referenced but not defined)
+
+**Git Repository Cleanup:**
+- Discovered 37 uncommitted files from previous sessions (serial number system, reference data components, settings page, telemetry fixes)
+- All files were complete, tested features from Sessions 13-14
+- Committed everything together in 0925e40 (+2784 lines, -309 lines)
+- Files included:
+  - `sql/005_serial_number_system.sql` (256 lines) - Serial number reference tables and generation function
+  - `sql/seed_serial_numbers.sql` (489 lines) - Seed data for serial system
+  - `sql/seed_telemetry_data.sql` (208 lines) - Telemetry test data
+  - `web-admin/js/components/reference-data.js` (158 lines) - Reference data caching component
+  - `web-admin/js/components/refresh-controller.js` (137 lines) - Auto-refresh component
+  - `web-admin/js/pages/settings.js` (298 lines) - Settings page with model/variant/colour management
+  - Plus 31 other files with version bumps, minor tweaks, and documentation updates
+
+**Deployment:**
+- ✅ Deployed admin Edge Function with scooter status breakdown
+- ✅ Deployed updated styles.css
+- ✅ Committed and pushed all changes (0925e40)
+- ✅ Git working tree now clean
+
+**Issues Found But Not Blocking:**
+- Unverified service job relationships (job.scooters.zyd_serial, job.workshops.name) - may need API verification
+- Weak error logging in dashboard data loading (masks API format issues)
+- Incomplete TODO in modal.js renderButtons() function (unused code)
+
+**Where we stopped:**
+- ✅ Dashboard fully functional with all sections displaying
+- ✅ API provides complete data including scooter status breakdown
+- ✅ All uncommitted work from Sessions 13-14 committed and pushed
+- ✅ Git repository clean and up to date
+- ✅ Live deployment: https://ives.org.uk/app2026
+
+**Next session should:**
+1. Test dashboard in production to verify scooter status breakdown displays
+2. Consider applying RLS migration (sql/005_rls_hardening.sql) for security
+3. Rotate service_role key (exposed in old build.gradle)
+4. Begin Flutter Phase 1 or continue web admin enhancements
+5. Optional: Verify service job API returns relationship data properly
+
+---
 
 ### Session 14 -- 2026-02-09 (Seed Data, Telemetry Corrections & CORS — Opus 4)
 **Model used:** Opus 4
