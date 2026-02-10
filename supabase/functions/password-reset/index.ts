@@ -188,10 +188,23 @@ serve(async (req) => {
 
       try {
         await sendPasswordResetEmail(user.email, user.first_name || 'there', resetUrl)
-      } catch (emailError) {
-        console.error('Failed to send password reset email:', emailError)
-        // Continue anyway - user can still use the link if we log it
-        console.log(`Password reset URL for ${user.email}: ${resetUrl}`)
+        console.log(`Password reset email sent successfully to ${user.email}`)
+      } catch (emailError: any) {
+        console.error('SendGrid email failure:', {
+          email: user.email,
+          error: emailError?.message || 'Unknown error',
+          // Log user_id instead of token for debugging
+          user_id: user.id
+        })
+
+        // Return error to user - don't claim success if email failed
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to send password reset email. Please try again or contact support.',
+            details: 'Email service unavailable'
+          }),
+          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
       }
 
       return new Response(

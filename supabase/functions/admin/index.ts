@@ -101,6 +101,31 @@ setInterval(() => {
   }
 }, 300_000)
 
+// Admin audit logging
+async function logAdminAction(
+  supabase: any,
+  admin: any,
+  action: string,
+  resource: string,
+  resourceId: string,
+  changes: Record<string, any> = {}
+) {
+  try {
+    await supabase.from('admin_audit_log').insert({
+      admin_id: admin.id,
+      admin_email: admin.email,
+      action,
+      resource,
+      resource_id: resourceId,
+      changes,
+      ip_address: 'edge-function' // Could extract from request headers if available
+    })
+  } catch (err) {
+    console.error('Failed to log admin action:', err)
+    // Don't fail the request if logging fails
+  }
+}
+
 function checkRateLimit(key: string): { allowed: boolean; remaining: number; retryAfterMs?: number } {
   const now = Date.now()
   let entry = rateLimitMap.get(key)
@@ -482,6 +507,9 @@ async function handleUsers(supabase: any, action: string, body: any, admin: any)
       timestamp: new Date().toISOString()
     })
 
+    // Log admin action
+    await logAdminAction(supabase, admin, 'create', 'users', created.id, record)
+
     return respond({
       success: true,
       user: created,
@@ -518,6 +546,10 @@ async function handleUsers(supabase: any, action: string, body: any, admin: any)
     const { data, error } = await supabase.from('users')
       .update(updates).eq('id', body.id).select(selectFields).single()
     if (error) return errorResponse(error.message, 500)
+
+    // Log admin action
+    await logAdminAction(supabase, admin, 'update', 'users', body.id, updates)
+
     return respond({ success: true, user: data })
   }
 
@@ -529,6 +561,10 @@ async function handleUsers(supabase: any, action: string, body: any, admin: any)
 
     // Kill active sessions
     await supabase.from('user_sessions').delete().eq('user_id', body.id)
+
+    // Log admin action
+    await logAdminAction(supabase, admin, 'deactivate', 'users', body.id, { is_active: { old: true, new: false } })
+
     return respond({ success: true, user: data })
   }
 
@@ -1522,63 +1558,120 @@ async function handleValidation(supabase: any, action: string, _body: any, _admi
 
 async function handleDashboard(supabase: any, _action: string, _body: any, admin: any) {
   // Gather summary stats for the dashboard (with territory filtering)
+  // Optimized with parallel query execution grouped by dependencies
 
-  // Users count - apply territory filter
-  let userQuery = supabase.from('users').select('id', { count: 'exact', head: true }).eq('is_active', true)
-  const userTerritoryFilter = buildTerritoryFilter('users', admin)
-  userQuery = applyTerritoryFilter(userQuery, userTerritoryFilter)
-  const { count: userCount } = await userQuery
-
-  // Scooters count - apply territory filter
-  let scooterQuery = supabase.from('scooters').select('id', { count: 'exact', head: true })
+  // Helper: Get workshop scooter IDs (reusable for workshop staff)
+  let workshopScooterIds: string[] | null = null
   if (admin.territory.role === 'workshop_staff') {
-    // Workshop staff: only count scooters with active service jobs at their workshop
     const { data: activeJobs } = await supabase
       .from('service_jobs')
       .select('scooter_id')
       .eq('workshop_id', admin.territory.workshop_id)
       .not('status', 'in', '("completed","cancelled")')
-    const scooterIds = activeJobs?.map((j: any) => j.scooter_id) || []
-    if (scooterIds.length > 0) {
-      scooterQuery = scooterQuery.in('id', scooterIds)
-    } else {
-      scooterQuery = scooterQuery.eq('id', '00000000-0000-0000-0000-000000000000')
-    }
-  } else {
-    const scooterTerritoryFilter = buildTerritoryFilter('scooters', admin)
-    scooterQuery = applyTerritoryFilter(scooterQuery, scooterTerritoryFilter)
+    workshopScooterIds = activeJobs?.map((j: any) => j.scooter_id) || []
   }
-  const { count: scooterCount } = await scooterQuery
 
-  // Scooter status breakdown - apply same territory filter
-  let statusQuery = supabase.from('scooters').select('status')
-  if (admin.territory.role === 'workshop_staff') {
-    // Workshop staff: only count scooters with active service jobs at their workshop
-    const { data: activeJobs } = await supabase
-      .from('service_jobs')
-      .select('scooter_id')
-      .eq('workshop_id', admin.territory.workshop_id)
-      .not('status', 'in', '("completed","cancelled")')
-    const scooterIds = activeJobs?.map((j: any) => j.scooter_id) || []
-    if (scooterIds.length > 0) {
-      statusQuery = statusQuery.in('id', scooterIds)
-    } else {
-      statusQuery = statusQuery.eq('id', '00000000-0000-0000-0000-000000000000')
-    }
-  } else {
-    const statusTerritoryFilter = buildTerritoryFilter('scooters', admin)
-    statusQuery = applyTerritoryFilter(statusQuery, statusTerritoryFilter)
-  }
-  const { data: scooterStatuses } = await statusQuery
+  // GROUP 1: Simple counts (parallel) - no dependencies
+  const [
+    { count: userCount },
+    { count: distributorCount },
+    { count: workshopCount },
+    { count: firmwareCount }
+  ] = await Promise.all([
+    // Users
+    (() => {
+      let q = supabase.from('users').select('id', { count: 'exact', head: true }).eq('is_active', true)
+      const filter = buildTerritoryFilter('users', admin)
+      return applyTerritoryFilter(q, filter)
+    })(),
+    // Distributors
+    (() => {
+      let q = supabase.from('distributors').select('id', { count: 'exact', head: true }).eq('is_active', true)
+      const filter = buildTerritoryFilter('distributors', admin)
+      return applyTerritoryFilter(q, filter)
+    })(),
+    // Workshops
+    (() => {
+      let q = supabase.from('workshops').select('id', { count: 'exact', head: true }).eq('is_active', true)
+      const filter = buildTerritoryFilter('workshops', admin)
+      return applyTerritoryFilter(q, filter)
+    })(),
+    // Firmware (global)
+    supabase.from('firmware_versions')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_active', true)
+  ])
 
-  // Count scooters by status
+  // GROUP 2: Scooter-related queries (parallel, uses workshopScooterIds)
+  const [
+    { count: scooterCount },
+    { data: scooterStatuses },
+    activeJobsResult
+  ] = await Promise.all([
+    // Scooters count
+    (() => {
+      let q = supabase.from('scooters').select('id', { count: 'exact', head: true })
+      if (admin.territory.role === 'workshop_staff') {
+        if (workshopScooterIds && workshopScooterIds.length > 0) {
+          q = q.in('id', workshopScooterIds)
+        } else {
+          q = q.eq('id', '00000000-0000-0000-0000-000000000000')
+        }
+      } else {
+        const filter = buildTerritoryFilter('scooters', admin)
+        q = applyTerritoryFilter(q, filter)
+      }
+      return q
+    })(),
+    // Scooter statuses (for breakdown)
+    (() => {
+      let q = supabase.from('scooters').select('status')
+      if (admin.territory.role === 'workshop_staff') {
+        if (workshopScooterIds && workshopScooterIds.length > 0) {
+          q = q.in('id', workshopScooterIds)
+        } else {
+          q = q.eq('id', '00000000-0000-0000-0000-000000000000')
+        }
+      } else {
+        const filter = buildTerritoryFilter('scooters', admin)
+        q = applyTerritoryFilter(q, filter)
+      }
+      return q
+    })(),
+    // Active service jobs (needs special handling for distributor_staff)
+    (async () => {
+      let q = supabase.from('service_jobs').select('id', { count: 'exact', head: true })
+        .not('status', 'in', '("completed","cancelled")')
+
+      if (admin.territory.role === 'distributor_staff') {
+        // Need to fetch scooters first for distributor_staff
+        const { data: territoryScooters } = await supabase
+          .from('scooters')
+          .select('id')
+          .in('country_of_registration', admin.territory.allowed_countries)
+        const scooterIds = territoryScooters?.map((s: any) => s.id) || []
+        if (scooterIds.length > 0) {
+          q = q.in('scooter_id', scooterIds)
+        } else {
+          q = q.eq('id', '00000000-0000-0000-0000-000000000000')
+        }
+      } else {
+        const filter = buildTerritoryFilter('service-jobs', admin)
+        q = applyTerritoryFilter(q, filter)
+      }
+      return q
+    })()
+  ])
+
+  const { count: activeJobCount } = activeJobsResult
+
+  // Compute status breakdown from scooterStatuses
   const statusBreakdown: Record<string, number> = {
     active: 0,
     in_service: 0,
     stolen: 0,
     decommissioned: 0
   }
-
   if (scooterStatuses) {
     for (const scooter of scooterStatuses) {
       const status = scooter.status || 'active'
@@ -1588,56 +1681,27 @@ async function handleDashboard(supabase: any, _action: string, _body: any, admin
     }
   }
 
-  // Distributors count - apply territory filter
-  let distributorQuery = supabase.from('distributors').select('id', { count: 'exact', head: true }).eq('is_active', true)
-  const distributorTerritoryFilter = buildTerritoryFilter('distributors', admin)
-  distributorQuery = applyTerritoryFilter(distributorQuery, distributorTerritoryFilter)
-  const { count: distributorCount } = await distributorQuery
-
-  // Workshops count - apply territory filter
-  let workshopQuery = supabase.from('workshops').select('id', { count: 'exact', head: true }).eq('is_active', true)
-  const workshopTerritoryFilter = buildTerritoryFilter('workshops', admin)
-  workshopQuery = applyTerritoryFilter(workshopQuery, workshopTerritoryFilter)
-  const { count: workshopCount } = await workshopQuery
-
-  // Active service jobs count - apply territory filter
-  let jobQuery = supabase.from('service_jobs').select('id', { count: 'exact', head: true })
-    .not('status', 'in', '("completed","cancelled")')
-  if (admin.territory.role === 'distributor_staff') {
-    // Distributor staff: filter via scooters in their territory
-    const { data: territoryScooters } = await supabase
-      .from('scooters')
-      .select('id')
-      .in('country_of_registration', admin.territory.allowed_countries)
-    const scooterIds = territoryScooters?.map((s: any) => s.id) || []
-    if (scooterIds.length > 0) {
-      jobQuery = jobQuery.in('scooter_id', scooterIds)
-    } else {
-      jobQuery = jobQuery.eq('id', '00000000-0000-0000-0000-000000000000')
-    }
-  } else {
-    const jobTerritoryFilter = buildTerritoryFilter('service-jobs', admin)
-    jobQuery = applyTerritoryFilter(jobQuery, jobTerritoryFilter)
-  }
-  const { count: activeJobCount } = await jobQuery
-
-  // Firmware count - no territory filter (global resource)
-  const { count: firmwareCount } = await supabase.from('firmware_versions')
-    .select('id', { count: 'exact', head: true }).eq('is_active', true)
-
-  // Recent events (last 24h) - apply territory filter
+  // GROUP 3: Time-based stats (parallel)
   const yesterday = new Date(Date.now() - 86400000).toISOString()
-  let eventsQuery = supabase.from('activity_events').select('id', { count: 'exact', head: true }).gte('timestamp', yesterday)
-  const eventsTerritoryFilter = buildTerritoryFilter('events', admin)
-  eventsQuery = applyTerritoryFilter(eventsQuery, eventsTerritoryFilter)
-  const { count: recentEvents } = await eventsQuery
-
-  // Recent uploads (last 7 days) - apply territory filter
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString()
-  let uploadsQuery = supabase.from('firmware_uploads').select('id', { count: 'exact', head: true }).gte('started_at', weekAgo)
-  const uploadsTerritoryFilter = buildTerritoryFilter('logs', admin)
-  uploadsQuery = applyTerritoryFilter(uploadsQuery, uploadsTerritoryFilter)
-  const { count: recentUploads } = await uploadsQuery
+
+  const [
+    { count: recentEvents },
+    { count: recentUploads }
+  ] = await Promise.all([
+    // Events (last 24h)
+    (() => {
+      let q = supabase.from('activity_events').select('id', { count: 'exact', head: true }).gte('timestamp', yesterday)
+      const filter = buildTerritoryFilter('events', admin)
+      return applyTerritoryFilter(q, filter)
+    })(),
+    // Uploads (last 7 days)
+    (() => {
+      let q = supabase.from('firmware_uploads').select('id', { count: 'exact', head: true }).gte('started_at', weekAgo)
+      const filter = buildTerritoryFilter('logs', admin)
+      return applyTerritoryFilter(q, filter)
+    })()
+  ])
 
   return respond({
     dashboard: {
