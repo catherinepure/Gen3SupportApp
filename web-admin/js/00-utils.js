@@ -271,6 +271,40 @@ const Utils = (() => {
     ];
 
     /**
+     * Structured logging utility
+     */
+    const Logger = {
+        error(page, action, error, context = {}) {
+            console.error(`[${page}] ${action} failed:`, {
+                message: error.message,
+                stack: error.stack,
+                ...context,
+                timestamp: new Date().toISOString()
+            });
+        },
+
+        warn(page, message, context = {}) {
+            console.warn(`[${page}] ${message}`, {
+                ...context,
+                timestamp: new Date().toISOString()
+            });
+        },
+
+        info(page, message, context = {}) {
+            console.log(`[${page}] ${message}`, {
+                ...context,
+                timestamp: new Date().toISOString()
+            });
+        },
+
+        debug(page, message, data = {}) {
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.debug(`[${page}] ${message}`, data);
+            }
+        }
+    };
+
+    /**
      * Error boundary wrapper for async functions
      * @param {Function} fn - Async function to wrap
      * @param {string} context - Context description for error messages
@@ -383,6 +417,7 @@ const Utils = (() => {
         escapeHtml,
         parseJSON,
         withErrorBoundary,
+        Logger,
         COUNTRIES,
         COUNTRY_CODES,
         ROLES,
