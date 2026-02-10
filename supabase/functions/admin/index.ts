@@ -492,6 +492,21 @@ async function handleUsers(supabase: any, action: string, body: any, admin: any)
 
   if (action === 'update') {
     if (!body.id) return errorResponse('User ID required')
+
+    // Role validation - prevent privilege escalation
+    if (admin.territory.role !== 'manufacturer_admin') {
+      // Managers cannot modify roles or territories
+      if (body.user_level && body.user_level !== 'normal') {
+        return errorResponse('Only manufacturer admins can assign admin/manager levels', 403)
+      }
+      if (body.roles && body.roles.length > 0) {
+        return errorResponse('Only manufacturer admins can assign roles', 403)
+      }
+      if (body.distributor_id !== undefined || body.workshop_id !== undefined) {
+        return errorResponse('Only manufacturer admins can change territory assignments', 403)
+      }
+    }
+
     const allowed = ['first_name', 'last_name', 'user_level', 'roles', 'distributor_id',
       'workshop_id', 'is_active', 'is_verified', 'home_country', 'current_country']
     const updates: Record<string, any> = {}

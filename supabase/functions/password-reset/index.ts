@@ -122,6 +122,27 @@ serve(async (req) => {
         )
       }
 
+      // Rate limiting - max 3 requests per hour per email
+      const oneHourAgo = new Date(Date.now() - 3600000).toISOString()
+      const { count: recentAttempts } = await supabase
+        .from('password_reset_attempts')
+        .select('*', { count: 'exact', head: true })
+        .eq('email', email.toLowerCase())
+        .gte('created_at', oneHourAgo)
+
+      if (recentAttempts && recentAttempts >= 3) {
+        return new Response(
+          JSON.stringify({ error: 'Too many reset attempts. Please try again in 1 hour.' }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Log this attempt
+      await supabase.from('password_reset_attempts').insert({
+        email: email.toLowerCase(),
+        ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown'
+      })
+
       // Check if user exists
       const { data: user, error: userError } = await supabase
         .from('users')
