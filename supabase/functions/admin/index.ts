@@ -11,7 +11,7 @@
 //
 // Resources & Actions:
 //   users:        list, get, create, update, deactivate, export, search
-//   scooters:     list, get, create, update, link-user, unlink-user, export
+//   scooters:     list, get, create, update, link-user, unlink-user, set-pin, get-pin, reset-pin, export
 //   distributors: list, get, create, update, export
 //   workshops:    list, get, create, update, export
 //   firmware:     list, get, create, update, deactivate, reactivate, export
@@ -743,6 +743,176 @@ async function handleScooters(supabase: any, action: string, body: any, admin: a
       .delete().eq('scooter_id', body.scooter_id).eq('user_id', body.user_id)
     if (error) return errorResponse(error.message, 500)
     return respond({ success: true })
+  }
+
+  // ============================================================================
+  // PIN Management Actions
+  // ============================================================================
+
+  if (action === 'set-pin') {
+    const { scooter_id, pin } = body
+    if (!scooter_id || !pin) {
+      return errorResponse('Scooter ID and PIN required', 400)
+    }
+
+    // Validate PIN format (6 digits)
+    if (!/^\d{6}$/.test(pin)) {
+      return errorResponse('PIN must be exactly 6 digits', 400)
+    }
+
+    // Check scooter exists and get owner
+    const { data: scooter, error: scooterError } = await supabase
+      .from('scooters')
+      .select('owner_id, zyd_serial')
+      .eq('id', scooter_id)
+      .single()
+
+    if (scooterError || !scooter) {
+      return errorResponse('Scooter not found', 404)
+    }
+
+    // Authorization: Only owner or manufacturer_admin can set PIN
+    const isOwner = scooter.owner_id === admin.id
+    const isManufacturerAdmin = admin.territory.role === 'manufacturer_admin'
+
+    if (!isOwner && !isManufacturerAdmin) {
+      return errorResponse('Only scooter owner or manufacturer admin can set PIN', 403)
+    }
+
+    // Get encryption key from environment
+    const ENCRYPTION_KEY = Deno.env.get('PIN_ENCRYPTION_KEY')
+    if (!ENCRYPTION_KEY) {
+      console.error('PIN_ENCRYPTION_KEY not configured')
+      return errorResponse('PIN encryption not configured', 500)
+    }
+
+    // Call database function to encrypt and store PIN
+    const { error: setPinError } = await supabase.rpc('set_scooter_pin', {
+      p_scooter_id: scooter_id,
+      p_pin: pin,
+      p_user_id: admin.id,
+      p_encryption_key: ENCRYPTION_KEY
+    })
+
+    if (setPinError) {
+      console.error('PIN set error:', setPinError)
+      return errorResponse('Failed to set PIN: ' + setPinError.message, 500)
+    }
+
+    // Log the action (don't include the actual PIN in the log)
+    await logAdminAction(supabase, admin, 'set-pin', 'scooters', scooter_id, {
+      message: 'PIN set/updated',
+      scooter_serial: scooter.zyd_serial
+    })
+
+    return respond({ success: true, message: 'PIN set successfully' })
+  }
+
+  if (action === 'get-pin') {
+    const { scooter_id } = body
+    if (!scooter_id) {
+      return errorResponse('Scooter ID required', 400)
+    }
+
+    // Check scooter exists and get owner
+    const { data: scooter, error: scooterError } = await supabase
+      .from('scooters')
+      .select('owner_id, zyd_serial, pin_encrypted')
+      .eq('id', scooter_id)
+      .single()
+
+    if (scooterError || !scooter) {
+      return errorResponse('Scooter not found', 404)
+    }
+
+    if (!scooter.pin_encrypted) {
+      return errorResponse('No PIN set for this scooter', 404)
+    }
+
+    // Authorization: Only owner or manufacturer_admin can retrieve PIN
+    const isOwner = scooter.owner_id === admin.id
+    const isManufacturerAdmin = admin.territory.role === 'manufacturer_admin'
+
+    if (!isOwner && !isManufacturerAdmin) {
+      return errorResponse('Only scooter owner or manufacturer admin can retrieve PIN', 403)
+    }
+
+    // Get encryption key from environment
+    const ENCRYPTION_KEY = Deno.env.get('PIN_ENCRYPTION_KEY')
+    if (!ENCRYPTION_KEY) {
+      console.error('PIN_ENCRYPTION_KEY not configured')
+      return errorResponse('PIN encryption not configured', 500)
+    }
+
+    // Call database function to decrypt PIN
+    const { data: decryptedPin, error: getPinError } = await supabase.rpc('get_scooter_pin', {
+      p_scooter_id: scooter_id,
+      p_encryption_key: ENCRYPTION_KEY
+    })
+
+    if (getPinError) {
+      console.error('PIN retrieval error:', getPinError)
+      return errorResponse('Failed to retrieve PIN: ' + getPinError.message, 500)
+    }
+
+    if (!decryptedPin) {
+      return errorResponse('Failed to decrypt PIN', 500)
+    }
+
+    // Log the retrieval (don't include the actual PIN in the log)
+    await logAdminAction(supabase, admin, 'retrieve-pin', 'scooters', scooter_id, {
+      message: 'PIN retrieved',
+      retrieved_by: admin.email,
+      scooter_serial: scooter.zyd_serial
+    })
+
+    return respond({ pin: decryptedPin })
+  }
+
+  if (action === 'reset-pin') {
+    const { scooter_id } = body
+    if (!scooter_id) {
+      return errorResponse('Scooter ID required', 400)
+    }
+
+    // Authorization: Only manufacturer_admin can reset PINs
+    if (admin.territory.role !== 'manufacturer_admin') {
+      return errorResponse('Only manufacturer admins can reset PINs', 403)
+    }
+
+    // Check scooter exists
+    const { data: scooter, error: scooterError } = await supabase
+      .from('scooters')
+      .select('zyd_serial, pin_encrypted')
+      .eq('id', scooter_id)
+      .single()
+
+    if (scooterError || !scooter) {
+      return errorResponse('Scooter not found', 404)
+    }
+
+    if (!scooter.pin_encrypted) {
+      return errorResponse('No PIN set for this scooter', 404)
+    }
+
+    // Call database function to clear PIN
+    const { error: clearPinError } = await supabase.rpc('clear_scooter_pin', {
+      p_scooter_id: scooter_id
+    })
+
+    if (clearPinError) {
+      console.error('PIN reset error:', clearPinError)
+      return errorResponse('Failed to reset PIN: ' + clearPinError.message, 500)
+    }
+
+    // Log the reset
+    await logAdminAction(supabase, admin, 'reset-pin', 'scooters', scooter_id, {
+      message: 'PIN reset by admin',
+      admin_email: admin.email,
+      scooter_serial: scooter.zyd_serial
+    })
+
+    return respond({ success: true, message: 'PIN reset successfully' })
   }
 
   if (action === 'export') {
