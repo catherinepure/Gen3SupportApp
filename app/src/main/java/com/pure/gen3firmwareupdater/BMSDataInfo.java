@@ -4,43 +4,72 @@ import android.util.Log;
 
 /**
  * Represents Battery Management System (BMS) data from instruction 0xA1.
- * Contains battery health metrics like SOC, charge cycles, discharge cycles, cell voltages.
+ * Contains battery voltage, current, charge state, capacity, and temperature.
  *
- * Packet structure: Variable length, typically 20-40 bytes
- * Format: [header, 0xA1, length, ...data..., CRC_L, CRC_H]
+ * Packet structure: 25 bytes total
+ * Format: [header(0xF0), 0xA1, length(0x19), ...data..., CRC_L, CRC_H]
+ *
+ * Byte layout (from Python reference ble_protocol.py):
+ * [0]     Header (0xF0)
+ * [1]     Packet type (0xA1)
+ * [2]     Length (0x19 = 25)
+ * [3-4]   Battery Status (uint16_BE, flags: bit 0 = charging)
+ * [5-6]   Battery Current (int16_BE, 0.1A, signed: >32767 means negative)
+ * [7-8]   Battery Voltage (uint16_BE, 0.1V)
+ * [9]     Battery Percent (uint8, 0-100%)
+ * [10-11] Charge Cycles (uint16_BE)
+ * [12-13] Battery Capacity (uint16_BE, mAh)
+ * [14-15] Battery Remaining (uint16_BE, mAh)
+ * [16]    Battery Temperature (int8, °C)
+ * [17-22] Reserved
+ * [23-24] CRC16 (MODBUS)
  */
 public class BMSDataInfo {
     private static final String TAG = "BMSDataInfo";
 
-    // Battery metrics
-    public int batterySOC;              // State of Charge (0-100%)
-    public int chargeCycles;            // Total charge cycles completed
-    public int dischargeCycles;         // Total discharge cycles completed
-    public double batteryVoltage;       // Total battery pack voltage (V)
-    public double batteryCurrent;       // Battery current in amps (A)
-    public int batteryHealth;           // Battery health percentage (0-100%)
+    // === Fields from 0xA1 packet (correct per Python protocol) ===
 
-    // Temperature
-    public int[] cellTemperatures;      // Individual cell temperatures (°C)
-    public int avgTemperature;          // Average battery temperature (°C)
-    public int maxTemperature;          // Maximum cell temperature (°C)
-    public int minTemperature;          // Minimum cell temperature (°C)
+    // Battery status flags (bytes 3-4)
+    public int batteryStatusFlags;          // Raw status flags
+    public boolean isCharging;              // Bit 0 of status flags
 
-    // Cell voltages (if available)
-    public double[] cellVoltages;       // Individual cell voltages (V)
-    public double maxCellVoltage;       // Highest cell voltage (V)
-    public double minCellVoltage;       // Lowest cell voltage (V)
+    // Battery current and voltage
+    public double batteryCurrent;           // Battery current in Amps (0.1A, signed)
+    public double batteryVoltage;           // Battery pack voltage in Volts (0.1V)
+
+    // Battery state of charge
+    public int batteryPercent;              // Battery percentage 0-100% (byte 9)
+
+    // Cycle count
+    public int chargeCycles;                // Total charge cycles (bytes 10-11)
 
     // Capacity
-    public int remainingCapacity;       // Remaining capacity in mAh
-    public int fullCapacity;            // Full charge capacity in mAh
-    public int designCapacity;          // Design capacity in mAh
+    public int batteryCapacity;             // Full battery capacity in mAh (bytes 12-13)
+    public int batteryRemaining;            // Remaining capacity in mAh (bytes 14-15)
 
-    // Status flags
-    public boolean isCharging;
-    public boolean isDischarging;
-    public boolean isBalancing;
-    public boolean hasFault;
+    // Temperature
+    public int batteryTemperature;          // Battery temperature in °C (byte 16, signed)
+
+    // === Backward-compatible fields for existing code ===
+    // These maintain compatibility with existing telemetry upload and display code.
+    public int batterySOC;                  // Alias for batteryPercent
+    public int batteryHealth;               // Calculated: (batteryCapacity > 0) ? remaining/capacity * 100 : 0
+    public int dischargeCycles;             // Not available in protocol; kept at 0 for compat
+    public int remainingCapacity;           // Alias for batteryRemaining
+    public int fullCapacity;                // Alias for batteryCapacity
+    public int designCapacity;              // Not available in protocol; kept at 0 for compat
+    public int avgTemperature;              // Alias for batteryTemperature
+    public int maxTemperature;              // Not available; same as batteryTemperature
+    public int minTemperature;              // Not available; same as batteryTemperature
+    public boolean isDischarging;           // Derived: !isCharging && batteryCurrent < 0
+    public boolean isBalancing;             // Not available in protocol
+    public boolean hasFault;                // Not available in protocol
+
+    // Cell-level data (not available in 0xA1 protocol)
+    public int[] cellTemperatures;
+    public double[] cellVoltages;
+    public double maxCellVoltage;
+    public double minCellVoltage;
 
     // Raw data
     public byte[] rawData;
@@ -48,25 +77,7 @@ public class BMSDataInfo {
 
     /**
      * Parse a 0xA1 BMS data packet from the scooter.
-     * Expected format: [0xAB/0xF0, 0xA1, length, ...data..., CRC_L, CRC_H]
-     *
-     * Byte layout (typical format, may vary by firmware):
-     * [0-2]   Header, command, length
-     * [3]     Battery SOC (uint8, 0-100%)
-     * [4]     Battery health (uint8, 0-100%)
-     * [5-6]   Charge cycles (uint16)
-     * [7-8]   Discharge cycles (uint16)
-     * [9-10]  Battery voltage (uint16, in 0.01V units)
-     * [11-12] Battery current (int16, in 0.01A units, signed)
-     * [13-14] Remaining capacity (uint16, in mAh)
-     * [15-16] Full capacity (uint16, in mAh)
-     * [17-18] Design capacity (uint16, in mAh)
-     * [19]    Avg temperature (int8, °C)
-     * [20]    Max temperature (int8, °C)
-     * [21]    Min temperature (int8, °C)
-     * [22]    Status flags byte
-     * [...-2] CRC_L
-     * [...-1] CRC_H
+     * Byte layout matches the Python reference ble_protocol.py.
      */
     public static BMSDataInfo parse(byte[] data) {
         if (data == null || data.length < 15) {
@@ -86,75 +97,65 @@ public class BMSDataInfo {
         info.rawHex = bytesToHex(data);
 
         try {
-            // Parse Battery SOC (byte 3, uint8, 0-100%)
-            if (data.length > 3) {
-                info.batterySOC = data[3] & 0xFF;
-            }
-
-            // Parse Battery health (byte 4, uint8, 0-100%)
+            // Parse battery status flags (bytes 3-4, uint16_BE)
             if (data.length > 4) {
-                info.batteryHealth = data[4] & 0xFF;
+                info.batteryStatusFlags = ((data[3] & 0xFF) << 8) | (data[4] & 0xFF);
+                info.isCharging = (info.batteryStatusFlags & 0x01) != 0;  // Bit 0 = charging
             }
 
-            // Parse charge cycles (bytes 5-6, uint16)
+            // Parse battery current (bytes 5-6, int16_BE, 0.1A, signed)
+            // Per Python: if raw > 32767, subtract 65536 to get negative value
             if (data.length > 6) {
-                info.chargeCycles = ((data[5] & 0xFF) << 8) | (data[6] & 0xFF);
+                int currentRaw = ((data[5] & 0xFF) << 8) | (data[6] & 0xFF);
+                if (currentRaw > 32767) {
+                    currentRaw -= 65536;
+                }
+                info.batteryCurrent = currentRaw / 10.0;
+                info.isDischarging = !info.isCharging && info.batteryCurrent < 0;
             }
 
-            // Parse discharge cycles (bytes 7-8, uint16)
+            // Parse battery voltage (bytes 7-8, uint16_BE, 0.1V)
             if (data.length > 8) {
-                info.dischargeCycles = ((data[7] & 0xFF) << 8) | (data[8] & 0xFF);
+                int voltageRaw = ((data[7] & 0xFF) << 8) | (data[8] & 0xFF);
+                info.batteryVoltage = voltageRaw / 10.0;
             }
 
-            // Parse battery voltage (bytes 9-10, uint16, in 0.01V units)
-            if (data.length > 10) {
-                int voltageRaw = ((data[9] & 0xFF) << 8) | (data[10] & 0xFF);
-                info.batteryVoltage = voltageRaw / 100.0;
+            // Parse battery percent (byte 9, uint8, 0-100%)
+            if (data.length > 9) {
+                info.batteryPercent = data[9] & 0xFF;
+                info.batterySOC = info.batteryPercent;  // Backward compat alias
             }
 
-            // Parse battery current (bytes 11-12, int16, in 0.01A units, signed)
-            if (data.length > 12) {
-                int currentRaw = (short) (((data[11] & 0xFF) << 8) | (data[12] & 0xFF));
-                info.batteryCurrent = currentRaw / 100.0;
+            // Parse charge cycles (bytes 10-11, uint16_BE)
+            if (data.length > 11) {
+                info.chargeCycles = ((data[10] & 0xFF) << 8) | (data[11] & 0xFF);
             }
 
-            // Parse remaining capacity (bytes 13-14, uint16, in mAh)
-            if (data.length > 14) {
-                info.remainingCapacity = ((data[13] & 0xFF) << 8) | (data[14] & 0xFF);
+            // Parse battery capacity (bytes 12-13, uint16_BE, mAh)
+            if (data.length > 13) {
+                info.batteryCapacity = ((data[12] & 0xFF) << 8) | (data[13] & 0xFF);
+                info.fullCapacity = info.batteryCapacity;  // Backward compat alias
             }
 
-            // Parse full capacity (bytes 15-16, uint16, in mAh)
+            // Parse battery remaining (bytes 14-15, uint16_BE, mAh)
+            if (data.length > 15) {
+                info.batteryRemaining = ((data[14] & 0xFF) << 8) | (data[15] & 0xFF);
+                info.remainingCapacity = info.batteryRemaining;  // Backward compat alias
+            }
+
+            // Parse battery temperature (byte 16, int8, °C)
             if (data.length > 16) {
-                info.fullCapacity = ((data[15] & 0xFF) << 8) | (data[16] & 0xFF);
+                info.batteryTemperature = (byte) data[16]; // signed byte
+                // Set all compat temperature fields to the same value
+                info.avgTemperature = info.batteryTemperature;
+                info.maxTemperature = info.batteryTemperature;
+                info.minTemperature = info.batteryTemperature;
             }
 
-            // Parse design capacity (bytes 17-18, uint16, in mAh)
-            if (data.length > 18) {
-                info.designCapacity = ((data[17] & 0xFF) << 8) | (data[18] & 0xFF);
-            }
-
-            // Parse average temperature (byte 19, int8, °C)
-            if (data.length > 19) {
-                info.avgTemperature = (byte) data[19]; // signed byte
-            }
-
-            // Parse max temperature (byte 20, int8, °C)
-            if (data.length > 20) {
-                info.maxTemperature = (byte) data[20]; // signed byte
-            }
-
-            // Parse min temperature (byte 21, int8, °C)
-            if (data.length > 21) {
-                info.minTemperature = (byte) data[21]; // signed byte
-            }
-
-            // Parse status flags (byte 22)
-            if (data.length > 22) {
-                int statusFlags = data[22] & 0xFF;
-                info.isCharging = (statusFlags & 0x01) != 0;
-                info.isDischarging = (statusFlags & 0x02) != 0;
-                info.isBalancing = (statusFlags & 0x04) != 0;
-                info.hasFault = (statusFlags & 0x80) != 0;
+            // Calculate battery health as percentage of design capacity remaining
+            if (info.batteryCapacity > 0 && info.batteryRemaining > 0) {
+                info.batteryHealth = Math.min(100,
+                        (int) ((info.batteryRemaining * 100.0) / info.batteryCapacity));
             }
 
             Log.d(TAG, "Parsed A1 packet: " + info);
@@ -173,14 +174,15 @@ public class BMSDataInfo {
     @Override
     public String toString() {
         return "BMSDataInfo{" +
-                "SOC=" + batterySOC + "%" +
+                "voltage=" + String.format("%.1fV", batteryVoltage) +
+                ", current=" + String.format("%.1fA", batteryCurrent) +
+                ", SOC=" + batteryPercent + "%" +
                 ", health=" + batteryHealth + "%" +
                 ", chargeCycles=" + chargeCycles +
-                ", dischargeCycles=" + dischargeCycles +
-                ", voltage=" + String.format("%.2fV", batteryVoltage) +
-                ", current=" + String.format("%.2fA", batteryCurrent) +
-                ", capacity=" + remainingCapacity + "/" + fullCapacity + " mAh" +
-                ", temp=" + avgTemperature + "°C (min:" + minTemperature + " max:" + maxTemperature + ")" +
+                ", capacity=" + batteryRemaining + "/" + batteryCapacity + " mAh" +
+                ", temp=" + batteryTemperature + "°C" +
+                ", charging=" + isCharging +
+                ", statusFlags=0x" + String.format("%04X", batteryStatusFlags) +
                 '}';
     }
 }

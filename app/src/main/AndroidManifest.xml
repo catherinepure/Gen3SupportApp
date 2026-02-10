@@ -86,5 +86,12 @@
             android:screenOrientation="portrait"
             android:keepScreenOn="true"
             android:configChanges="keyboardHidden|orientation|screenSize" />
+
+        <!-- Terms & Conditions Acceptance -->
+        <activity
+            android:name=".TermsAcceptanceActivity"
+            android:exported="false"
+            android:label="Terms &amp; Conditions"
+            android:theme="@style/Theme.Gen3FirmwareUpdater" />
     </application>
 </manifest>

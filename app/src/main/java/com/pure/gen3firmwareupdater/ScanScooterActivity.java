@@ -356,25 +356,58 @@ public class ScanScooterActivity extends AppCompatActivity implements ScooterCon
             return;
         }
 
-        // Pass all data to ScooterDetailsActivity
+        // Check if PIN setup is needed (distributor mode, scooter has no PIN)
+        if (!userMode && registrationInfo != null
+                && registrationInfo.scooterId != null && !registrationInfo.hasPinSet) {
+            String sessionToken = ServiceFactory.getSessionManager().getSessionToken();
+            if (sessionToken != null) {
+                runOnUiThread(() -> showPinSetupDialog(registrationInfo, sessionToken));
+                return;
+            }
+        }
+
+        navigateToScooterDetails(registrationInfo);
+    }
+
+    private void showPinSetupDialog(ScooterRegistrationInfo registrationInfo, String sessionToken) {
+        PinSetupDialog dialog = PinSetupDialog.newInstance(registrationInfo.scooterId, sessionToken);
+        dialog.setPinSetupListener(new PinSetupDialog.PinSetupListener() {
+            @Override
+            public void onPinSet() {
+                Toast.makeText(ScanScooterActivity.this, "PIN set successfully", Toast.LENGTH_SHORT).show();
+                navigateToScooterDetails(registrationInfo);
+            }
+
+            @Override
+            public void onPinSkipped() {
+                navigateToScooterDetails(registrationInfo);
+            }
+        });
+        dialog.show(getSupportFragmentManager(), "pin_setup");
+    }
+
+    private void navigateToScooterDetails(ScooterRegistrationInfo registrationInfo) {
+        if (isFinishing() || isDestroyed()) return;
+
         Intent intent = new Intent(this, ScooterDetailsActivity.class);
         intent.putExtra("scooter_serial", connectedSerial);
         intent.putExtra("connected_mode", true);
         intent.putExtra("hw_version", scooterVersion.controllerHwVersion);
         intent.putExtra("sw_version", scooterVersion.controllerSwVersion);
 
-        if (scooterRunningData != null) {
-            intent.putExtra("voltage", scooterRunningData.voltage);
-            intent.putExtra("current", scooterRunningData.current);
-            intent.putExtra("battery_percent", scooterRunningData.batteryPercent);
-            intent.putExtra("odometer", scooterRunningData.odometer);
-        }
-
+        // BMS data (0xA1) - voltage, current, battery metrics (primary source)
         if (scooterBMSData != null) {
+            intent.putExtra("voltage", scooterBMSData.batteryVoltage);
+            intent.putExtra("current", scooterBMSData.batteryCurrent);
+            intent.putExtra("battery_percent", scooterBMSData.batteryPercent);
             intent.putExtra("battery_soc", scooterBMSData.batterySOC);
             intent.putExtra("battery_health", scooterBMSData.batteryHealth);
             intent.putExtra("charge_cycles", scooterBMSData.chargeCycles);
-            intent.putExtra("discharge_cycles", scooterBMSData.dischargeCycles);
+        }
+
+        // Running data (0xA0) - speed, distances, temps
+        if (scooterRunningData != null) {
+            intent.putExtra("odometer", scooterRunningData.totalDistance);
         }
 
         if (registrationInfo != null) {

@@ -30,6 +30,75 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import bcrypt from 'https://esm.sh/bcryptjs@2.4.3'
 
 // ============================================================================
+// SendGrid Email Configuration
+// ============================================================================
+
+const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY') || ''
+const FROM_EMAIL = Deno.env.get('SENDGRID_FROM_EMAIL') || 'noreply@pureelectric.com'
+
+async function sendWelcomeEmail(email: string, firstName: string, resetUrl: string): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    console.warn('SENDGRID_API_KEY not set — skipping welcome email')
+    return false
+  }
+
+  const emailContent = {
+    personalizations: [{
+      to: [{ email }],
+      subject: 'Welcome to Pure Electric — Set Your Password'
+    }],
+    from: { email: FROM_EMAIL },
+    content: [{
+      type: 'text/html',
+      value: `
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2>Welcome to Pure Electric!</h2>
+            <p>Hi ${firstName},</p>
+            <p>An account has been created for you on the Pure Electric platform. To get started, please set your password by clicking the button below:</p>
+            <p>
+                <a href="${resetUrl}"
+                   style="background-color: #1565C0; color: white; padding: 12px 24px;
+                          text-decoration: none; border-radius: 4px; display: inline-block;">
+                    Set Your Password
+                </a>
+            </p>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style="color: #666; word-break: break-all;">${resetUrl}</p>
+            <p style="margin-top: 30px; color: #999; font-size: 12px;">
+                This link will expire in 72 hours. If you weren't expecting this email, please ignore it.
+            </p>
+        </body>
+        </html>
+      `
+    }]
+  }
+
+  try {
+    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SENDGRID_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(emailContent)
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      console.error('SendGrid error sending welcome email:', error)
+      return false
+    }
+
+    console.log(`Welcome email sent successfully to ${email}`)
+    return true
+  } catch (err: any) {
+    console.error('Failed to send welcome email:', err?.message || err)
+    return false
+  }
+}
+
+// ============================================================================
 // Origin Validation
 // ============================================================================
 
@@ -112,8 +181,8 @@ async function logAdminAction(
 ) {
   try {
     await supabase.from('admin_audit_log').insert({
-      admin_id: admin.id,
-      admin_email: admin.email,
+      admin_id: admin.user.id,
+      admin_email: admin.user.email,
       action,
       resource,
       resource_id: resourceId,
@@ -508,13 +577,24 @@ async function handleUsers(supabase: any, action: string, body: any, admin: any)
     })
 
     // Log admin action
-    await logAdminAction(supabase, admin, 'create', 'users', created.id, record)
+    await logAdminAction(supabase, admin, 'create', 'users', created.id, newUser)
+
+    // Send welcome email with password setup link via SendGrid
+    const resetUrl = `https://ives.org.uk/app2026?token=${resetToken}`
+    const emailSent = await sendWelcomeEmail(
+      created.email,
+      created.first_name || 'there',
+      resetUrl
+    )
 
     return respond({
       success: true,
       user: created,
       password_reset_token: resetToken,
-      message: 'User created. A password reset link should be sent to let them set their password.'
+      email_sent: emailSent,
+      message: emailSent
+        ? 'User created. A welcome email with password setup link has been sent.'
+        : 'User created. Welcome email could not be sent — please share the password reset link manually.'
     }, 201)
   }
 
@@ -566,6 +646,63 @@ async function handleUsers(supabase: any, action: string, body: any, admin: any)
     await logAdminAction(supabase, admin, 'deactivate', 'users', body.id, { is_active: { old: true, new: false } })
 
     return respond({ success: true, user: data })
+  }
+
+  if (action === 'delete') {
+    if (!body.id) return errorResponse('User ID required')
+
+    // Only manufacturer_admin can delete users
+    if (admin.territory.role !== 'manufacturer_admin') {
+      return errorResponse('Only admins can permanently delete users', 403)
+    }
+
+    // Prevent self-deletion
+    if (body.id === admin.user.id) {
+      return errorResponse('You cannot delete your own account')
+    }
+
+    // Fetch user details before deletion (for audit log)
+    const { data: userToDelete, error: fetchError } = await supabase.from('users')
+      .select('id, email, first_name, last_name, user_level')
+      .eq('id', body.id).single()
+    if (fetchError || !userToDelete) return errorResponse('User not found', 404)
+
+    // Prevent deleting other admins
+    if (userToDelete.user_level === 'admin') {
+      return errorResponse('Cannot delete admin-level users. Deactivate them instead.')
+    }
+
+    // Log the event BEFORE deletion (user_id FK requires user to exist)
+    await supabase.from('activity_events').insert({
+      event_type: 'user_deleted_by_admin',
+      user_id: admin.user.id,
+      payload: {
+        deleted_user_id: body.id,
+        deleted_by: admin.user.id,
+        deleted_by_email: admin.user.email,
+        deleted_user_email: userToDelete.email,
+        deleted_user_name: `${userToDelete.first_name || ''} ${userToDelete.last_name || ''}`.trim(),
+        deleted_user_level: userToDelete.user_level
+      },
+      timestamp: new Date().toISOString()
+    })
+
+    await logAdminAction(supabase, admin, 'delete', 'users', body.id, {
+      email: userToDelete.email,
+      user_level: userToDelete.user_level
+    })
+
+    // Delete related records first (respecting foreign keys)
+    await supabase.from('user_sessions').delete().eq('user_id', body.id)
+    await supabase.from('password_reset_tokens').delete().eq('user_id', body.id)
+    await supabase.from('user_scooters').delete().eq('user_id', body.id)
+
+    // Delete the user
+    const { error: deleteError } = await supabase.from('users')
+      .delete().eq('id', body.id)
+    if (deleteError) return errorResponse(deleteError.message, 500)
+
+    return respond({ success: true, message: `User ${userToDelete.email} has been permanently deleted.` })
   }
 
   if (action === 'export') {
@@ -745,6 +882,69 @@ async function handleScooters(supabase: any, action: string, body: any, admin: a
     return respond({ success: true })
   }
 
+  if (action === 'delete') {
+    if (!body.id) return errorResponse('Scooter ID required')
+
+    // Only manufacturer_admin can delete scooters
+    if (admin.territory.role !== 'manufacturer_admin') {
+      return errorResponse('Only admins can permanently delete scooters', 403)
+    }
+
+    // Fetch scooter details before deletion (for audit log)
+    const { data: scooterToDelete, error: fetchError } = await supabase.from('scooters')
+      .select('id, serial_number, zyd_serial, status, mac_address, model, firmware_version, country_of_registration')
+      .eq('id', body.id).single()
+    if (fetchError || !scooterToDelete) return errorResponse('Scooter not found', 404)
+
+    const displaySerial = scooterToDelete.serial_number || scooterToDelete.zyd_serial || body.id
+
+    // Check for active service jobs
+    const { count: activeJobs } = await supabase.from('service_jobs')
+      .select('*', { count: 'exact', head: true })
+      .eq('scooter_id', body.id)
+      .not('status', 'in', '("completed","cancelled")')
+    if (activeJobs && activeJobs > 0) {
+      return errorResponse(`Cannot delete scooter with ${activeJobs} active service job(s). Complete or cancel them first.`)
+    }
+
+    // Log BEFORE deletion (FK constraints require referenced records to exist)
+    await supabase.from('activity_events').insert({
+      event_type: 'scooter_deleted_by_admin',
+      user_id: admin.user.id,
+      payload: {
+        deleted_scooter_id: body.id,
+        deleted_by: admin.user.id,
+        deleted_by_email: admin.user.email,
+        serial_number: scooterToDelete.serial_number,
+        zyd_serial: scooterToDelete.zyd_serial,
+        status: scooterToDelete.status,
+        country: scooterToDelete.country_of_registration
+      },
+      timestamp: new Date().toISOString()
+    })
+
+    await logAdminAction(supabase, admin, 'delete', 'scooters', body.id, {
+      serial_number: scooterToDelete.serial_number,
+      zyd_serial: scooterToDelete.zyd_serial,
+      status: scooterToDelete.status
+    })
+
+    // Delete related records (respecting FK constraints)
+    await supabase.from('user_scooters').delete().eq('scooter_id', body.id)
+    await supabase.from('service_jobs').delete().eq('scooter_id', body.id)
+    await supabase.from('scooter_batteries').delete().eq('scooter_id', body.id)
+    await supabase.from('scooter_motors').delete().eq('scooter_id', body.id)
+    await supabase.from('scooter_frames').delete().eq('scooter_id', body.id)
+    await supabase.from('scooter_controllers').delete().eq('scooter_id', body.id)
+
+    // Delete the scooter itself
+    const { error: deleteError } = await supabase.from('scooters')
+      .delete().eq('id', body.id)
+    if (deleteError) return errorResponse(deleteError.message, 500)
+
+    return respond({ success: true, message: `Scooter ${displaySerial} has been permanently deleted.` })
+  }
+
   // ============================================================================
   // PIN Management Actions
   // ============================================================================
@@ -760,23 +960,35 @@ async function handleScooters(supabase: any, action: string, body: any, admin: a
       return errorResponse('PIN must be exactly 6 digits', 400)
     }
 
-    // Check scooter exists and get owner
+    // Check scooter exists
     const { data: scooter, error: scooterError } = await supabase
       .from('scooters')
-      .select('owner_id, zyd_serial')
+      .select('id, zyd_serial')
       .eq('id', scooter_id)
       .single()
 
     if (scooterError || !scooter) {
+      console.error('Scooter lookup error:', scooterError)
       return errorResponse('Scooter not found', 404)
     }
 
-    // Authorization: Only owner or manufacturer_admin can set PIN
-    const isOwner = scooter.owner_id === admin.id
+    // Authorization: admin/manager can set PIN (already verified by authenticateAdmin)
+    // Also check ownership via user_scooters junction table
     const isManufacturerAdmin = admin.territory.role === 'manufacturer_admin'
+    const isDistributorStaff = admin.territory.role === 'distributor_staff'
 
-    if (!isOwner && !isManufacturerAdmin) {
-      return errorResponse('Only scooter owner or manufacturer admin can set PIN', 403)
+    if (!isManufacturerAdmin && !isDistributorStaff) {
+      // For non-admin roles, check scooter ownership via user_scooters
+      const { data: ownership } = await supabase
+        .from('user_scooters')
+        .select('user_id')
+        .eq('scooter_id', scooter_id)
+        .eq('user_id', admin.user.id)
+        .single()
+
+      if (!ownership) {
+        return errorResponse('Only scooter owner or admin can set PIN', 403)
+      }
     }
 
     // Get encryption key from environment
@@ -790,7 +1002,7 @@ async function handleScooters(supabase: any, action: string, body: any, admin: a
     const { error: setPinError } = await supabase.rpc('set_scooter_pin', {
       p_scooter_id: scooter_id,
       p_pin: pin,
-      p_user_id: admin.id,
+      p_user_id: admin.user.id,
       p_encryption_key: ENCRYPTION_KEY
     })
 
@@ -814,10 +1026,10 @@ async function handleScooters(supabase: any, action: string, body: any, admin: a
       return errorResponse('Scooter ID required', 400)
     }
 
-    // Check scooter exists and get owner
+    // Check scooter exists
     const { data: scooter, error: scooterError } = await supabase
       .from('scooters')
-      .select('owner_id, zyd_serial, pin_encrypted')
+      .select('id, zyd_serial, pin_encrypted')
       .eq('id', scooter_id)
       .single()
 
@@ -829,12 +1041,21 @@ async function handleScooters(supabase: any, action: string, body: any, admin: a
       return errorResponse('No PIN set for this scooter', 404)
     }
 
-    // Authorization: Only owner or manufacturer_admin can retrieve PIN
-    const isOwner = scooter.owner_id === admin.id
+    // Authorization: admin/manager can retrieve PIN (already verified by authenticateAdmin)
     const isManufacturerAdmin = admin.territory.role === 'manufacturer_admin'
+    const isDistributorStaff = admin.territory.role === 'distributor_staff'
 
-    if (!isOwner && !isManufacturerAdmin) {
-      return errorResponse('Only scooter owner or manufacturer admin can retrieve PIN', 403)
+    if (!isManufacturerAdmin && !isDistributorStaff) {
+      const { data: ownership } = await supabase
+        .from('user_scooters')
+        .select('user_id')
+        .eq('scooter_id', scooter_id)
+        .eq('user_id', admin.user.id)
+        .single()
+
+      if (!ownership) {
+        return errorResponse('Only scooter owner or admin can retrieve PIN', 403)
+      }
     }
 
     // Get encryption key from environment
@@ -862,7 +1083,7 @@ async function handleScooters(supabase: any, action: string, body: any, admin: a
     // Log the retrieval (don't include the actual PIN in the log)
     await logAdminAction(supabase, admin, 'retrieve-pin', 'scooters', scooter_id, {
       message: 'PIN retrieved',
-      retrieved_by: admin.email,
+      retrieved_by: admin.user.email,
       scooter_serial: scooter.zyd_serial
     })
 

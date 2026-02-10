@@ -131,6 +131,13 @@ const UsersPage = (() => {
                         className: 'btn-sm btn-success',
                         handler: reactivateUser,
                         shouldShow: (user) => !user.is_active
+                    },
+                    {
+                        name: 'delete',
+                        label: 'Delete',
+                        className: 'btn-sm btn-outline-danger',
+                        handler: deleteUser,
+                        shouldShow: (user) => user.user_level !== 'admin'
                     }
                 ],
                 pagination: totalPages > 1 ? {
@@ -336,6 +343,17 @@ const UsersPage = (() => {
                 });
             }
 
+            // Delete button (not for admin-level users)
+            if (fullUser.user_level !== 'admin') {
+                actions.push({
+                    label: 'Delete User',
+                    class: 'btn-outline-danger',
+                    onClick: () => {
+                        setTimeout(() => deleteUser(fullUser), 100);
+                    }
+                });
+            }
+
             // Show with DetailModal
             DetailModal.show(`User: ${fullUser.email}`, {
                 sections,
@@ -421,11 +439,15 @@ const UsersPage = (() => {
                 // Show password reset info
                 if (result.password_reset_token) {
                     const resetUrl = `https://ives.org.uk/app2026?token=${result.password_reset_token}`;
+                    const emailStatus = result.email_sent
+                        ? `<p class="text-success mt-2"><i class="bi bi-check-circle"></i> A welcome email has been sent to <strong>${formData.email}</strong> with a link to set their password.</p>`
+                        : `<p class="text-warning mt-2"><i class="bi bi-exclamation-triangle"></i> Welcome email could not be sent. Please share this link manually:</p>`;
                     setTimeout(() => {
                         ModalComponent.show('User Created',
                             `<div class="text-center">
                                 <p>User <strong>${formData.email}</strong> has been created.</p>
-                                <p class="mt-3 mb-3">They need to set their password using this link:</p>
+                                ${emailStatus}
+                                <p class="mt-3 mb-2">Password setup link:</p>
                                 <p><code class="code-block">${resetUrl}</code></p>
                                 <p class="text-muted mt-3">This link expires in 72 hours. You can also trigger a password reset from their user detail page.</p>
                             </div>`);
@@ -548,6 +570,28 @@ const UsersPage = (() => {
         try {
             await API.call('users', 'update', { id: user.id, is_active: true });
             toast(`User ${user.email} has been reactivated`, 'success');
+            load(currentFilters);
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    }
+
+    async function deleteUser(user) {
+        const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email;
+
+        if (!confirm(`⚠️ PERMANENTLY DELETE user "${name}" (${user.email})?\n\nThis will:\n• Remove their account entirely\n• Unlink all their scooters\n• Delete all their sessions\n\nThis action CANNOT be undone.`)) {
+            return;
+        }
+
+        // Double confirmation
+        if (!confirm(`Are you absolutely sure?\n\nType-to-confirm: You are deleting ${user.email}`)) {
+            return;
+        }
+
+        try {
+            const result = await API.call('users', 'delete', { id: user.id });
+            toast(result.message || `User ${user.email} has been deleted`, 'success');
+            ModalComponent.close();
             load(currentFilters);
         } catch (err) {
             toast(err.message, 'error');

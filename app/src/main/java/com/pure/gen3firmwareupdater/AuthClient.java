@@ -63,15 +63,11 @@ public class AuthClient {
         public String distributorName;
     }
 
-    public void register(String email, String password, Callback<Void> callback) {
+    public void register(JsonObject registrationData, Callback<Void> callback) {
         executor.execute(() -> {
             try {
-                JsonObject json = new JsonObject();
-                json.addProperty("email", email);
-                json.addProperty("password", password);
-
                 RequestBody body = RequestBody.create(
-                        json.toString(),
+                        registrationData.toString(),
                         MediaType.parse("application/json"));
 
                 Request request = addSupabaseHeaders(new Request.Builder())

@@ -11,7 +11,20 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="24dp"
-        android:gravity="center">
+        android:gravity="center_horizontal">
+
+        <!-- Top spacer -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="24dp"/>
+
+        <!-- Scooter Icon -->
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:src="@drawable/ic_scooter"
+            android:contentDescription="Scooter icon"
+            android:layout_marginBottom="12dp"/>
 
         <!-- Logo/Title -->
         <TextView
@@ -21,14 +34,13 @@
             android:textSize="32sp"
             android:textStyle="bold"
             android:textColor="@color/primary"
-            android:layout_marginTop="48dp"
-            android:layout_marginBottom="8dp"/>
+            android:layout_marginBottom="4dp"/>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Firmware Updater"
-            android:textSize="18sp"
+            android:textSize="16sp"
             android:textColor="@color/text_secondary"
             android:layout_marginBottom="24dp"/>
 
@@ -45,50 +57,67 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Choose Registration Type"
+                android:text="Get Started"
                 android:textSize="20sp"
                 android:textStyle="bold"
                 android:textColor="@color/text_primary"
-                android:layout_marginBottom="32dp"/>
+                android:layout_marginBottom="24dp"/>
 
             <!-- User Registration Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="12dp"
                 app:cardCornerRadius="12dp"
-                app:cardElevation="4dp">
+                app:cardElevation="2dp"
+                app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
+                    android:orientation="horizontal"
+                    android:padding="20dp"
+                    android:gravity="center_vertical">
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:src="@drawable/ic_person"
+                        android:contentDescription="Owner icon"
+                        android:layout_marginEnd="16dp"
+                        app:tint="@color/primary"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:text="Scooter Owner"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_primary"
-                        android:layout_marginBottom="8dp"/>
+                        android:layout_weight="1"
+                        android:orientation="vertical">
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Register your scooter and keep it up to date with the latest firmware"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
-                        android:layout_marginBottom="16dp"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Scooter Owner"
+                            android:textSize="17sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary"
+                            android:layout_marginBottom="4dp"/>
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnRegisterUser"
-                        android:layout_width="match_parent"
-                        android:layout_height="56dp"
-                        android:text="Register as Owner"
-                        android:textSize="16sp"
-                        app:cornerRadius="8dp"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Create an account to manage your scooter firmware"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary"
+                            android:layout_marginBottom="12dp"/>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnRegisterUser"
+                            android:layout_width="match_parent"
+                            android:layout_height="48dp"
+                            android:text="Register as Owner"
+                            android:textSize="14sp"
+                            app:cornerRadius="12dp"/>
+                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -96,41 +125,58 @@
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp"
+                android:layout_marginBottom="20dp"
                 app:cardCornerRadius="12dp"
-                app:cardElevation="4dp">
+                app:cardElevation="2dp"
+                app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
+                    android:orientation="horizontal"
+                    android:padding="20dp"
+                    android:gravity="center_vertical">
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:src="@drawable/ic_inventory"
+                        android:contentDescription="Distributor icon"
+                        android:layout_marginEnd="16dp"
+                        app:tint="@color/primary"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:text="Distributor / Business"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_primary"
-                        android:layout_marginBottom="8dp"/>
+                        android:layout_weight="1"
+                        android:orientation="vertical">
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Manage multiple scooters with advanced features and distributor access"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
-                        android:layout_marginBottom="16dp"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Distributor / Business"
+                            android:textSize="17sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary"
+                            android:layout_marginBottom="4dp"/>
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnRegisterDistributor"
-                        android:layout_width="match_parent"
-                        android:layout_height="56dp"
-                        android:text="Register as Distributor"
-                        android:textSize="16sp"
-                        app:cornerRadius="8dp"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Manage fleet firmware with distributor access"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary"
+                            android:layout_marginBottom="12dp"/>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnRegisterDistributor"
+                            android:layout_width="match_parent"
+                            android:layout_height="48dp"
+                            android:text="Register as Distributor"
+                            android:textSize="14sp"
+                            app:cornerRadius="12dp"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -139,7 +185,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:layout_marginTop="16dp">
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="24dp">
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -177,26 +224,35 @@
                 android:layout_height="wrap_content"
                 android:textSize="16sp"
                 android:textColor="@color/text_secondary"
-                android:layout_marginBottom="32dp"/>
+                android:layout_marginBottom="24dp"/>
 
-            <!-- Scan Scooter Card -->
+            <!-- Connect Your Scooter Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 app:cardCornerRadius="12dp"
-                app:cardElevation="4dp">
+                app:cardElevation="2dp"
+                app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="20dp">
+                    android:padding="24dp"
+                    android:gravity="center">
+
+                    <ImageView
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:src="@drawable/ic_bluetooth_scan"
+                        android:contentDescription="Bluetooth scan icon"
+                        android:layout_marginBottom="12dp"/>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Scan Scooter"
+                        android:text="Connect Your Scooter"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:textColor="@color/text_primary"
@@ -205,9 +261,10 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Connect to your scooter via Bluetooth to view its status and telemetry"
+                        android:text="Scan for a nearby scooter via Bluetooth to view status, telemetry, and update firmware"
                         android:textSize="14sp"
                         android:textColor="@color/text_secondary"
+                        android:gravity="center"
                         android:layout_marginBottom="16dp"/>
 
                     <com.google.android.material.button.MaterialButton
@@ -216,7 +273,10 @@
                         android:layout_height="56dp"
                         android:text="Scan for Scooter"
                         android:textSize="16sp"
-                        app:cornerRadius="8dp"/>
+                        app:icon="@drawable/ic_bluetooth_scan"
+                        app:iconGravity="start"
+                        app:iconSize="20dp"
+                        app:cornerRadius="12dp"/>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -226,6 +286,7 @@
                 android:layout_height="40dp"
                 android:text="Logout"
                 android:layout_marginTop="16dp"
+                android:layout_marginBottom="24dp"
                 style="@style/Widget.Material3.Button.TextButton"/>
 
         </LinearLayout>

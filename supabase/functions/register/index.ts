@@ -1,8 +1,9 @@
-// Supabase Edge Function for User Registration
-// Deploy with: supabase functions deploy register
+// Supabase Edge Function for User Registration (account only, no scooter required)
+// Deploy with: supabase functions deploy register --project-ref hhpxmlrpdharhhzwjxuc --no-verify-jwt
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import bcrypt from 'https://esm.sh/bcryptjs@2.4.3'
 
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY')!
 const FROM_EMAIL = Deno.env.get('SENDGRID_FROM_EMAIL') || "noreply@pureelectric.com"
@@ -10,16 +11,26 @@ const FROM_EMAIL = Deno.env.get('SENDGRID_FROM_EMAIL') || "noreply@pureelectric.
 interface RegisterRequest {
   email: string
   password: string
-  home_country?: string       // ISO 3166-1 alpha-2
-  current_country?: string    // ISO 3166-1 alpha-2
+  first_name?: string
+  last_name?: string
+  age_range?: string
+  gender?: string
+  scooter_use_type?: string
+  home_country?: string
+  current_country?: string
+  // Location data (captured during registration)
+  registration_latitude?: number
+  registration_longitude?: number
+  registration_accuracy?: number
+  registration_location_method?: string
+  registration_country?: string
+  registration_region?: string
+  registration_city?: string
 }
 
 async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+  const salt = await bcrypt.genSalt(10)
+  return await bcrypt.hash(password, salt)
 }
 
 function generateToken(): string {
@@ -29,7 +40,7 @@ function generateToken(): string {
 }
 
 async function sendVerificationEmail(email: string, token: string, appUrl: string) {
-  const verificationUrl = `${appUrl}/supabase/functions/verify?token=${token}`
+  const verificationUrl = `${appUrl}/functions/v1/verify?token=${token}`
 
   const emailContent = {
     personalizations: [{
@@ -42,11 +53,11 @@ async function sendVerificationEmail(email: string, token: string, appUrl: strin
       value: `
         <html>
         <body style="font-family: Arial, sans-serif; padding: 20px;">
-            <h2>Welcome to Pure Electric Firmware Updater</h2>
-            <p>Thank you for registering! Please verify your email address by clicking the link below:</p>
+            <h2>Welcome to Pure Electric!</h2>
+            <p>Thank you for registering. Please verify your email address by clicking the link below:</p>
             <p>
                 <a href="${verificationUrl}"
-                   style="background-color: #4CAF50; color: white; padding: 12px 24px;
+                   style="background-color: #1565C0; color: white; padding: 12px 24px;
                           text-decoration: none; border-radius: 4px; display: inline-block;">
                     Verify Email Address
                 </a>
@@ -80,12 +91,39 @@ async function sendVerificationEmail(email: string, token: string, appUrl: strin
   return true
 }
 
+// Origin validation
+const ALLOWED_ORIGINS: string[] = (() => {
+  const env = Deno.env.get('ALLOWED_ORIGINS')
+  if (env) return env.split(',').map(o => o.trim()).filter(Boolean)
+  return []
+})()
+
+function validateOrigin(req: Request): string | null {
+  if (ALLOWED_ORIGINS.length === 0) return null
+  const origin = req.headers.get('Origin') || req.headers.get('Referer')
+  if (!origin) return null
+  const originUrl = origin.replace(/\/$/, '')
+  for (const allowed of ALLOWED_ORIGINS) {
+    if (originUrl === allowed.replace(/\/$/, '')) return null
+    if (origin.startsWith(allowed.replace(/\/$/, ''))) return null
+  }
+  return `Origin '${origin}' is not allowed`
+}
+
+const corsOrigin = ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS[0] : '*'
+
+function respond(body: Record<string, unknown>, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin }
+  })
+}
+
 serve(async (req) => {
-  // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': corsOrigin,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
       },
@@ -93,24 +131,41 @@ serve(async (req) => {
   }
 
   try {
-    const { email, password, home_country, current_country }: RegisterRequest = await req.json()
+    // Validate origin
+    const originError = validateOrigin(req)
+    if (originError) {
+      return respond({ error: originError }, 403)
+    }
+
+    const body: RegisterRequest = await req.json()
+    const {
+      email,
+      password,
+      first_name,
+      last_name,
+      age_range,
+      gender,
+      scooter_use_type,
+      home_country,
+      current_country,
+      registration_latitude,
+      registration_longitude,
+      registration_accuracy,
+      registration_location_method,
+      registration_country,
+      registration_region,
+      registration_city,
+    } = body
 
     // Validation
     if (!email || !password) {
-      return new Response(
-        JSON.stringify({ error: 'Email and password required' }),
-        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-      )
+      return respond({ error: 'Email and password required' }, 400)
     }
 
     if (password.length < 8) {
-      return new Response(
-        JSON.stringify({ error: 'Password must be at least 8 characters' }),
-        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-      )
+      return respond({ error: 'Password must be at least 8 characters' }, 400)
     }
 
-    // Create Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
@@ -123,13 +178,10 @@ serve(async (req) => {
       .single()
 
     if (existingUser) {
-      return new Response(
-        JSON.stringify({ error: 'Email already registered' }),
-        { status: 409, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-      )
+      return respond({ error: 'Email already registered' }, 409)
     }
 
-    // Hash password and generate token
+    // Hash password with bcrypt and generate verification token
     const passwordHash = await hashPassword(password)
     const verificationToken = generateToken()
     const expiresAt = new Date()
@@ -141,10 +193,23 @@ serve(async (req) => {
       .insert({
         email: email.toLowerCase(),
         password_hash: passwordHash,
-        user_level: 'user',
-        roles: ['customer'],
+        first_name: first_name || null,
+        last_name: last_name || null,
+        age_range: age_range || null,
+        gender: gender || null,
+        scooter_use_type: scooter_use_type || null,
         home_country: home_country || null,
         current_country: current_country || null,
+        registration_latitude: registration_latitude || null,
+        registration_longitude: registration_longitude || null,
+        registration_accuracy: registration_accuracy || null,
+        registration_location_method: registration_location_method || null,
+        registration_country: registration_country || null,
+        registration_region: registration_region || null,
+        registration_city: registration_city || null,
+        user_level: 'normal',
+        roles: ['customer'],
+        registration_type: 'user',
         is_verified: false,
         verification_token: verificationToken,
         verification_token_expires: expiresAt.toISOString()
@@ -154,38 +219,30 @@ serve(async (req) => {
 
     if (insertError) {
       console.error('Insert error:', insertError)
-      return new Response(
-        JSON.stringify({ error: 'Failed to create user' }),
-        { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-      )
+      return respond({ error: 'Failed to create user' }, 500)
     }
 
-    // Send verification email (non-fatal — don't fail registration if email fails)
+    // Send verification email (non-fatal)
     let emailSent = false
     try {
-      const appUrl = Deno.env.get('APP_URL') || supabaseUrl
+      const appUrl = Deno.env.get('APP_URL') || supabaseUrl.replace('/rest/v1', '')
       await sendVerificationEmail(email, verificationToken, appUrl)
       emailSent = true
     } catch (emailError) {
       console.error('Failed to send verification email:', emailError)
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: emailSent
-          ? 'Registration successful. Please check your email to verify your account.'
-          : 'Registration successful. Verification email could not be sent — please use "Resend Verification" from the login screen.',
-        email_sent: emailSent
-      }),
-      { status: 201, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-    )
+    return respond({
+      success: true,
+      message: emailSent
+        ? 'Registration successful. Please check your email to verify your account.'
+        : 'Registration successful. Verification email could not be sent — please use "Resend Verification" from the login screen.',
+      user_id: newUser.id,
+      email_sent: emailSent
+    }, 201)
 
   } catch (error) {
     console.error('Registration error:', error)
-    return new Response(
-      JSON.stringify({ error: error.message || 'Registration failed' }),
-      { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-    )
+    return respond({ error: error.message || 'Registration failed' }, 500)
   }
 })

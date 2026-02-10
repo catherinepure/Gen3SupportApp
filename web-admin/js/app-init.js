@@ -16,6 +16,8 @@ window.Pages = {
     logs: LogsPage,
     events: EventsPage,
     validation: ValidationPage,
+    'terms-management': TermsManagementPage,
+    'consent-history': ConsentHistoryPage,
     settings: SettingsPage
 };
 

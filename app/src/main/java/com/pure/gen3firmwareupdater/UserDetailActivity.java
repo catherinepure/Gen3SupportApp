@@ -54,9 +54,10 @@ public class UserDetailActivity extends AppCompatActivity {
     private UserInfo currentUser;    // Original data for comparison
     private boolean isEditMode = false;
 
-    // Spinner arrays
-    private static final String[] USER_LEVELS = {"user", "distributor"};
-    private static final String[] USER_LEVEL_DISPLAY = {"User", "Distributor"};
+    // Spinner arrays - Roles as assigned by database administrator
+    // Database values: 'admin', 'manager', 'normal'
+    private static final String[] USER_LEVELS = {"normal", "manager", "admin"};
+    private static final String[] USER_LEVEL_DISPLAY = {"Normal", "Manager", "Admin"};
     private static final String[] AGE_RANGES = {"Not set", "<18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"};
     private static final String[] GENDERS = {"Not set", "Male", "Female", "Other", "Prefer not to say"};
     private static final String[] SCOOTER_USES = {"Not set", "Business", "Pleasure", "Both"};
@@ -203,7 +204,7 @@ public class UserDetailActivity extends AppCompatActivity {
             return;
         }
         for (int i = 0; i < values.length; i++) {
-            if (values[i].equals(value)) {
+            if (values[i].equalsIgnoreCase(value)) {  // Case-insensitive for defensive coding
                 spinner.setSelection(i);
                 return;
             }

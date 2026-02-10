@@ -20,21 +20,28 @@ public class TelemetryRecord {
     public String swVersion;
     public String embeddedSerial;
 
-    // 0xA0 Running Data
+    // 0xA1 BMS Data (voltage, current, battery% come from BMS, not running data)
     public Double voltage;
     public Double current;
-    public Double speedKmh;
-    public Integer odometerKm;
-    public Integer motorTemp;
-    public Integer batteryTemp;
-
-    // 0xA1 BMS Data
     public Integer batterySOC;
     public Integer batteryHealth;
     public Integer batteryChargeCycles;
     public Integer batteryDischargeCycles;
     public Integer remainingCapacityMah;
     public Integer fullCapacityMah;
+    public Integer batteryTemp;
+
+    // 0xA0 Running Data (speed, distances, temps, faults)
+    public Double speedKmh;
+    public Integer odometerKm;
+    public Integer motorTemp;
+    public Integer controllerTemp;
+    public Integer faultCode;
+    public Integer gearLevel;
+    public Integer tripDistanceKm;
+    public Integer remainingRangeKm;
+    public Integer motorRpm;
+    public Double currentLimit;
 
     // Metadata
     public String scanType;  // 'distributor_scan', 'user_connection', 'firmware_update'

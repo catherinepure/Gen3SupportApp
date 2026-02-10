@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="80dp"
+    android:height="80dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Bluetooth searching icon -->
+    <path
+        android:fillColor="@color/primary"
+        android:pathData="M14.24,12.01l2.32,2.32c0.28,-0.72 0.44,-1.51 0.44,-2.33 0,-0.82 -0.16,-1.59 -0.43,-2.31l-2.33,2.32zM19.53,6.71l-1.26,1.26c0.63,1.21 0.98,2.57 0.98,4.02s-0.36,2.82 -0.98,4.02l1.2,1.2c0.97,-1.54 1.54,-3.36 1.54,-5.31 -0.01,-1.89 -0.55,-3.67 -1.48,-5.19zM15.71,7.71L14,6L11.41,3.41 10,4.83l2.75,2.75 -2.75,2.75L12.59,13l-2.75,2.75 2.59,2.59L14,17l1.71,-1.71 -2.71,-2.71 2.71,-2.87zM12.59,15.17V17l1.29,-1.29 -1.29,-0.54zM13.88,8.29L12.59,7v1.83l1.29,-0.54z"/>
+</vector>

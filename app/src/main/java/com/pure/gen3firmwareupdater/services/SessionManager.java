@@ -11,17 +11,19 @@ import android.content.SharedPreferences;
  * with AsyncStorage / shared_preferences equivalent.
  *
  * Keys stored:
+ * - user_id: Supabase user UUID
  * - session_token: Auth session token
  * - user_email: Logged-in user's email
- * - user_role: "distributor" or other role
+ * - user_role: "admin", "manager", or "normal" (as assigned by database administrator)
  * - distributor_id: Supabase ID of the distributor
- * - last_activation_code: Most recently entered activation code
+ * - last_activation_code: Most recently entered activation code (deprecated)
  */
 public class SessionManager {
 
     private static final String PREFS_NAME = "FirmwareUpdaterPrefs";
 
     // Preference keys
+    private static final String KEY_USER_ID = "user_id";
     private static final String KEY_SESSION_TOKEN = "session_token";
     private static final String KEY_USER_EMAIL = "user_email";
     private static final String KEY_USER_ROLE = "user_role";
@@ -41,8 +43,9 @@ public class SessionManager {
     /**
      * Save login session data after successful authentication.
      */
-    public void saveLogin(String sessionToken, String email, String role, String distributorId) {
+    public void saveLogin(String userId, String sessionToken, String email, String role, String distributorId) {
         prefs.edit()
+                .putString(KEY_USER_ID, userId)
                 .putString(KEY_SESSION_TOKEN, sessionToken)
                 .putString(KEY_USER_EMAIL, email)
                 .putString(KEY_USER_ROLE, role)
@@ -66,14 +69,18 @@ public class SessionManager {
     }
 
     /**
-     * Check if the logged-in user is a distributor.
-     * Checks both the role field and whether a distributor_id is present,
-     * since the backend may return varying role strings.
+     * Check if the logged-in user has distributor/admin access.
+     * Database roles: 'admin' (global), 'manager' (territory-scoped), 'normal' (end users)
      */
     public boolean isDistributor() {
-        if ("distributor".equalsIgnoreCase(getUserRole())) {
+        String role = getUserRole();
+
+        // admin or manager have distributor access
+        if ("admin".equalsIgnoreCase(role) || "manager".equalsIgnoreCase(role)) {
             return true;
         }
+
+        // Fallback: check if distributor_id is present
         String distId = getDistributorId();
         return distId != null && !distId.isEmpty();
     }
@@ -81,6 +88,10 @@ public class SessionManager {
     // ==================================================================================
     // GETTERS
     // ==================================================================================
+
+    public String getUserId() {
+        return prefs.getString(KEY_USER_ID, null);
+    }
 
     public String getSessionToken() {
         return prefs.getString(KEY_SESSION_TOKEN, null);
@@ -105,6 +116,10 @@ public class SessionManager {
     // ==================================================================================
     // SETTERS
     // ==================================================================================
+
+    public void setUserId(String userId) {
+        prefs.edit().putString(KEY_USER_ID, userId).apply();
+    }
 
     public void setSessionToken(String token) {
         prefs.edit().putString(KEY_SESSION_TOKEN, token).apply();

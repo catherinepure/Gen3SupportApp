@@ -21,10 +21,13 @@ const Utils = (() => {
         el.textContent = msg;
         container.appendChild(el);
 
+        // Error messages stay longer (10 seconds vs 4 seconds)
+        const duration = type === 'error' ? 10000 : 4000;
+
         setTimeout(() => {
             el.style.opacity = '0';
             setTimeout(() => el.remove(), 300);
-        }, 4000);
+        }, duration);
     }
 
     // Date formatting
@@ -197,6 +200,80 @@ const Utils = (() => {
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    // Language name mapping
+    function languageName(code) {
+        const languages = {
+            'en': 'English',
+            'es': 'Spanish',
+            'fr': 'French',
+            'de': 'German',
+            'zh': 'Chinese',
+            'ja': 'Japanese',
+            'ko': 'Korean',
+            'it': 'Italian',
+            'pt': 'Portuguese',
+            'ru': 'Russian'
+        };
+        return languages[code] || code;
+    }
+
+    // Format date and time separately
+    function formatDateTime(d) {
+        if (!d) return '-';
+        return new Date(d).toLocaleString('en-GB', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    // Spinner HTML
+    function spinner(size = 'md') {
+        return `<div class="spinner-${size}"></div>`;
+    }
+
+    // Modal helper
+    function modal(title, bodyHtml, buttons = []) {
+        const modalHtml = `
+            <div class="modal-backdrop" id="modal-backdrop"></div>
+            <div class="modal-dialog" id="modal-dialog">
+                <div class="modal-header">
+                    <h5>${title}</h5>
+                    <button class="btn-close" onclick="Utils.closeModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    ${bodyHtml}
+                </div>
+                <div class="modal-footer">
+                    ${buttons.map(btn => `
+                        <button class="btn btn-${btn.style || 'secondary'}"
+                                onclick="${btn.action ? `(${btn.action.toString()})()` : 'Utils.closeModal()'}">
+                            ${btn.text}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        const container = document.createElement('div');
+        container.id = 'modal-container';
+        container.innerHTML = modalHtml;
+        document.body.appendChild(container);
+    }
+
+    function closeModal() {
+        const container = document.getElementById('modal-container');
+        if (container) {
+            container.remove();
+        }
+    }
+
+    function showToast(msg, type = 'info') {
+        toast(msg, type);
     }
 
     // Escape HTML
@@ -399,6 +476,7 @@ const Utils = (() => {
         toast,
         formatDate,
         formatDateShort,
+        formatDateTime,
         timeAgo,
         badge,
         statusBadge,
@@ -417,6 +495,11 @@ const Utils = (() => {
         escapeHtml,
         parseJSON,
         withErrorBoundary,
+        languageName,
+        spinner,
+        modal,
+        closeModal,
+        showToast,
         Logger,
         COUNTRIES,
         COUNTRY_CODES,

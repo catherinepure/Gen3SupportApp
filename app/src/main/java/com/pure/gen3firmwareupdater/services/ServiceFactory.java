@@ -25,6 +25,7 @@ public class ServiceFactory {
 
     private static SupabaseClient supabaseClient;
     private static SessionManager sessionManager;
+    private static TermsManager termsManager;
 
     /**
      * Initialize the factory with application context.
@@ -39,6 +40,10 @@ public class ServiceFactory {
         }
         if (supabaseClient == null) {
             supabaseClient = new SupabaseClient(
+                    BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY);
+        }
+        if (termsManager == null) {
+            termsManager = new TermsManager(appContext,
                     BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY);
         }
     }
@@ -88,6 +93,19 @@ public class ServiceFactory {
 
     public static SupabaseUserRepository userRepo() {
         return getSupabaseClient().users;
+    }
+
+    /**
+     * Get the shared TermsManager instance.
+     *
+     * @throws IllegalStateException if init() hasn't been called yet
+     */
+    public static TermsManager getTermsManager() {
+        if (termsManager == null) {
+            throw new IllegalStateException(
+                    "ServiceFactory.init(context) must be called before getTermsManager()");
+        }
+        return termsManager;
     }
 
     // --- Factory methods for BLE services ---

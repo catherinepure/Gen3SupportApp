@@ -177,6 +177,7 @@ public class SupabaseScooterRepository extends SupabaseBaseRepository {
 
                 JsonObject obj = array.get(0).getAsJsonObject();
                 ScooterRegistrationInfo info = new ScooterRegistrationInfo();
+                info.scooterId = scooterId;
 
                 info.userId = obj.has("user_id") ? obj.get("user_id").getAsString() : null;
                 info.registeredDate = obj.has("registered_at") ? obj.get("registered_at").getAsString() : null;
@@ -195,6 +196,26 @@ public class SupabaseScooterRepository extends SupabaseBaseRepository {
                             ? userObj.get("last_name").getAsString() : "";
                     info.ownerName = (firstName + " " + lastName).trim();
                     info.ownerEmail = userObj.has("email") ? userObj.get("email").getAsString() : "";
+                }
+
+                // Check if scooter has a PIN set
+                try {
+                    String pinUrl = supabaseUrl + "/rest/v1/scooters"
+                            + "?id=eq." + scooterId
+                            + "&select=pin_encrypted";
+                    Request pinReq = buildGetRequest(pinUrl);
+                    Response pinResp = httpClient.newCall(pinReq).execute();
+                    String pinBody = getResponseBody(pinResp);
+                    if (pinResp.isSuccessful()) {
+                        JsonArray pinArr = JsonParser.parseString(pinBody).getAsJsonArray();
+                        if (pinArr.size() > 0) {
+                            JsonObject scooterObj = pinArr.get(0).getAsJsonObject();
+                            info.hasPinSet = scooterObj.has("pin_encrypted")
+                                    && !scooterObj.get("pin_encrypted").isJsonNull();
+                        }
+                    }
+                } catch (Exception pinEx) {
+                    Log.w(TAG, "Could not check PIN status: " + pinEx.getMessage());
                 }
 
                 postSuccess(callback, info);

@@ -16,7 +16,7 @@ public class UserInfo {
     public String lastName;
 
     // Role and association
-    public String userLevel;      // 'user', 'distributor', 'admin'
+    public String userLevel;      // 'admin', 'manager', 'normal' (as assigned by database admin)
     public String distributorId;
 
     // Profile
@@ -58,18 +58,14 @@ public class UserInfo {
 
     /**
      * Get human-readable user level.
+     * Displays the actual role assigned by the database administrator.
      */
     public String getUserLevelDisplay() {
-        if (userLevel == null) return "User";
-        switch (userLevel) {
-            case "admin":
-                return "Admin";
-            case "distributor":
-                return "Distributor";
-            case "user":
-            default:
-                return "User";
-        }
+        if (userLevel == null || userLevel.isEmpty()) return "Unknown";
+
+        // Capitalize first letter, lowercase the rest (defensive against mixed case)
+        // Database roles: 'admin', 'manager', 'normal'
+        return userLevel.substring(0, 1).toUpperCase() + userLevel.substring(1).toLowerCase();
     }
 
     /**

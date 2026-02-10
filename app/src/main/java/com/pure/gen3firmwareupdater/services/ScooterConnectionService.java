@@ -302,6 +302,10 @@ public class ScooterConnectionService implements BLEListener, PacketRouter.Packe
     public void onRunningData(RunningDataInfo data) {
         Log.d(TAG, "Running data parsed");
         scooterRunningData = data;
+        // Cross-populate voltage/current/battery from BMS if already received
+        if (scooterBMSData != null) {
+            data.populateFromBMS(scooterBMSData);
+        }
         if (listener != null) listener.onRunningDataReceived(data);
     }
 
@@ -309,6 +313,10 @@ public class ScooterConnectionService implements BLEListener, PacketRouter.Packe
     public void onBMSData(BMSDataInfo data) {
         Log.d(TAG, "BMS data parsed");
         scooterBMSData = data;
+        // Cross-populate voltage/current/battery into running data if already received
+        if (scooterRunningData != null) {
+            scooterRunningData.populateFromBMS(data);
+        }
         if (listener != null) listener.onBMSDataReceived(data);
     }
 

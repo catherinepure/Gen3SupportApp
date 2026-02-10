@@ -127,23 +127,27 @@ public class ScooterDetailsActivity extends AppCompatActivity {
         if (isConnectedMode) {
             StringBuilder telemetry = new StringBuilder("CURRENT TELEMETRY:\n");
 
+            // BMS data (from 0xA1 - voltage, current, battery metrics)
             Double voltage = getIntent().hasExtra("voltage") ? getIntent().getDoubleExtra("voltage", 0) : null;
             Double current = getIntent().hasExtra("current") ? getIntent().getDoubleExtra("current", 0) : null;
             Integer batteryPercent = getIntent().hasExtra("battery_percent") ? getIntent().getIntExtra("battery_percent", 0) : null;
-            Integer odometer = getIntent().hasExtra("odometer") ? getIntent().getIntExtra("odometer", 0) : null;
             Integer batterySOC = getIntent().hasExtra("battery_soc") ? getIntent().getIntExtra("battery_soc", 0) : null;
             Integer batteryHealth = getIntent().hasExtra("battery_health") ? getIntent().getIntExtra("battery_health", 0) : null;
             Integer chargeCycles = getIntent().hasExtra("charge_cycles") ? getIntent().getIntExtra("charge_cycles", 0) : null;
-            Integer dischargeCycles = getIntent().hasExtra("discharge_cycles") ? getIntent().getIntExtra("discharge_cycles", 0) : null;
 
-            if (voltage != null) telemetry.append(String.format("Voltage: %.1f V\n", voltage));
-            if (current != null) telemetry.append(String.format("Current: %.2f A\n", current));
-            if (batteryPercent != null) telemetry.append("Battery: " + batteryPercent + "%\n");
-            if (odometer != null) telemetry.append("Odometer: " + odometer + " km\n");
-            if (batterySOC != null) telemetry.append("Battery SOC: " + batterySOC + "%\n");
-            if (batteryHealth != null) telemetry.append("Battery Health: " + batteryHealth + "%\n");
-            if (chargeCycles != null) telemetry.append("Charge Cycles: " + chargeCycles + "\n");
-            if (dischargeCycles != null) telemetry.append("Discharge Cycles: " + dischargeCycles + "\n");
+            // Running data (from 0xA0 - speed, distances, temps)
+            Integer odometer = getIntent().hasExtra("odometer") ? getIntent().getIntExtra("odometer", 0) : null;
+
+            // Battery section
+            if (voltage != null && voltage > 0) telemetry.append(String.format("Voltage: %.1f V\n", voltage));
+            if (current != null && current != 0) telemetry.append(String.format("Current: %.1f A\n", current));
+            if (batterySOC != null && batterySOC > 0) telemetry.append("Battery: " + batterySOC + "%\n");
+            else if (batteryPercent != null && batteryPercent > 0) telemetry.append("Battery: " + batteryPercent + "%\n");
+            if (batteryHealth != null && batteryHealth > 0) telemetry.append("Battery Health: " + batteryHealth + "%\n");
+            if (chargeCycles != null && chargeCycles > 0) telemetry.append("Charge Cycles: " + chargeCycles + "\n");
+
+            // Distance section
+            if (odometer != null && odometer > 0) telemetry.append("Total Distance: " + odometer + " km\n");
 
             tvCurrentTelemetry.setText(telemetry.toString());
             tvCurrentTelemetry.setVisibility(View.VISIBLE);
@@ -272,20 +276,42 @@ public class ScooterDetailsActivity extends AppCompatActivity {
             }
         }
 
-        // Telemetry Information
-        if (record.speedKmh != null || record.odometerKm != null || record.motorTemp != null) {
-            details.append("\n=== TELEMETRY ===\n");
+        // Telemetry Information (from 0xA0 Running Data)
+        if (record.speedKmh != null || record.odometerKm != null || record.motorTemp != null
+                || record.gearLevel != null || record.faultCode != null) {
+            details.append("\n=== RUNNING DATA ===\n");
             if (record.speedKmh != null) {
-                details.append("Speed: ").append(String.format("%.1f km/h", record.speedKmh)).append("\n");
+                details.append("Speed: ").append(String.format("%.0f km/h", record.speedKmh)).append("\n");
+            }
+            if (record.gearLevel != null) {
+                details.append("Gear: G").append(record.gearLevel).append("\n");
             }
             if (record.odometerKm != null) {
-                details.append("Odometer: ").append(record.odometerKm).append(" km\n");
+                details.append("Total Distance: ").append(record.odometerKm).append(" km\n");
+            }
+            if (record.tripDistanceKm != null && record.tripDistanceKm > 0) {
+                details.append("Trip Distance: ").append(record.tripDistanceKm).append(" km\n");
+            }
+            if (record.remainingRangeKm != null && record.remainingRangeKm > 0) {
+                details.append("Remaining Range: ").append(record.remainingRangeKm).append(" km\n");
             }
             if (record.motorTemp != null) {
                 details.append("Motor Temp: ").append(record.motorTemp).append("\u00B0C\n");
             }
+            if (record.controllerTemp != null) {
+                details.append("Controller Temp: ").append(record.controllerTemp).append("\u00B0C\n");
+            }
             if (record.batteryTemp != null) {
                 details.append("Battery Temp: ").append(record.batteryTemp).append("\u00B0C\n");
+            }
+            if (record.motorRpm != null && record.motorRpm > 0) {
+                details.append("Motor RPM: ").append(record.motorRpm).append("\n");
+            }
+            if (record.currentLimit != null && record.currentLimit > 0) {
+                details.append("Current Limit: ").append(String.format("%.1f A", record.currentLimit)).append("\n");
+            }
+            if (record.faultCode != null && record.faultCode > 0) {
+                details.append("Fault Code: 0x").append(String.format("%04X", record.faultCode)).append("\n");
             }
         }
 

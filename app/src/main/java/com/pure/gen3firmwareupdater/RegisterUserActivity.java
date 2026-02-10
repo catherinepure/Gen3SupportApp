@@ -1,57 +1,55 @@
 package com.pure.gen3firmwareupdater;
 
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.Patterns;
 import android.view.View;
 import android.widget.ArrayAdapter;
-import android.widget.Button;
+import android.widget.AutoCompleteTextView;
 import android.widget.ProgressBar;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
-import android.bluetooth.le.ScanResult;
-
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.gson.JsonObject;
-
-import java.util.List;
+import com.pure.gen3firmwareupdater.services.LocationCaptureManager;
 
 /**
- * User Registration - Connect to scooter and register
- * Captures scooter telemetry during registration
+ * User Registration — account creation only (no scooter required).
+ * After registration, user verifies email, logs in, then connects scooter from the user hub.
  */
-public class RegisterUserActivity extends AppCompatActivity implements BLEListener {
+public class RegisterUserActivity extends AppCompatActivity {
     private static final String TAG = "RegisterUserActivity";
+    private static final int REQUEST_LOCATION_PERMISSION = 2001;
 
     private TextInputEditText etEmail, etPassword, etConfirmPassword;
     private TextInputEditText etFirstName, etLastName;
-    private Spinner spinnerAgeRange, spinnerGender, spinnerScooterUse;
-    private Button btnConnectScooter, btnRegister;
-    private TextView tvScooterStatus, tvLogin;
+    private AutoCompleteTextView spinnerAgeRange, spinnerGender, spinnerScooterUse;
+    private MaterialButton btnRegister;
+    private TextView tvLogin;
     private ProgressBar progressBar;
 
-    private BLEManager bleManager;
     private AuthClient authClient;
-
-    private String connectedScooterSerial;
-    private VersionInfo scooterVersion;
-    private ConfigInfo scooterConfig;
-    private boolean scooterConnected = false;
+    private LocationCaptureManager locationManager;
+    private LocationCaptureManager.LocationData capturedLocation;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_register_user);
 
-        // Initialize BLE and Auth
-        bleManager = new BLEManager(this, this);
         authClient = new AuthClient();
+        locationManager = new LocationCaptureManager(this);
 
         // Initialize views
         etEmail = findViewById(R.id.etEmail);
@@ -62,142 +60,137 @@ public class RegisterUserActivity extends AppCompatActivity implements BLEListen
         spinnerAgeRange = findViewById(R.id.spinnerAgeRange);
         spinnerGender = findViewById(R.id.spinnerGender);
         spinnerScooterUse = findViewById(R.id.spinnerScooterUse);
-        btnConnectScooter = findViewById(R.id.btnConnectScooter);
         btnRegister = findViewById(R.id.btnRegister);
-        tvScooterStatus = findViewById(R.id.tvScooterStatus);
         tvLogin = findViewById(R.id.tvLogin);
         progressBar = findViewById(R.id.progressBar);
 
-        // Setup spinners
-        setupSpinners();
+        setupDropdowns();
 
-        // Set up click listeners
-        btnConnectScooter.setOnClickListener(v -> connectToScooter());
         btnRegister.setOnClickListener(v -> register());
         tvLogin.setOnClickListener(v -> finish());
 
-        // Register button disabled until scooter connected
-        btnRegister.setEnabled(false);
+        // Request location permission and start capture
+        requestLocationAndCapture();
     }
 
-    private void setupSpinners() {
-        // Age Range
-        String[] ageRanges = {"Select Age Range", "<18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"};
-        ArrayAdapter<String> ageAdapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item, ageRanges);
-        ageAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spinnerAgeRange.setAdapter(ageAdapter);
-
-        // Gender
-        String[] genders = {"Select Gender", "Male", "Female", "Other", "Prefer not to say"};
-        ArrayAdapter<String> genderAdapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item, genders);
-        genderAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spinnerGender.setAdapter(genderAdapter);
-
-        // Scooter Use
-        String[] scooterUses = {"Select Use Type", "Business", "Pleasure", "Both"};
-        ArrayAdapter<String> useAdapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item, scooterUses);
-        useAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spinnerScooterUse.setAdapter(useAdapter);
-    }
-
-    private void connectToScooter() {
-        tvScooterStatus.setText("Scanning for scooters...");
-        btnConnectScooter.setEnabled(false);
-
-        // Start BLE scan
-        if (!bleManager.isBluetoothAvailable()) {
-            Toast.makeText(this, "Please enable Bluetooth", Toast.LENGTH_SHORT).show();
-            btnConnectScooter.setEnabled(true);
-            return;
+    private void requestLocationAndCapture() {
+        if (locationManager.hasPermission()) {
+            startLocationCapture();
+        } else {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    REQUEST_LOCATION_PERMISSION);
         }
+    }
 
-        bleManager.startScanning();
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_LOCATION_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startLocationCapture();
+            } else {
+                Log.d(TAG, "Location permission denied — registration will proceed without location");
+            }
+        }
+    }
+
+    private void startLocationCapture() {
+        locationManager.captureLocation(new LocationCaptureManager.LocationCallback2() {
+            @Override
+            public void onLocationCaptured(LocationCaptureManager.LocationData data) {
+                capturedLocation = data;
+                Log.d(TAG, "Location captured: " + data);
+            }
+
+            @Override
+            public void onLocationFailed(String reason) {
+                Log.w(TAG, "Location capture failed: " + reason);
+            }
+        });
+    }
+
+    private void setupDropdowns() {
+        String[] ageRanges = {"Under 18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"};
+        spinnerAgeRange.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, ageRanges));
+
+        String[] genders = {"Male", "Female", "Other", "Prefer not to say"};
+        spinnerGender.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, genders));
+
+        String[] scooterUses = {"Business", "Pleasure", "Both"};
+        spinnerScooterUse.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, scooterUses));
     }
 
     private void register() {
-        String email = etEmail.getText() != null ? etEmail.getText().toString().trim() : "";
-        String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
-        String confirmPassword = etConfirmPassword.getText() != null ? etConfirmPassword.getText().toString() : "";
+        String email = getText(etEmail);
+        String password = getText(etPassword);
+        String confirmPassword = getText(etConfirmPassword);
 
         // Validation
-        if (!scooterConnected) {
-            Toast.makeText(this, "Please connect to your scooter first", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
         if (email.isEmpty()) {
-            Toast.makeText(this, "Please enter your email", Toast.LENGTH_SHORT).show();
+            etEmail.setError("Email is required");
+            etEmail.requestFocus();
             return;
         }
-
         if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-            Toast.makeText(this, "Please enter a valid email address", Toast.LENGTH_SHORT).show();
+            etEmail.setError("Enter a valid email address");
+            etEmail.requestFocus();
             return;
         }
-
         if (password.isEmpty()) {
-            Toast.makeText(this, "Please enter a password", Toast.LENGTH_SHORT).show();
+            etPassword.setError("Password is required");
+            etPassword.requestFocus();
             return;
         }
-
         if (password.length() < 8) {
-            Toast.makeText(this, "Password must be at least 8 characters", Toast.LENGTH_SHORT).show();
+            etPassword.setError("Minimum 8 characters");
+            etPassword.requestFocus();
             return;
         }
-
         if (!password.equals(confirmPassword)) {
-            Toast.makeText(this, "Passwords do not match", Toast.LENGTH_SHORT).show();
+            etConfirmPassword.setError("Passwords do not match");
+            etConfirmPassword.requestFocus();
             return;
         }
 
         progressBar.setVisibility(View.VISIBLE);
         btnRegister.setEnabled(false);
 
-        // Build registration data
-        JsonObject registrationData = new JsonObject();
-        registrationData.addProperty("email", email);
-        registrationData.addProperty("password", password);
+        // Build registration payload
+        JsonObject data = new JsonObject();
+        data.addProperty("email", email);
+        data.addProperty("password", password);
 
         // Optional profile fields
-        String firstName = etFirstName.getText() != null ? etFirstName.getText().toString().trim() : "";
-        String lastName = etLastName.getText() != null ? etLastName.getText().toString().trim() : "";
-        if (!firstName.isEmpty()) registrationData.addProperty("first_name", firstName);
-        if (!lastName.isEmpty()) registrationData.addProperty("last_name", lastName);
+        String firstName = getText(etFirstName);
+        String lastName = getText(etLastName);
+        if (!firstName.isEmpty()) data.addProperty("first_name", firstName);
+        if (!lastName.isEmpty()) data.addProperty("last_name", lastName);
 
-        // Optional dropdowns
-        if (spinnerAgeRange.getSelectedItemPosition() > 0) {
-            registrationData.addProperty("age_range", spinnerAgeRange.getSelectedItem().toString());
-        }
-        if (spinnerGender.getSelectedItemPosition() > 0) {
-            registrationData.addProperty("gender", spinnerGender.getSelectedItem().toString());
-        }
-        if (spinnerScooterUse.getSelectedItemPosition() > 0) {
-            registrationData.addProperty("scooter_use_type", spinnerScooterUse.getSelectedItem().toString());
+        String ageRange = spinnerAgeRange.getText().toString().trim();
+        String gender = spinnerGender.getText().toString().trim();
+        String scooterUse = spinnerScooterUse.getText().toString().trim();
+        if (!ageRange.isEmpty()) data.addProperty("age_range", ageRange);
+        if (!gender.isEmpty()) data.addProperty("gender", gender);
+        if (!scooterUse.isEmpty()) data.addProperty("scooter_use_type", scooterUse);
+
+        // Location data (if captured)
+        if (capturedLocation != null) {
+            data.addProperty("registration_latitude", capturedLocation.latitude);
+            data.addProperty("registration_longitude", capturedLocation.longitude);
+            data.addProperty("registration_accuracy", capturedLocation.accuracy);
+            if (capturedLocation.method != null) data.addProperty("registration_location_method", capturedLocation.method);
+            if (capturedLocation.country != null) data.addProperty("registration_country", capturedLocation.country);
+            if (capturedLocation.region != null) data.addProperty("registration_region", capturedLocation.region);
+            if (capturedLocation.city != null) data.addProperty("registration_city", capturedLocation.city);
         }
 
-        // Scooter data
-        registrationData.addProperty("scooter_serial", connectedScooterSerial);
+        Log.d(TAG, "Registering user: " + email);
 
-        // Telemetry data
-        JsonObject telemetry = new JsonObject();
-        if (scooterVersion != null) {
-            telemetry.addProperty("controller_hw_version", scooterVersion.controllerHwVersion);
-            telemetry.addProperty("controller_sw_version", scooterVersion.controllerSwVersion);
-            telemetry.addProperty("bms_hw_version", scooterVersion.bmsHwVersion);
-            telemetry.addProperty("bms_sw_version", scooterVersion.bmsSwVersion);
-        }
-        if (scooterConfig != null) {
-            // Add config data if available (0x01 packet)
-            telemetry.addProperty("max_speed_sport", scooterConfig.maxSpeedSport);
-            // Add more config fields as needed
-        }
-        registrationData.add("telemetry", telemetry);
-
-        // Call registration endpoint
-        authClient.registerUser(registrationData, new AuthClient.Callback<Void>() {
+        authClient.register(data, new AuthClient.Callback<Void>() {
             @Override
             public void onSuccess(Void result) {
                 runOnUiThread(() -> {
@@ -206,10 +199,9 @@ public class RegisterUserActivity extends AppCompatActivity implements BLEListen
 
                     new AlertDialog.Builder(RegisterUserActivity.this)
                             .setTitle("Registration Successful")
-                            .setMessage("Please check your email to verify your account. " +
-                                    "Click the verification link, then return to login.")
-                            .setPositiveButton("OK", (dialog, which) -> {
-                                // Go to login
+                            .setMessage("We've sent a verification link to " + email +
+                                    ". Please check your email and click the link to activate your account.")
+                            .setPositiveButton("Go to Login", (dialog, which) -> {
                                 Intent intent = new Intent(RegisterUserActivity.this, LoginActivity.class);
                                 intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                                 startActivity(intent);
@@ -231,136 +223,15 @@ public class RegisterUserActivity extends AppCompatActivity implements BLEListen
         });
     }
 
-    // BLE Callbacks
-    @Override
-    public void onScanStarted() {
-        runOnUiThread(() -> {
-            Log.d(TAG, "Scan started");
-            tvScooterStatus.setText("Scanning for scooters...");
-        });
-    }
-
-    @Override
-    public void onScanCompleted(List<ScanResult> devices) {
-        runOnUiThread(() -> {
-            Log.d(TAG, "Scan completed, found " + devices.size() + " devices");
-            if (devices.isEmpty()) {
-                tvScooterStatus.setText("No scooters found. Please try again.");
-                btnConnectScooter.setEnabled(true);
-            } else {
-                // Connect to first device
-                ScanResult firstDevice = devices.get(0);
-                tvScooterStatus.setText("Connecting to " + firstDevice.getDevice().getName() + "...");
-                bleManager.connectToDevice(firstDevice.getDevice());
-            }
-        });
-    }
-
-    @Override
-    public void onScanFailed(String error) {
-        runOnUiThread(() -> {
-            tvScooterStatus.setText("Scan failed: " + error);
-            btnConnectScooter.setEnabled(true);
-        });
-    }
-
-    @Override
-    public void onDeviceConnected(String deviceName, String address, String serialNumber) {
-        runOnUiThread(() -> {
-            // Use serial number from Device Info Service if available, otherwise use device name
-            connectedScooterSerial = !serialNumber.isEmpty() ? serialNumber : deviceName;
-            tvScooterStatus.setText("✓ Connected to " + deviceName);
-            tvScooterStatus.setTextColor(getResources().getColor(R.color.success, null));
-            btnConnectScooter.setText("Connected");
-
-            // Request version info
-            bleManager.requestVersionInfo();
-        });
-    }
-
-    @Override
-    public void onDeviceDisconnected(boolean wasExpected) {
-        runOnUiThread(() -> {
-            if (!scooterConnected || !wasExpected) {
-                tvScooterStatus.setText("Disconnected");
-                btnConnectScooter.setEnabled(true);
-                btnRegister.setEnabled(false);
-            }
-        });
-    }
-
-    @Override
-    public void onConnectionFailed(String error) {
-        runOnUiThread(() -> {
-            tvScooterStatus.setText("Connection failed: " + error);
-            tvScooterStatus.setTextColor(getResources().getColor(R.color.error, null));
-            btnConnectScooter.setEnabled(true);
-        });
-    }
-
-    @Override
-    public void onDataReceived(byte[] data) {
-        if (data == null || data.length < 2) return;
-
-        int packetType = data[1] & 0xFF;
-
-        // Parse version info (0xB0)
-        if (packetType == 0xB0) {
-            scooterVersion = VersionInfo.parseFromB0Packet(data);
-            if (scooterVersion != null) {
-                runOnUiThread(() -> {
-                    scooterConnected = true;
-                    btnRegister.setEnabled(true);
-                    Log.d(TAG, "Version info received: " + scooterVersion);
-                });
-            }
-        }
-
-        // Parse config info (0x01) if available
-        if (packetType == 0x01) {
-            scooterConfig = ConfigInfo.parse(data);
-            if (scooterConfig != null) {
-                Log.d(TAG, "Config info received: " + scooterConfig);
-            }
-        }
-    }
-
-    @Override
-    public void onConnectionStatusChanged(String status) {
-        runOnUiThread(() -> {
-            Log.d(TAG, "Connection status: " + status);
-        });
-    }
-
-    @Override
-    public void onSerialNumberRead(String serialNumber) {
-        runOnUiThread(() -> {
-            if (!serialNumber.isEmpty()) {
-                connectedScooterSerial = serialNumber;
-                Log.d(TAG, "Serial number read: " + serialNumber);
-            }
-        });
-    }
-
-    @Override
-    public void onDeviceInfoRead(String hardwareRevision, String firmwareRevision,
-                                 String modelNumber, String manufacturer) {
-        runOnUiThread(() -> {
-            Log.d(TAG, "Device info - HW: " + hardwareRevision + ", FW: " + firmwareRevision +
-                    ", Model: " + modelNumber + ", Mfr: " + manufacturer);
-        });
-    }
-
-    @Override
-    public void onCommandSent(boolean success, String message) {
-        // Not used for registration
+    private String getText(TextInputEditText field) {
+        return field.getText() != null ? field.getText().toString().trim() : "";
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (bleManager != null) {
-            bleManager.cleanup();
+        if (locationManager != null) {
+            locationManager.stop();
         }
         if (authClient != null) {
             authClient.shutdown();

@@ -222,28 +222,47 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
 
     /**
      * Populate telemetry fields on a JsonObject from RunningDataInfo and BMSDataInfo.
+     *
+     * NOTE: In the correct protocol, voltage/current/battery% come from 0xA1 (BMS),
+     * not from 0xA0 (RunningData). RunningData has speed, distances, temps, fault codes.
+     * The cross-population (BMS→RunningData) happens in ScooterConnectionService,
+     * so runningData.voltage/current/batteryPercent should be populated if BMS was received.
      */
     protected void addTelemetryFields(JsonObject json, RunningDataInfo runningData,
                                        BMSDataInfo bmsData, String embeddedSerial) {
-        if (runningData != null) {
-            json.addProperty("voltage", runningData.voltage);
-            json.addProperty("current", runningData.current);
-            json.addProperty("speed_kmh", runningData.speed);
-            json.addProperty("odometer_km", runningData.odometer);
-            json.addProperty("motor_temp", runningData.motorTemp);
-            json.addProperty("battery_temp", runningData.batteryTemp);
-        }
+        // Voltage and current come primarily from BMS (0xA1) - the correct source
         if (bmsData != null) {
+            json.addProperty("voltage", bmsData.batteryVoltage);
+            json.addProperty("current", bmsData.batteryCurrent);
             json.addProperty("battery_soc", bmsData.batterySOC);
             json.addProperty("battery_health", bmsData.batteryHealth);
             json.addProperty("battery_charge_cycles", bmsData.chargeCycles);
             json.addProperty("battery_discharge_cycles", bmsData.dischargeCycles);
             json.addProperty("remaining_capacity_mah", bmsData.remainingCapacity);
             json.addProperty("full_capacity_mah", bmsData.fullCapacity);
-            if (runningData == null) {
-                json.addProperty("battery_temp", bmsData.avgTemperature);
-            }
+            json.addProperty("battery_temp", bmsData.batteryTemperature);
+        } else if (runningData != null) {
+            // Fallback: use cross-populated values from RunningData if BMS not available
+            if (runningData.voltage > 0) json.addProperty("voltage", runningData.voltage);
+            if (runningData.current != 0) json.addProperty("current", runningData.current);
+            if (runningData.batteryPercent > 0) json.addProperty("battery_soc", runningData.batteryPercent);
+            if (runningData.batteryTemp != 0) json.addProperty("battery_temp", runningData.batteryTemp);
         }
+
+        if (runningData != null) {
+            json.addProperty("speed_kmh", runningData.currentSpeed);
+            json.addProperty("odometer_km", runningData.totalDistance);
+            json.addProperty("motor_temp", runningData.motorTemp);
+            // New fields from correct 0xA0 protocol
+            json.addProperty("controller_temp", runningData.controllerTemp);
+            json.addProperty("fault_code", runningData.faultCode);
+            json.addProperty("gear_level", runningData.gearLevel);
+            json.addProperty("trip_distance_km", runningData.tripDistance);
+            json.addProperty("remaining_range_km", runningData.remainingRange);
+            json.addProperty("motor_rpm", runningData.motorRPM);
+            json.addProperty("current_limit", runningData.currentLimit);
+        }
+
         if (embeddedSerial != null && !embeddedSerial.isEmpty()) {
             json.addProperty("embedded_serial", embeddedSerial);
         }
@@ -253,18 +272,11 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
      * Parse shared telemetry fields from a JSON object into a TelemetryRecord.
      */
     protected void parseTelemetryFields(JsonObject obj, TelemetryRecord record) {
+        // BMS data (0xA1) - voltage, current, battery metrics
         record.voltage = obj.has("voltage") && !obj.get("voltage").isJsonNull()
                 ? obj.get("voltage").getAsDouble() : null;
         record.current = obj.has("current") && !obj.get("current").isJsonNull()
                 ? obj.get("current").getAsDouble() : null;
-        record.speedKmh = obj.has("speed_kmh") && !obj.get("speed_kmh").isJsonNull()
-                ? obj.get("speed_kmh").getAsDouble() : null;
-        record.odometerKm = obj.has("odometer_km") && !obj.get("odometer_km").isJsonNull()
-                ? obj.get("odometer_km").getAsInt() : null;
-        record.motorTemp = obj.has("motor_temp") && !obj.get("motor_temp").isJsonNull()
-                ? obj.get("motor_temp").getAsInt() : null;
-        record.batteryTemp = obj.has("battery_temp") && !obj.get("battery_temp").isJsonNull()
-                ? obj.get("battery_temp").getAsInt() : null;
         record.batterySOC = obj.has("battery_soc") && !obj.get("battery_soc").isJsonNull()
                 ? obj.get("battery_soc").getAsInt() : null;
         record.batteryHealth = obj.has("battery_health") && !obj.get("battery_health").isJsonNull()
@@ -277,6 +289,31 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
                 ? obj.get("remaining_capacity_mah").getAsInt() : null;
         record.fullCapacityMah = obj.has("full_capacity_mah") && !obj.get("full_capacity_mah").isJsonNull()
                 ? obj.get("full_capacity_mah").getAsInt() : null;
+        record.batteryTemp = obj.has("battery_temp") && !obj.get("battery_temp").isJsonNull()
+                ? obj.get("battery_temp").getAsInt() : null;
+
+        // Running data (0xA0) - speed, distances, temps, faults
+        record.speedKmh = obj.has("speed_kmh") && !obj.get("speed_kmh").isJsonNull()
+                ? obj.get("speed_kmh").getAsDouble() : null;
+        record.odometerKm = obj.has("odometer_km") && !obj.get("odometer_km").isJsonNull()
+                ? obj.get("odometer_km").getAsInt() : null;
+        record.motorTemp = obj.has("motor_temp") && !obj.get("motor_temp").isJsonNull()
+                ? obj.get("motor_temp").getAsInt() : null;
+        record.controllerTemp = obj.has("controller_temp") && !obj.get("controller_temp").isJsonNull()
+                ? obj.get("controller_temp").getAsInt() : null;
+        record.faultCode = obj.has("fault_code") && !obj.get("fault_code").isJsonNull()
+                ? obj.get("fault_code").getAsInt() : null;
+        record.gearLevel = obj.has("gear_level") && !obj.get("gear_level").isJsonNull()
+                ? obj.get("gear_level").getAsInt() : null;
+        record.tripDistanceKm = obj.has("trip_distance_km") && !obj.get("trip_distance_km").isJsonNull()
+                ? obj.get("trip_distance_km").getAsInt() : null;
+        record.remainingRangeKm = obj.has("remaining_range_km") && !obj.get("remaining_range_km").isJsonNull()
+                ? obj.get("remaining_range_km").getAsInt() : null;
+        record.motorRpm = obj.has("motor_rpm") && !obj.get("motor_rpm").isJsonNull()
+                ? obj.get("motor_rpm").getAsInt() : null;
+        record.currentLimit = obj.has("current_limit") && !obj.get("current_limit").isJsonNull()
+                ? obj.get("current_limit").getAsDouble() : null;
+
         record.embeddedSerial = obj.has("embedded_serial") && !obj.get("embedded_serial").isJsonNull()
                 ? obj.get("embedded_serial").getAsString() : null;
     }

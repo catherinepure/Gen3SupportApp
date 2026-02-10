@@ -5,7 +5,8 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="24dp"
-    android:gravity="center">
+    android:gravity="center"
+    android:background="@color/background">
 
     <!-- IDLE State -->
     <LinearLayout
@@ -17,10 +18,10 @@
         android:visibility="visible">
 
         <ImageView
-            android:layout_width="120dp"
-            android:layout_height="120dp"
-            android:src="@drawable/ic_launcher_foreground"
-            android:contentDescription="Scooter icon"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:src="@drawable/ic_bluetooth_scan"
+            android:contentDescription="Bluetooth scan icon"
             android:layout_marginBottom="24dp"/>
 
         <TextView
@@ -29,36 +30,38 @@
             android:text="Scan for Nearby Scooter"
             android:textSize="24sp"
             android:textStyle="bold"
-            android:textColor="?android:attr/textColorPrimary"
-            android:layout_marginBottom="12dp"/>
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="8dp"/>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Ensure the scooter is powered on and nearby"
+            android:text="Make sure the scooter is powered on and within Bluetooth range"
             android:textSize="14sp"
-            android:textColor="?android:attr/textColorSecondary"
+            android:textColor="@color/text_secondary"
             android:gravity="center"
-            android:layout_marginBottom="32dp"/>
+            android:paddingHorizontal="16dp"
+            android:layout_marginBottom="40dp"/>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnScan"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:text="Start Scanning"
             android:textSize="16sp"
-            app:cornerRadius="8dp"
-            android:padding="16dp"/>
+            app:icon="@drawable/ic_bluetooth_scan"
+            app:iconGravity="start"
+            app:iconSize="20dp"
+            app:cornerRadius="12dp"/>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCancel"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:text="Cancel"
-            android:textSize="16sp"
+            android:textSize="14sp"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            app:cornerRadius="8dp"
-            android:padding="16dp"
+            app:cornerRadius="12dp"
             android:layout_marginTop="12dp"/>
     </LinearLayout>
 
@@ -73,8 +76,8 @@
 
         <ProgressBar
             android:id="@+id/progressBar"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
             android:layout_marginBottom="24dp"/>
 
         <TextView
@@ -83,16 +86,17 @@
             android:layout_height="wrap_content"
             android:text="Scanning for nearby scooters..."
             android:textSize="18sp"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
             android:gravity="center"
-            android:layout_marginBottom="32dp"/>
+            android:layout_marginBottom="12dp"/>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="This may take a few seconds"
             android:textSize="14sp"
-            android:textColor="?android:attr/textColorSecondary"
+            android:textColor="@color/text_secondary"
             android:gravity="center"/>
     </LinearLayout>
 
@@ -106,8 +110,8 @@
         android:visibility="gone">
 
         <ProgressBar
-            android:layout_width="80dp"
-            android:layout_height="80dp"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
             android:layout_marginBottom="24dp"/>
 
         <TextView
@@ -115,16 +119,17 @@
             android:layout_height="wrap_content"
             android:text="Connecting to scooter..."
             android:textSize="18sp"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
             android:gravity="center"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="12dp"/>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Reading firmware version and telemetry data"
             android:textSize="14sp"
-            android:textColor="?android:attr/textColorSecondary"
+            android:textColor="@color/text_secondary"
             android:gravity="center"/>
     </LinearLayout>
 

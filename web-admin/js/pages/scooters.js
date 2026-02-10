@@ -151,9 +151,13 @@ const ScootersPage = (() => {
                 result.owners.forEach((ownerLink, idx) => {
                     const owner = ownerLink.users || ownerLink;
                     const isPrimary = ownerLink.is_primary ? ' (Primary)' : '';
+                    const ownerName = `${owner.first_name || ''} ${owner.last_name || ''}`.trim();
+                    const ownerDisplay = `${ownerName} - ${owner.email}`;
+                    const removeBtn = `<button class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="ScootersPage.unlinkOwner('${fullScooter.id}', '${ownerLink.user_id}', '${owner.email}')">Remove</button>`;
                     ownerFields.push({
                         label: `Owner ${idx + 1}${isPrimary}`,
-                        value: `${owner.first_name || ''} ${owner.last_name || ''} - ${owner.email}`.trim()
+                        value: `${ownerDisplay} ${removeBtn}`,
+                        type: 'html'
                     });
                 });
                 sections.push({
@@ -232,6 +236,15 @@ const ScootersPage = (() => {
                     }
                 });
             }
+
+            // Delete button
+            actions.push({
+                label: 'Delete Scooter',
+                class: 'btn-outline-danger',
+                onClick: () => {
+                    setTimeout(() => deleteScooter(fullScooter), 100);
+                }
+            });
 
             // Show with DetailModal
             const displaySerial = fullScooter.serial_number || fullScooter.zyd_serial;
@@ -346,6 +359,27 @@ const ScootersPage = (() => {
         }
     }
 
+    async function deleteScooter(scooter) {
+        const displaySerial = scooter.serial_number || scooter.zyd_serial || scooter.id;
+
+        if (!confirm(`⚠️ PERMANENTLY DELETE scooter "${displaySerial}"?\n\nThis will:\n• Remove the scooter from inventory entirely\n• Unlink all owners\n• Delete all service jobs\n• Delete all component records\n\nTelemetry history will be preserved but unlinked.\n\nThis action CANNOT be undone.`)) {
+            return;
+        }
+
+        if (!confirm(`Are you absolutely sure?\n\nYou are deleting scooter ${displaySerial}`)) {
+            return;
+        }
+
+        try {
+            const result = await API.call('scooters', 'delete', { id: scooter.id });
+            toast(result.message || `Scooter ${displaySerial} has been deleted`, 'success');
+            ModalComponent.close();
+            load(currentFilters);
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    }
+
     function getStatusBadge(status) {
         const badges = {
             'active': 'badge-active',
@@ -438,7 +472,7 @@ const ScootersPage = (() => {
         }
 
         try {
-            const result = await API.call('admin', 'get-pin', { scooter_id: scooterId });
+            const result = await API.call('scooters', 'get-pin', { scooter_id: scooterId });
 
             if (result.pin) {
                 alert(`PIN for ${scooterSerial}:\n\n${result.pin}\n\nPlease keep this secure.`);
@@ -464,7 +498,7 @@ const ScootersPage = (() => {
         }
 
         try {
-            await API.call('admin', 'set-pin', {
+            await API.call('scooters', 'set-pin', {
                 scooter_id: scooterId,
                 pin: pin
             });
@@ -489,9 +523,34 @@ const ScootersPage = (() => {
         }
 
         try {
-            await API.call('admin', 'reset-pin', { scooter_id: scooterId });
+            await API.call('scooters', 'reset-pin', { scooter_id: scooterId });
 
             toast('PIN cleared successfully', 'success');
+
+            // Reload the detail view
+            setTimeout(() => {
+                const scooter = currentScooters.find(s => s.id === scooterId);
+                if (scooter) {
+                    showScooterDetail(scooter);
+                }
+            }, 500);
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    }
+
+    async function unlinkOwner(scooterId, userId, ownerEmail) {
+        if (!confirm(`Remove owner ${ownerEmail} from this scooter?\n\nThis will unlink the user from the scooter.`)) {
+            return;
+        }
+
+        try {
+            await API.call('scooters', 'unlink-user', {
+                scooter_id: scooterId,
+                user_id: userId
+            });
+
+            toast('Owner removed successfully', 'success');
 
             // Reload the detail view
             setTimeout(() => {
@@ -550,5 +609,5 @@ const ScootersPage = (() => {
         RefreshController.detach();
     }
 
-    return { init, onNavigate, onLeave, viewPIN, setPIN, resetPIN };
+    return { init, onNavigate, onLeave, viewPIN, setPIN, resetPIN, unlinkOwner };
 })();
