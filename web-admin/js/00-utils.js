@@ -270,6 +270,94 @@ const Utils = (() => {
         { value: 'cancelled', label: 'Cancelled' }
     ];
 
+    /**
+     * Error boundary wrapper for async functions
+     * @param {Function} fn - Async function to wrap
+     * @param {string} context - Context description for error messages
+     * @returns {Function} Wrapped function with error handling
+     */
+    function withErrorBoundary(fn, context = 'Operation') {
+        return async function(...args) {
+            try {
+                return await fn.apply(this, args);
+            } catch (error) {
+                console.error(`${context} error:`, error);
+
+                // Show user-friendly error
+                toast(`An error occurred: ${error.message || 'Unknown error'}`, 'error');
+
+                // Attempt to recover UI
+                const mainContent = $('#main-content');
+                if (mainContent && !mainContent.innerHTML.includes('error-state')) {
+                    mainContent.innerHTML = errorState(error.message || 'An unexpected error occurred');
+                }
+
+                // Re-throw in development for debugging
+                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                    throw error;
+                }
+            }
+        };
+    }
+
+    /**
+     * Paginated export to CSV (for large datasets)
+     * @param {string} resource - Resource name for API call
+     * @param {string} action - Action name for API call
+     * @param {Object} filters - Filter parameters
+     * @param {string} filename - Output filename
+     * @param {number} batchSize - Records per batch (default 1000)
+     */
+    async function exportToCSVPaginated(resource, action, filters = {}, filename = 'export.csv', batchSize = 1000) {
+        let offset = 0;
+        let allData = [];
+        let hasMore = true;
+        let totalFetched = 0;
+
+        // Show progress toast
+        toast('Preparing export...', 'info');
+
+        try {
+            while (hasMore) {
+                const result = await API.call(resource, action, {
+                    ...filters,
+                    limit: batchSize,
+                    offset
+                });
+
+                const data = result[resource] || result.data || [];
+                allData = allData.concat(data);
+                totalFetched += data.length;
+
+                if (data.length < batchSize) {
+                    hasMore = false;
+                } else {
+                    offset += batchSize;
+                    toast(`Fetched ${totalFetched} records...`, 'info');
+                }
+
+                // Safety limit to prevent infinite loops and browser crashes
+                if (allData.length > 100000) {
+                    toast('Export limited to 100,000 records', 'warning');
+                    break;
+                }
+            }
+
+            // Generate CSV
+            if (allData.length === 0) {
+                toast('No data to export', 'error');
+                return;
+            }
+
+            // Use existing exportCSV function
+            exportCSV(allData, filename);
+            toast(`Exported ${allData.length} rows to ${filename}`, 'success');
+        } catch (error) {
+            console.error('Export failed:', error);
+            toast(`Export failed: ${error.message}`, 'error');
+        }
+    }
+
     // Public API
     return {
         $,
@@ -288,11 +376,13 @@ const Utils = (() => {
         detailRow,
         detailSection,
         exportCSV,
+        exportToCSVPaginated,
         debounce,
         truncate,
         formatBytes,
         escapeHtml,
         parseJSON,
+        withErrorBoundary,
         COUNTRIES,
         COUNTRY_CODES,
         ROLES,

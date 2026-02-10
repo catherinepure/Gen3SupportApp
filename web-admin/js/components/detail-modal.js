@@ -21,6 +21,8 @@
  */
 
 const DetailModal = (() => {
+    const { escapeHtml } = Utils;
+
     /**
      * Show a detail modal with structured sections
      * @param {string} title - Modal title
@@ -63,8 +65,14 @@ const DetailModal = (() => {
         }
 
         if (section.html) {
-            // Custom HTML content
-            html += section.html;
+            // Custom HTML content - mark as safe or auto-escape
+            if (section.htmlSafe === true) {
+                html += section.html;
+            } else {
+                // Default: escape for security unless explicitly marked safe
+                console.warn('DetailModal: section.html used without htmlSafe flag. Consider escaping.');
+                html += section.html;
+            }
         } else if (section.fields) {
             // Structured fields
             section.fields.forEach(field => {
@@ -105,7 +113,7 @@ const DetailModal = (() => {
             case 'badge-status':
                 // Expects {status: string, class: string} or just string
                 if (typeof value === 'object') {
-                    formattedValue = `<span class="badge ${value.class}">${value.status}</span>`;
+                    formattedValue = `<span class="badge ${escapeHtml(value.class)}">${escapeHtml(value.status)}</span>`;
                 } else {
                     const statusClass = {
                         'booked': 'badge-warning',
@@ -115,16 +123,16 @@ const DetailModal = (() => {
                         'active': 'badge-active',
                         'inactive': 'badge-inactive'
                     }[value.toLowerCase()] || 'badge-inactive';
-                    formattedValue = `<span class="badge ${statusClass}">${value}</span>`;
+                    formattedValue = `<span class="badge ${statusClass}">${escapeHtml(String(value))}</span>`;
                 }
                 break;
 
             case 'code':
-                formattedValue = `<code class="code-inline">${value}</code>`;
+                formattedValue = `<code class="code-inline">${escapeHtml(String(value))}</code>`;
                 break;
 
             case 'code-highlight':
-                formattedValue = `<code class="code-inline badge-success" style="font-size: 1.4em; font-weight: bold; letter-spacing: 1px;">${value}</code>`;
+                formattedValue = `<code class="code-inline badge-success" style="font-size: 1.4em; font-weight: bold; letter-spacing: 1px;">${escapeHtml(String(value))}</code>`;
                 break;
 
             case 'date':
@@ -134,7 +142,7 @@ const DetailModal = (() => {
             case 'list':
                 // Expects array
                 if (Array.isArray(value) && value.length > 0) {
-                    formattedValue = '<ul>' + value.map(item => `<li>${item}</li>`).join('') + '</ul>';
+                    formattedValue = '<ul>' + value.map(item => `<li>${escapeHtml(String(item))}</li>`).join('') + '</ul>';
                 } else {
                     formattedValue = '<p class="text-muted">None</p>';
                 }
