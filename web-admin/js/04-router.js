@@ -1,15 +1,20 @@
 /**
  * Router Module
- * Handles SPA navigation between pages
+ * Handles SPA navigation between pages with hash-based URLs
  */
 
 const Router = (() => {
     const { $, $$ } = Utils;
     let initialized = false;
+    let navigating = false; // Prevents hashchange from re-triggering navigate
 
     function navigate(page) {
+        if (navigating) return;
         console.log(`Router.navigate('${page}')`);
         const previousPage = State.get('currentPage');
+
+        // Don't re-navigate to the same page
+        if (previousPage === page) return;
 
         // Clear breadcrumbs on page navigation
         if (typeof Breadcrumbs !== 'undefined') {
@@ -18,6 +23,13 @@ const Router = (() => {
 
         // Update state
         State.set('currentPage', page);
+
+        // Update URL hash without triggering hashchange handler
+        navigating = true;
+        if (window.location.hash !== '#' + page) {
+            window.location.hash = page;
+        }
+        navigating = false;
 
         // Update active nav item
         $$('.nav-item').forEach(item => item.classList.remove('active'));
@@ -71,7 +83,27 @@ const Router = (() => {
             });
         });
 
+        // Handle browser back/forward via hashchange
+        window.addEventListener('hashchange', () => {
+            if (navigating) return;
+            const hash = window.location.hash.replace('#', '');
+            if (hash && window.Pages && window.Pages[hash]) {
+                navigate(hash);
+            }
+        });
+
         // Logout is handled by Auth.setupLogoutButton() — do not duplicate here
+    }
+
+    /**
+     * Get the initial page from the URL hash, or default to 'dashboard'
+     */
+    function getInitialPage() {
+        const hash = window.location.hash.replace('#', '');
+        if (hash && window.Pages && window.Pages[hash]) {
+            return hash;
+        }
+        return 'dashboard';
     }
 
     function getCurrentPage() {
@@ -81,6 +113,7 @@ const Router = (() => {
     return {
         navigate,
         init,
-        getCurrentPage
+        getCurrentPage,
+        getInitialPage
     };
 })();

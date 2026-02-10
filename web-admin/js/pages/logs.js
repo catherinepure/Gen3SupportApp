@@ -2,31 +2,35 @@
 const LogsPage = (() => {
     const { $, toast, exportCSV, formatDate } = Utils;
     let currentData = [];
-    let allData = [];
     let currentFilter = '';
+    let currentPage = 1;
+    let totalRecords = 0;
+    const PAGE_SIZE = 50;
 
     async function load() {
         try {
             $('#logs-content').innerHTML = Utils.loading();
-            const result = await API.call('logs', 'list', { limit: 50 });
-            allData = result.logs || result.data || [];
-            applyFilter();
+
+            const offset = (currentPage - 1) * PAGE_SIZE;
+            const params = { limit: PAGE_SIZE, offset };
+            if (currentFilter) {
+                params.status = currentFilter;
+            }
+
+            const result = await API.call('logs', 'list', params);
+            currentData = result.logs || result.data || [];
+            totalRecords = result.total || currentData.length;
+
+            renderTable();
         } catch (err) {
             toast(err.message, 'error');
             $('#logs-content').innerHTML = Utils.errorState('Failed to load logs');
         }
     }
 
-    function applyFilter() {
-        if (currentFilter) {
-            currentData = allData.filter(l => l.status === currentFilter);
-        } else {
-            currentData = allData;
-        }
-        renderTable();
-    }
-
     function renderTable() {
+        const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+
         TableComponent.render('#logs-content', currentData, [
             { key: 'scooters', label: 'Scooter', format: (val, row) => {
                 if (val && val.zyd_serial) return val.zyd_serial;
@@ -36,9 +40,9 @@ const LogsPage = (() => {
             { key: 'status', label: 'Status', format: (val) => getStatusBadge(val) },
             { key: 'progress_percentage', label: 'Progress', format: (val) => {
                 if (val === undefined || val === null) return 'N/A';
-                return `<div style="display: flex; align-items: center; gap: 8px;">
-                    <div style="flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; max-width: 80px;">
-                        <div style="height: 100%; width: ${val}%; background: ${val === 100 ? '#22c55e' : '#3b82f6'}; border-radius: 3px;"></div>
+                return `<div class="progress-bar-container">
+                    <div class="progress-bar-track">
+                        <div class="progress-bar-fill" style="width: ${val}%; background: ${val === 100 ? '#22c55e' : '#3b82f6'};"></div>
                     </div>
                     <span>${val}%</span>
                 </div>`;
@@ -46,7 +50,17 @@ const LogsPage = (() => {
             { key: 'created_at', label: 'Started', format: formatDate },
             { key: 'completed_at', label: 'Completed', format: (val) => val ? formatDate(val) : 'In progress' }
         ], {
-            onRowClick: showLogDetail
+            onRowClick: showLogDetail,
+            pagination: totalPages > 1 ? {
+                current: currentPage,
+                total: totalPages,
+                pageSize: PAGE_SIZE,
+                totalRecords
+            } : null,
+            onPageChange: (page) => {
+                currentPage = page;
+                load();
+            }
         });
     }
 
@@ -85,7 +99,7 @@ const LogsPage = (() => {
         if (log.error_message) {
             sections.push({
                 title: 'Error',
-                html: `<div style="color: #ef4444; padding: 10px; background: #fef2f2; border-radius: 6px;">${Utils.escapeHtml(log.error_message)}</div>`
+                html: `<div class="error-block">${Utils.escapeHtml(log.error_message)}</div>`
             });
         }
 
@@ -93,7 +107,7 @@ const LogsPage = (() => {
         if (log.metadata) {
             sections.push({
                 title: 'Metadata',
-                html: `<pre style="max-height: 200px; overflow: auto; font-size: 0.85em;">${JSON.stringify(log.metadata, null, 2)}</pre>`
+                html: `<pre class="scrollable-pre">${JSON.stringify(log.metadata, null, 2)}</pre>`
             });
         }
 
@@ -124,10 +138,22 @@ const LogsPage = (() => {
         if (filterEl) {
             filterEl.addEventListener('change', (e) => {
                 currentFilter = e.target.value;
-                applyFilter();
+                currentPage = 1;
+                load();
             });
         }
     }
 
-    return { init, onNavigate: load };
+    function onNavigate() {
+        RefreshController.attach('#logs-content', load);
+        currentPage = 1;
+        currentFilter = '';
+        load();
+    }
+
+    function onLeave() {
+        RefreshController.detach();
+    }
+
+    return { init, onNavigate, onLeave };
 })();

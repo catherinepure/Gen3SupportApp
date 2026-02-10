@@ -41,12 +41,12 @@ const DashboardPage = (() => {
         html += '</div>';
 
         // --- Two-column layout: Recent Activity + Service Jobs ---
-        html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">';
+        html += '<div class="dashboard-two-col">';
 
         // Recent Activity Panel
         html += '<div class="dashboard-section">';
-        html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">';
-        html += '<h3 style="margin: 0;">Recent Activity</h3>';
+        html += '<div class="flex-header mb-3">';
+        html += '<h3 class="m-0">Recent Activity</h3>';
         html += '<button class="btn btn-sm btn-outline" id="dash-view-events">View All</button>';
         html += '</div>';
 
@@ -55,11 +55,11 @@ const DashboardPage = (() => {
             events.forEach(event => {
                 const eventIcon = getEventIcon(event.event_type);
                 html += `
-                    <div style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f0f0;">
-                        <div style="flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: #f0f4ff; display: flex; align-items: center; justify-content: center; font-size: 14px;">${eventIcon}</div>
-                        <div style="flex: 1; min-width: 0;">
-                            <div style="font-size: 0.9em; font-weight: 500;">${formatEventType(event.event_type)}</div>
-                            <div style="font-size: 0.8em; color: #666; margin-top: 2px;">
+                    <div class="activity-item">
+                        <div class="activity-icon">${eventIcon}</div>
+                        <div class="activity-content">
+                            <div class="activity-title">${formatEventType(event.event_type)}</div>
+                            <div class="activity-meta">
                                 ${event.country ? event.country + ' &middot; ' : ''}${timeAgo(event.timestamp)}
                             </div>
                         </div>
@@ -68,14 +68,14 @@ const DashboardPage = (() => {
             });
             html += '</div>';
         } else {
-            html += '<p style="color: #999; text-align: center; padding: 30px 0;">No recent activity</p>';
+            html += '<p class="text-muted text-center" style="padding: 30px 0;">No recent activity</p>';
         }
         html += '</div>';
 
         // Recent Service Jobs Panel
         html += '<div class="dashboard-section">';
-        html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">';
-        html += '<h3 style="margin: 0;">Recent Service Jobs</h3>';
+        html += '<div class="flex-header mb-3">';
+        html += '<h3 class="m-0">Recent Service Jobs</h3>';
         html += '<button class="btn btn-sm btn-outline" id="dash-view-jobs">View All</button>';
         html += '</div>';
 
@@ -85,15 +85,15 @@ const DashboardPage = (() => {
                 const scooterLabel = job.scooters?.zyd_serial || 'Unknown';
                 const workshopLabel = job.workshops?.name || 'Unknown';
                 html += `
-                    <div style="padding: 10px; margin-bottom: 8px; background: #f9f9f9; border-radius: 6px; border-left: 3px solid ${getStatusColor(job.status)};">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="job-card" style="border-left: 3px solid ${getStatusColor(job.status)};">
+                        <div class="flex-header">
                             <div>
-                                <span style="font-weight: 500;">${scooterLabel}</span>
+                                <span class="font-medium">${scooterLabel}</span>
                                 ${statusBadge(job.status)}
                             </div>
-                            <span style="font-size: 0.8em; color: #666;">${timeAgo(job.booked_date || job.created_at)}</span>
+                            <span class="text-xs text-muted">${timeAgo(job.booked_date || job.created_at)}</span>
                         </div>
-                        <div style="font-size: 0.85em; color: #555; margin-top: 4px;">
+                        <div class="text-sm text-muted mt-1">
                             ${workshopLabel} &middot; ${job.issue_description ? (job.issue_description.length > 60 ? job.issue_description.substring(0, 60) + '...' : job.issue_description) : 'No description'}
                         </div>
                     </div>
@@ -101,7 +101,7 @@ const DashboardPage = (() => {
             });
             html += '</div>';
         } else {
-            html += '<p style="color: #999; text-align: center; padding: 30px 0;">No service jobs</p>';
+            html += '<p class="text-muted text-center" style="padding: 30px 0;">No service jobs</p>';
         }
         html += '</div>';
 
@@ -109,7 +109,7 @@ const DashboardPage = (() => {
 
         // --- Scooter Status Breakdown (if we have breakdown data) ---
         if (stats.scooter_statuses || stats.scooters > 0) {
-            html += '<div class="dashboard-section" style="margin-top: 20px;">';
+            html += '<div class="dashboard-section mt-5">';
             html += '<h3>Scooter Status Overview</h3>';
             html += renderStatusBreakdown(stats.scooter_statuses, stats.scooters);
             html += '</div>';
@@ -142,7 +142,7 @@ const DashboardPage = (() => {
     function renderStatusBreakdown(statuses, total) {
         // If we don't have a breakdown from the API, show a simple message
         if (!statuses || typeof statuses !== 'object') {
-            return `<p style="color: #666;">Total scooters: <strong>${total}</strong></p>`;
+            return `<p class="text-muted">Total scooters: <strong>${total}</strong></p>`;
         }
 
         const colors = {
@@ -152,16 +152,16 @@ const DashboardPage = (() => {
             decommissioned: '#94a3b8'
         };
 
-        let html = '<div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 10px;">';
+        let html = '<div class="flex-wrap gap-5 mt-3">';
 
         for (const [status, count] of Object.entries(statuses)) {
             const color = colors[status] || '#94a3b8';
             const pct = total > 0 ? Math.round((count / total) * 100) : 0;
             html += `
-                <div style="flex: 1; min-width: 120px; text-align: center; padding: 15px; background: #f9f9f9; border-radius: 8px; border-top: 3px solid ${color};">
-                    <div style="font-size: 1.5em; font-weight: bold; color: ${color};">${count}</div>
-                    <div style="font-size: 0.85em; color: #555; margin-top: 4px;">${status.replace(/_/g, ' ')}</div>
-                    <div style="font-size: 0.75em; color: #999;">${pct}%</div>
+                <div class="status-card" style="border-top: 3px solid ${color};">
+                    <div class="status-count" style="color: ${color};">${count}</div>
+                    <div class="status-label">${status.replace(/_/g, ' ')}</div>
+                    <div class="status-pct">${pct}%</div>
                 </div>
             `;
         }
@@ -206,11 +206,17 @@ const DashboardPage = (() => {
     }
 
     function onNavigate() {
+        RefreshController.attach('#dashboard-content', load);
         load();
+    }
+
+    function onLeave() {
+        RefreshController.detach();
     }
 
     return {
         init,
-        onNavigate
+        onNavigate,
+        onLeave
     };
 })();

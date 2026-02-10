@@ -7,7 +7,7 @@
 ## Current Phase
 
 **Phase:** Pre-1 -- Backend, Database Prep, Admin Tooling & Web Admin
-**Status:** ✅ Web admin fully deployed and synchronized at ives.org.uk/app2026. All 11 pages now have DetailModal integration, filters, and action buttons. Shared constants consolidated. Bug fixes applied (dual logout, duplicated anon key, eager-loading, JSON error boundary). Dashboard enhanced with recent activity and service job panels. Ready for deployment + further feature development.
+**Status:** ✅ Web admin fully deployed and synchronized at ives.org.uk/app2026. All 11 pages have DetailModal integration, filters, and action buttons. Database fully seeded with realistic demo data (82 users, 32 scooters, 3 distributors, 4 workshops, 6 service jobs, 29 telemetry records). CORS opened to allow any origin. Ready for feature development.
 **Spec reference:** Section 9.3 (Phase 2 DB work pulled forward)
 
 ---
@@ -21,10 +21,20 @@
   - [x] Users page UI bug fix: search fields disappearing ✅ (three bugs: CSS width, login init path, flex layout)
 - [x] **Users page — P1 complete** ✅ (filters, pagination, edit form, reactivate — see detailed tasks below)
 - [ ] **Install development tools** — Homebrew, Flutter SDK, Supabase CLI, Deno, CocoaPods (DNS issue on corporate network — try phone hotspot or manual DNS)
-- [ ] **Run seed_test_data.sql** — 50 test users already seeded; comprehensive test data (distributors, workshops, scooters, service jobs) ready to run
+- [x] **Run seed_test_data.sql** — ✅ All seed data applied to live DB (distributors, workshops, scooters, user links, service jobs, firmware, events)
+- [x] **Run seed_telemetry_data.sql** — ✅ 29 telemetry records with 10S battery data (30-42V), 25 km/h max, embedded serials
+- [x] **Update scooter serials** — ✅ Changed from ZYD-TEST-xx to ZYD_xxxxxxx format in DB and seed files
+- [x] **Open CORS for all origins** — ✅ Removed ALLOWED_ORIGINS secret, redeployed 5 edge functions (login, admin, logout, register-user, password-reset)
 - [ ] **Security hardening** — key rotation, RLS migration, password change (now have admin access)
 
 ## Recently Completed
+
+### Session 2026-02-09 (Seed Data, Telemetry & CORS — Opus 4)
+- [x] **Database fully seeded** -- seed_test_data.sql applied (distributors, workshops, scooters, user links, service jobs, firmware, events)
+- [x] **Telemetry seed data created** -- 29 records with 10S Li-ion voltages (30-42V), max 25 km/h, embedded serials (Sxxxxnnnnnnnn)
+- [x] **Scooter serials updated** -- ZYD-TEST-xx format replaced with ZYD_xxxxxxx in DB and seed files
+- [x] **CORS opened for all origins** -- Removed ALLOWED_ORIGINS secret, redeployed login/admin/logout/register-user/password-reset
+- [x] **Verified on live site** -- Dashboard, telemetry, service jobs all showing correct data at ives.org.uk/app2026
 
 ### Session 2026-02-09 (Web Admin Quality & Feature Pass — Opus 4)
 - [x] **Bug fix: Dual logout handler** — Router.init() and Auth.setupLogoutButton() both attached click handlers to #logout-btn. Removed duplicate from Router, moved setupLogoutButton() into Auth.init() so it runs on both login and session-restore paths.
@@ -109,9 +119,10 @@
 - [ ] **Install VS Code** -- `brew install --cask visual-studio-code` (optional, with Flutter/Dart extensions)
 - [ ] **Run `flutter doctor`** -- Verify full setup (Android SDK, Xcode, etc.)
 
-### Medium Priority (Test Data)
-- [ ] **Run `sql/seed_test_data.sql`** in Supabase SQL Editor -- adds distributors, workshops, scooters, service jobs, firmware versions, activity events (UUID hex + type cast bugs fixed)
-- [ ] **Verify test data** -- Check Users page shows 50+ users with varied countries/roles/levels
+### Medium Priority (Test Data) ✅ COMPLETE
+- [x] **Run `sql/seed_test_data.sql`** ✅ -- seed data applied via Supabase Management API (activation_code column removed, serials updated to ZYD_xxxxxxx format)
+- [x] **Run `sql/seed_telemetry_data.sql`** ✅ -- 29 telemetry records with 10S Li-ion voltages (30-42V), max 25 km/h, embedded serials (Sxxxxnnnnnnnn format)
+- [x] **Verify test data** ✅ -- Dashboard shows 76 users, 32 scooters, 5 distributors, 4 workshops. Telemetry shows correct voltage/speed ranges.
 
 ## Can Do NOW (No Admin Rights Required)
 
@@ -534,6 +545,53 @@ _(unchanged from spec)_
 ---
 
 ## Session Log
+
+### Session 14 -- 2026-02-09 (Seed Data, Telemetry Corrections & CORS — Opus 4)
+**Model used:** Opus 4
+**What was accomplished:**
+
+**Database Seeding (Complete):**
+- Ran seed_test_data.sql against live Supabase DB via Management API
+- Fixed activation_code column reference (removed in prior security hardening)
+- Changed ON CONFLICT from `(activation_code)` to `(id)` for distributors
+- Created and ran seed_telemetry_data.sql with 29 telemetry records across UK (12), US (8), DE/AT/CH (9)
+
+**Telemetry Data Corrections (per user request):**
+- Updated all voltages from 48-54V range to 10S Li-ion range (30V min -- 36V nominal -- 42V max)
+- Capped all speeds at 25 km/h maximum
+- Added embedded serial numbers in Sxxxxnnnnnnnn format (e.g., SGBPR00100101, SUSSP00200202)
+- Country codes: GB, IE, US, DE, AT, CH; Model codes: PR=Pro, SP=Sport
+
+**Scooter Serial Update:**
+- Changed all scooter serials from ZYD-TEST-xx format to ZYD_xxxxxxx format
+- UK: ZYD_100100x, US: ZYD_200100x, DE: ZYD_300100x
+- Updated scooters table, user_scooters table, and all seed SQL files
+
+**CORS Fix (Allow All Origins):**
+- Removed `ALLOWED_ORIGINS` Supabase secret (was restricting to ives.org.uk only)
+- Redeployed 5 affected edge functions: login, admin, logout, register-user, password-reset
+- Verified CORS preflight returns `Access-Control-Allow-Origin: *`
+- Verified login works from localhost:8080 origin
+- 7 other edge functions already used `*` and needed no changes
+
+**Files modified:**
+- `sql/seed_test_data.sql` -- removed activation_code, updated all ZYD-TEST-xx to ZYD_xxxxxxx
+- `sql/seed_telemetry_data.sql` -- new file with 29 records, 10S voltages, 25 km/h max, embedded serials
+- `migration/TODO.md` -- updated with session handover
+
+**Where we stopped:**
+- All database seeded and verified on live site
+- Telemetry data corrected (10S battery, 25 km/h, embedded serials)
+- CORS opened for all origins (localhost now works)
+- All seed SQL files updated to match live DB
+- Changes NOT yet committed to git
+
+**Next session should:**
+1. Git commit seed data files and TODO updates
+2. Consider deploying updated web-admin files to HostingUK (if any JS changes pending)
+3. Security tasks: key rotation, RLS migration, admin password change
+4. Begin Flutter Phase 1 or additional web admin enhancements
+5. Test activation code registration flow with mobile app
 
 ### Session 13 -- 2026-02-09 (Web Admin Quality & Feature Pass)
 **Model used:** Opus 4

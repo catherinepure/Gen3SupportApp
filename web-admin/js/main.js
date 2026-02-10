@@ -20,7 +20,7 @@ const Pages = {
 
 // App Initialization
 (async function initApp() {
-    console.log('=== Gen3 Admin v2 - Initializing ===');
+    console.log('=== Pure eScooter Admin v2 - Initializing ===');
 
     // Initialize modal component
     ModalComponent.init();
@@ -53,5 +53,5 @@ const Pages = {
         Auth.setupLoginForm();
     }
 
-    console.log('=== Gen3 Admin - Ready ===');
+    console.log('=== Pure eScooter Admin - Ready ===');
 })();

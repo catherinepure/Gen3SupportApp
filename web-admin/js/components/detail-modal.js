@@ -120,11 +120,11 @@ const DetailModal = (() => {
                 break;
 
             case 'code':
-                formattedValue = `<code style="font-size: 1.2em; background: #f0f0f0; padding: 8px 12px; border-radius: 4px;">${value}</code>`;
+                formattedValue = `<code class="code-inline">${value}</code>`;
                 break;
 
             case 'code-highlight':
-                formattedValue = `<code style="font-size: 1.4em; background: #e8f5e9; padding: 12px 16px; border-radius: 6px; display: inline-block; font-weight: bold; letter-spacing: 1px;">${value}</code>`;
+                formattedValue = `<code class="code-inline badge-success" style="font-size: 1.4em; font-weight: bold; letter-spacing: 1px;">${value}</code>`;
                 break;
 
             case 'date':
@@ -172,7 +172,7 @@ const DetailModal = (() => {
         if (addresses && addresses.length > 0) {
             addresses.forEach((addr, idx) => {
                 const isPrimary = addr.is_primary ? ' <span class="badge badge-primary">Primary</span>' : '';
-                html += `<div style="margin-bottom: 15px; padding: 10px; background: #f9f9f9; border-radius: 4px;">`;
+                html += `<div class="item-card">`;
                 html += `<p><strong>Address ${idx + 1}${isPrimary}</strong></p>`;
                 html += `<p>${addr.line_1}</p>`;
                 if (addr.line_2) html += `<p>${addr.line_2}</p>`;

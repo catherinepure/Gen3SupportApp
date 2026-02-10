@@ -2,12 +2,19 @@
 const DistributorsPage = (() => {
     const { $, toast, exportCSV, formatDate, COUNTRY_CODES } = Utils;
     let currentData = [];
+    let currentPage = 1;
+    let totalRecords = 0;
+    const PAGE_SIZE = 50;
 
     async function load() {
         try {
             $('#distributors-content').innerHTML = Utils.loading();
-            const result = await API.call('distributors', 'list', { limit: 100 });
+            const offset = (currentPage - 1) * PAGE_SIZE;
+            const result = await API.call('distributors', 'list', { limit: PAGE_SIZE, offset });
             currentData = result.distributors || [];
+            totalRecords = result.total || currentData.length;
+
+            const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
 
             TableComponent.render('#distributors-content', currentData, [
                 { key: 'name', label: 'Name' },
@@ -22,7 +29,17 @@ const DistributorsPage = (() => {
                     { name: 'edit', label: 'Edit', className: 'btn-sm btn-primary', handler: editDistributor },
                     { name: 'deactivate', label: 'Deactivate', className: 'btn-sm btn-danger', handler: deactivateDistributor, shouldShow: (d) => d.is_active },
                     { name: 'reactivate', label: 'Reactivate', className: 'btn-sm btn-success', handler: reactivateDistributor, shouldShow: (d) => !d.is_active }
-                ]
+                ],
+                pagination: totalPages > 1 ? {
+                    current: currentPage,
+                    total: totalPages,
+                    pageSize: PAGE_SIZE,
+                    totalRecords
+                } : null,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    load();
+                }
             });
         } catch (err) {
             toast(err.message, 'error');
@@ -272,5 +289,15 @@ const DistributorsPage = (() => {
         }
     }
 
-    return { init, onNavigate: load };
+    function onNavigate() {
+        RefreshController.attach('#distributors-content', load);
+        currentPage = 1;
+        load();
+    }
+
+    function onLeave() {
+        RefreshController.detach();
+    }
+
+    return { init, onNavigate, onLeave };
 })();

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gen3 Admin Dashboard</title>
+    <title>Pure eScooter Admin Dashboard</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
     <div id="login-screen" class="login-container">
         <div class="login-card">
             <div class="login-logo">
-                <h1>Gen3 Admin</h1>
+                <h1>Pure eScooter Admin</h1>
                 <p>Scooter Management Dashboard</p>
             </div>
             <form id="login-form">
@@ -34,7 +34,7 @@
         <!-- Sidebar -->
         <nav id="sidebar">
             <div class="sidebar-header">
-                <h2>Gen3 Admin</h2>
+                <h2>Pure eScooter Admin</h2>
                 <span id="admin-email" class="admin-email"></span>
             </div>
             <ul class="nav-items">

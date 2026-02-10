@@ -35,7 +35,7 @@ async function sendPasswordResetEmail(email: string, firstName: string, resetUrl
   const emailContent = {
     personalizations: [{
       to: [{ email }],
-      subject: 'Reset Your Password - Gen3 Admin'
+      subject: 'Reset Your Password - Pure eScooter Admin'
     }],
     from: { email: FROM_EMAIL },
     content: [{
@@ -45,7 +45,7 @@ async function sendPasswordResetEmail(email: string, firstName: string, resetUrl
         <body style="font-family: Arial, sans-serif; padding: 20px;">
             <h2>Password Reset Request</h2>
             <p>Hi ${firstName},</p>
-            <p>You requested to reset your password for Gen3 Admin. Click the button below to reset it:</p>
+            <p>You requested to reset your password for Pure eScooter Admin. Click the button below to reset it:</p>
             <p>
                 <a href="${resetUrl}"
                    style="background-color: #4CAF50; color: white; padding: 12px 24px;

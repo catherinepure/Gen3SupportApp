@@ -1,1 +1,1 @@
-# Gen3 Admin GUI package
+# Pure eScooter Admin GUI package

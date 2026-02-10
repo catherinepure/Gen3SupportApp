@@ -8,7 +8,7 @@
 
 ## Summary
 
-Implemented complete **password reset** functionality for Gen3 Admin dashboard with secure token-based email verification.
+Implemented complete **password reset** functionality for Pure eScooter Admin dashboard with secure token-based email verification.
 
 ---
 
@@ -120,7 +120,7 @@ Reset emails are now **sent via SendGrid** with branded HTML templates:
 const emailContent = {
   personalizations: [{
     to: [{ email: user.email }],
-    subject: 'Reset Your Password - Gen3 Admin'
+    subject: 'Reset Your Password - Pure eScooter Admin'
   }],
   from: { email: FROM_EMAIL },
   content: [{

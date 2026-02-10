@@ -15,12 +15,13 @@ window.Pages = {
     telemetry: TelemetryPage,
     logs: LogsPage,
     events: EventsPage,
-    validation: ValidationPage
+    validation: ValidationPage,
+    settings: SettingsPage
 };
 
 // App Initialization
 (async function initApp() {
-    console.log('=== Gen3 Admin v2 - NEW FILE - Initializing ===');
+    console.log('=== Pure eScooter Admin v2 - NEW FILE - Initializing ===');
 
     // Initialize modal component
     ModalComponent.init();
@@ -31,6 +32,9 @@ window.Pages = {
     if (user) {
         // User is logged in, initialize app
         console.log('✓ User authenticated:', user.email);
+
+        // Load reference data (models, variants, colours, blocks)
+        await ReferenceData.loadAll();
 
         // Initialize router
         Router.init();
@@ -43,9 +47,10 @@ window.Pages = {
             }
         });
 
-        // Navigate to dashboard
-        console.log('✓ Navigating to dashboard...');
-        Router.navigate('dashboard');
+        // Navigate to initial page (from URL hash, or dashboard)
+        const initialPage = Router.getInitialPage();
+        console.log(`✓ Navigating to ${initialPage}...`);
+        Router.navigate(initialPage);
 
     } else {
         // Show login screen
@@ -54,5 +59,5 @@ window.Pages = {
         Auth.setupPasswordResetForm(); // Check if on reset page
     }
 
-    console.log('=== Gen3 Admin v2 - NEW FILE - Ready ===');
+    console.log('=== Pure eScooter Admin v2 - NEW FILE - Ready ===');
 })();

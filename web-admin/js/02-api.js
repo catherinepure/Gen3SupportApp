@@ -1,5 +1,5 @@
 /**
- * Gen3 Admin — API Client
+ * Pure eScooter Admin — API Client
  * Communicates with the Supabase Edge Function: /functions/v1/admin
  * All requests go through a single endpoint with { resource, action, session_token }
  */

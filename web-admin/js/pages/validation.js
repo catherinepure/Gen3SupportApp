@@ -24,11 +24,11 @@ const ValidationPage = (() => {
 
     function renderEmpty() {
         $('#validation-content').innerHTML = `
-            <div style="text-align: center; padding: 60px 20px;">
-                <div style="font-size: 3em; margin-bottom: 15px;">&#10003;</div>
+            <div class="empty-state">
+                <div class="icon">&#10003;</div>
                 <h3>Data Validation</h3>
-                <p style="color: #666; margin-bottom: 20px;">Run checks to find orphaned scooters, expired sessions, stale service jobs, and other data issues.</p>
-                <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                <p>Run checks to find orphaned scooters, expired sessions, stale service jobs, and other data issues.</p>
+                <div class="flex-center flex-wrap gap-3">
                     <button class="btn btn-primary" id="run-all-inline">Run All Checks</button>
                     <button class="btn btn-secondary" id="run-orphaned">Orphaned Scooters</button>
                     <button class="btn btn-secondary" id="run-sessions">Expired Sessions</button>
@@ -67,11 +67,11 @@ const ValidationPage = (() => {
     }
 
     function renderResults() {
-        let html = '<div style="margin-bottom: 15px; display: flex; gap: 10px;">';
+        let html = '<div class="mb-4 inline-flex gap-3">';
         html += '<button class="btn btn-primary btn-sm" id="rerun-all">Re-run All Checks</button>';
         html += '</div>';
 
-        html += '<div style="display: grid; gap: 15px;">';
+        html += '<div class="flex-col gap-4">';
 
         currentData.forEach((check, idx) => {
             const statusColor = {
@@ -87,18 +87,18 @@ const ValidationPage = (() => {
             }[check.status] || '&#8226;';
 
             html += `
-                <div style="border: 1px solid #e5e7eb; border-radius: 8px; border-left: 4px solid ${statusColor}; padding: 15px; cursor: pointer;" class="check-card" data-index="${idx}">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div style="display: flex; align-items: center; gap: 10px;">
+                <div class="check-card" style="border-left: 4px solid ${statusColor};" data-index="${idx}">
+                    <div class="flex-header">
+                        <div class="inline-flex gap-3">
                             <span style="color: ${statusColor}; font-size: 1.2em;">${statusIcon}</span>
                             <div>
-                                <div style="font-weight: 600;">${formatCheckType(check.check_type || check.action || 'Check')}</div>
-                                <div style="font-size: 0.85em; color: #666;">${check.records_checked || 0} records checked</div>
+                                <div class="font-bold">${formatCheckType(check.check_type || check.action || 'Check')}</div>
+                                <div class="text-sm text-muted">${check.records_checked || 0} records checked</div>
                             </div>
                         </div>
-                        <div style="text-align: right;">
-                            <div style="font-size: 1.4em; font-weight: bold; color: ${statusColor};">${check.issues_found || 0}</div>
-                            <div style="font-size: 0.8em; color: #999;">issues</div>
+                        <div class="text-center">
+                            <div class="font-bold" style="font-size: 1.4em; color: ${statusColor};">${check.issues_found || 0}</div>
+                            <div class="text-xs text-muted">issues</div>
                         </div>
                     </div>
                 </div>
@@ -140,7 +140,7 @@ const ValidationPage = (() => {
             check.issues.forEach(issue => {
                 const severity = issue.severity || 'error';
                 const color = severity === 'warning' ? '#f59e0b' : '#ef4444';
-                issueHtml += `<div style="padding: 8px; margin-bottom: 6px; background: #f9f9f9; border-radius: 4px; border-left: 3px solid ${color};">
+                issueHtml += `<div class="issue-item" style="border-left: 3px solid ${color};">
                     <strong style="color: ${color};">${severity.toUpperCase()}</strong>: ${issue.message || issue}
                 </div>`;
             });
@@ -152,7 +152,7 @@ const ValidationPage = (() => {
         if (check.details) {
             sections.push({
                 title: 'Details',
-                html: `<pre style="max-height: 200px; overflow: auto; font-size: 0.85em;">${JSON.stringify(check.details, null, 2)}</pre>`
+                html: `<pre class="scrollable-pre">${JSON.stringify(check.details, null, 2)}</pre>`
             });
         }
 
@@ -175,5 +175,14 @@ const ValidationPage = (() => {
         $('#validation-run-all-btn')?.addEventListener('click', () => runCheck('run-all'));
     }
 
-    return { init, onNavigate: load };
+    function onNavigate() {
+        RefreshController.attach('#validation-content', load);
+        load();
+    }
+
+    function onLeave() {
+        RefreshController.detach();
+    }
+
+    return { init, onNavigate, onLeave };
 })();

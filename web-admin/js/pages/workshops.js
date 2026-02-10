@@ -3,6 +3,9 @@ const WorkshopsPage = (() => {
     const { $, toast, exportCSV, formatDate, COUNTRY_CODES } = Utils;
     let currentData = [];
     let distributorsList = [];
+    let currentPage = 1;
+    let totalRecords = 0;
+    const PAGE_SIZE = 50;
 
     async function load() {
         try {
@@ -11,14 +14,21 @@ const WorkshopsPage = (() => {
 
             $('#workshops-content').innerHTML = Utils.loading();
 
-            // Load workshops and distributors in parallel
+            const offset = (currentPage - 1) * PAGE_SIZE;
+
+            // Load workshops (paginated) and distributors (all, for reference) in parallel
             const [workshopsResult, distributorsResult] = await Promise.all([
-                API.call('workshops', 'list', { limit: 100 }),
-                API.call('distributors', 'list', { limit: 100 })
+                API.call('workshops', 'list', { limit: PAGE_SIZE, offset }),
+                distributorsList.length > 0
+                    ? Promise.resolve({ distributors: distributorsList })
+                    : API.call('distributors', 'list', { limit: 200 })
             ]);
 
             currentData = workshopsResult.workshops || workshopsResult.data || [];
-            distributorsList = distributorsResult.distributors || distributorsResult.data || [];
+            totalRecords = workshopsResult.total || currentData.length;
+            distributorsList = distributorsResult.distributors || distributorsResult.data || distributorsList;
+
+            const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
 
             TableComponent.render('#workshops-content', currentData, [
                 { key: 'name', label: 'Name' },
@@ -27,7 +37,17 @@ const WorkshopsPage = (() => {
                 { key: 'is_active', label: 'Status', format: (val) => val ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>' },
                 { key: 'created_at', label: 'Created', format: formatDate }
             ], {
-                onRowClick: showWorkshopDetail
+                onRowClick: showWorkshopDetail,
+                pagination: totalPages > 1 ? {
+                    current: currentPage,
+                    total: totalPages,
+                    pageSize: PAGE_SIZE,
+                    totalRecords
+                } : null,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    load();
+                }
             });
         } catch (err) {
             toast(err.message, 'error');
@@ -169,10 +189,10 @@ const WorkshopsPage = (() => {
 
             // Create filterable view
             let html = `
-                <div style="margin-bottom: 20px;">
+                <div class="mb-4">
                     <h3>${workshop.name} - Service Jobs</h3>
-                    <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
-                        <select id="job-status-filter" class="filter-select" style="padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+                    <div class="flex-wrap gap-3 mt-3">
+                        <select id="job-status-filter" class="filter-select">
                             <option value="">All Statuses</option>
                             <option value="booked">Booked</option>
                             <option value="in_progress">In Progress</option>
@@ -180,7 +200,7 @@ const WorkshopsPage = (() => {
                             <option value="cancelled">Cancelled</option>
                         </select>
 
-                        <select id="job-date-filter" class="filter-select" style="padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+                        <select id="job-date-filter" class="filter-select">
                             <option value="">All Time</option>
                             <option value="today">Today</option>
                             <option value="week">This Week</option>
@@ -196,7 +216,7 @@ const WorkshopsPage = (() => {
                     <!-- Jobs will be rendered here -->
                 </div>
 
-                <div id="jobs-summary" style="margin-top: 15px; padding: 10px; background: #f5f5f5; border-radius: 4px;">
+                <div id="jobs-summary" class="item-card mt-3">
                     <!-- Summary will be shown here -->
                 </div>
             `;
@@ -268,9 +288,9 @@ const WorkshopsPage = (() => {
             if (!container) return;
 
             if (filteredJobs.length === 0) {
-                container.innerHTML = '<p class="text-muted" style="padding: 20px; text-align: center;">No jobs found matching the filters.</p>';
+                container.innerHTML = '<p class="text-muted text-center" style="padding: 20px;">No jobs found matching the filters.</p>';
             } else {
-                let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+                let html = '<div class="flex-col gap-3">';
 
                 filteredJobs.forEach(job => {
                     const statusClass = {
@@ -281,17 +301,17 @@ const WorkshopsPage = (() => {
                     }[job.status] || 'badge-inactive';
 
                     html += `
-                        <div class="job-card" data-job-id="${job.id}" style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; background: white; cursor: pointer; transition: box-shadow 0.2s;">
-                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                        <div class="item-card-bordered job-card" data-job-id="${job.id}">
+                            <div class="flex-header mb-2">
                                 <div>
                                     <strong>Job #${job.id.substring(0, 8)}</strong>
                                     <span class="badge ${statusClass}" style="margin-left: 8px;">${job.status}</span>
                                 </div>
-                                <span style="font-size: 0.85em; color: #666;">${formatDate(job.booked_date || job.created_at)}</span>
+                                <span class="text-sm text-muted">${formatDate(job.booked_date || job.created_at)}</span>
                             </div>
-                            <p style="margin: 4px 0; font-size: 0.9em;"><strong>Scooter:</strong> ${job.scooters?.zyd_serial || 'N/A'}</p>
-                            <p style="margin: 4px 0; font-size: 0.9em;"><strong>Customer:</strong> ${job.users?.email || 'N/A'}</p>
-                            <p style="margin: 4px 0; font-size: 0.9em; color: #555;">${job.issue_description || 'No description'}</p>
+                            <p class="text-sm mb-2"><strong>Scooter:</strong> ${job.scooters?.zyd_serial || 'N/A'}</p>
+                            <p class="text-sm mb-2"><strong>Customer:</strong> ${job.users?.email || 'N/A'}</p>
+                            <p class="text-sm text-muted">${job.issue_description || 'No description'}</p>
                         </div>
                     `;
                 });
@@ -309,20 +329,7 @@ const WorkshopsPage = (() => {
                             setTimeout(() => showJobDetail(job, workshop), 100);
                         }
                     });
-
-                    // Add hover effect
-                    card.addEventListener('mouseenter', () => {
-                        card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-                        card.style.borderColor = '#0066cc';
-                    });
-                    card.addEventListener('mouseleave', () => {
-                        card.style.boxShadow = '';
-                        card.style.borderColor = '#e0e0e0';
-                    });
                 });
-
-                html += '</div>';
-                container.innerHTML = html;
             }
 
             // Update summary
@@ -336,7 +343,7 @@ const WorkshopsPage = (() => {
                 };
 
                 summary.innerHTML = `
-                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                    <div class="flex-wrap gap-5">
                         <span><strong>Total:</strong> ${filteredJobs.length} of ${allJobs.length} jobs</span>
                         <span><strong>Booked:</strong> ${statusCounts.booked}</span>
                         <span><strong>In Progress:</strong> ${statusCounts.in_progress}</span>
@@ -681,5 +688,16 @@ const WorkshopsPage = (() => {
         $('#workshops-create-btn')?.addEventListener('click', createWorkshop);
     }
 
-    return { init, onNavigate: load };
+    function onNavigate() {
+        RefreshController.attach('#workshops-content', load);
+        currentPage = 1;
+        distributorsList = []; // Re-fetch reference data
+        load();
+    }
+
+    function onLeave() {
+        RefreshController.detach();
+    }
+
+    return { init, onNavigate, onLeave };
 })();

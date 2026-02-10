@@ -3,18 +3,23 @@ const TelemetryPage = (() => {
     const { $, toast, exportCSV, formatDate, debounce } = Utils;
     let currentData = [];
     let searchTerm = '';
+    let currentPage = 1;
+    let totalRecords = 0;
+    const PAGE_SIZE = 50;
 
     async function load() {
         try {
             $('#telemetry-content').innerHTML = Utils.loading();
 
-            const params = { limit: 50 };
+            const offset = (currentPage - 1) * PAGE_SIZE;
+            const params = { limit: PAGE_SIZE, offset };
             if (searchTerm) {
                 params.search = searchTerm;
             }
 
             const result = await API.call('telemetry', 'list', params);
             currentData = result.telemetry || result.data || [];
+            totalRecords = result.total || currentData.length;
 
             renderTable();
         } catch (err) {
@@ -24,6 +29,8 @@ const TelemetryPage = (() => {
     }
 
     function renderTable() {
+        const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+
         TableComponent.render('#telemetry-content', currentData, [
             { key: 'scooters', label: 'Scooter', format: (val, row) => {
                 if (val && val.zyd_serial) return val.zyd_serial;
@@ -40,7 +47,17 @@ const TelemetryPage = (() => {
             { key: 'odometer_km', label: 'Odometer', format: (val) => val !== undefined ? `${val.toLocaleString()} km` : '-' },
             { key: 'scan_type', label: 'Type', format: (val) => val ? `<span class="badge badge-primary">${val.replace(/_/g, ' ')}</span>` : '-' }
         ], {
-            onRowClick: showTelemetryDetail
+            onRowClick: showTelemetryDetail,
+            pagination: totalPages > 1 ? {
+                current: currentPage,
+                total: totalPages,
+                pageSize: PAGE_SIZE,
+                totalRecords
+            } : null,
+            onPageChange: (page) => {
+                currentPage = page;
+                load();
+            }
         });
     }
 
@@ -106,6 +123,7 @@ const TelemetryPage = (() => {
     }
 
     const debouncedSearch = debounce(() => {
+        currentPage = 1;
         load();
     }, 400);
 
@@ -121,5 +139,16 @@ const TelemetryPage = (() => {
         }
     }
 
-    return { init, onNavigate: load };
+    function onNavigate() {
+        RefreshController.attach('#telemetry-content', load);
+        currentPage = 1;
+        searchTerm = '';
+        load();
+    }
+
+    function onLeave() {
+        RefreshController.detach();
+    }
+
+    return { init, onNavigate, onLeave };
 })();

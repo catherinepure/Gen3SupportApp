@@ -2,42 +2,53 @@
 const EventsPage = (() => {
     const { $, toast, exportCSV, formatDate, debounce } = Utils;
     let currentData = [];
-    let allData = [];
     let typeFilter = '';
     let searchTerm = '';
+    let currentPage = 1;
+    let totalRecords = 0;
+    const PAGE_SIZE = 50;
 
     async function load() {
         try {
             $('#events-content').innerHTML = Utils.loading();
-            const result = await API.call('events', 'list', { limit: 100 });
-            allData = result.events || result.data || [];
-            applyFilters();
+
+            const offset = (currentPage - 1) * PAGE_SIZE;
+            const params = { limit: PAGE_SIZE, offset };
+            if (typeFilter) {
+                params.event_type = typeFilter;
+            }
+
+            const result = await API.call('events', 'list', params);
+            const rawData = result.events || result.data || [];
+            totalRecords = result.total || rawData.length;
+
+            // Client-side search filter within current page
+            if (searchTerm) {
+                const term = searchTerm.toLowerCase();
+                currentData = rawData.filter(e => {
+                    const searchable = [
+                        e.event_type,
+                        e.country,
+                        e.device_type,
+                        e.user_id,
+                        e.scooter_id
+                    ].filter(Boolean).join(' ').toLowerCase();
+                    return searchable.includes(term);
+                });
+            } else {
+                currentData = rawData;
+            }
+
+            renderTable();
         } catch (err) {
             toast(err.message, 'error');
             $('#events-content').innerHTML = Utils.errorState('Failed to load events');
         }
     }
 
-    function applyFilters() {
-        currentData = allData.filter(e => {
-            if (typeFilter && e.event_type !== typeFilter) return false;
-            if (searchTerm) {
-                const term = searchTerm.toLowerCase();
-                const searchable = [
-                    e.event_type,
-                    e.country,
-                    e.device_type,
-                    e.user_id,
-                    e.scooter_id
-                ].filter(Boolean).join(' ').toLowerCase();
-                if (!searchable.includes(term)) return false;
-            }
-            return true;
-        });
-        renderTable();
-    }
-
     function renderTable() {
+        const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+
         TableComponent.render('#events-content', currentData, [
             { key: 'event_type', label: 'Event Type', format: (val) => {
                 return `<span class="badge badge-primary">${formatEventType(val)}</span>`;
@@ -48,7 +59,17 @@ const EventsPage = (() => {
             { key: 'device_type', label: 'Device', format: (val) => val || '-' },
             { key: 'timestamp', label: 'Timestamp', format: formatDate }
         ], {
-            onRowClick: showEventDetail
+            onRowClick: showEventDetail,
+            pagination: totalPages > 1 ? {
+                current: currentPage,
+                total: totalPages,
+                pageSize: PAGE_SIZE,
+                totalRecords
+            } : null,
+            onPageChange: (page) => {
+                currentPage = page;
+                load();
+            }
         });
     }
 
@@ -79,7 +100,7 @@ const EventsPage = (() => {
         if (event.payload) {
             sections.push({
                 title: 'Event Payload',
-                html: `<pre style="max-height: 250px; overflow: auto; font-size: 0.85em;">${JSON.stringify(event.payload, null, 2)}</pre>`
+                html: `<pre class="scrollable-pre">${JSON.stringify(event.payload, null, 2)}</pre>`
             });
         }
 
@@ -97,8 +118,8 @@ const EventsPage = (() => {
         return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
 
-    const debouncedFilter = debounce(() => {
-        applyFilters();
+    const debouncedLoad = debounce(() => {
+        load();
     }, 300);
 
     function init() {
@@ -108,7 +129,8 @@ const EventsPage = (() => {
         if (typeEl) {
             typeEl.addEventListener('change', (e) => {
                 typeFilter = e.target.value;
-                applyFilters();
+                currentPage = 1;
+                load();
             });
         }
 
@@ -116,10 +138,22 @@ const EventsPage = (() => {
         if (searchEl) {
             searchEl.addEventListener('input', (e) => {
                 searchTerm = e.target.value.trim();
-                debouncedFilter();
+                debouncedLoad();
             });
         }
     }
 
-    return { init, onNavigate: load };
+    function onNavigate() {
+        RefreshController.attach('#events-content', load);
+        currentPage = 1;
+        typeFilter = '';
+        searchTerm = '';
+        load();
+    }
+
+    function onLeave() {
+        RefreshController.detach();
+    }
+
+    return { init, onNavigate, onLeave };
 })();

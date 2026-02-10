@@ -4,13 +4,26 @@ const ServiceJobsPage = (() => {
     let currentData = [];
     let scootersList = null;
     let workshopsList = null;
+    let currentPage = 1;
+    let totalRecords = 0;
+    let statusFilter = '';
+    const PAGE_SIZE = 50;
 
     async function load() {
         try {
             $('#service-jobs-content').innerHTML = Utils.loading();
 
-            const jobsResult = await API.call('service-jobs', 'list', { limit: 100 });
+            const offset = (currentPage - 1) * PAGE_SIZE;
+            const params = { limit: PAGE_SIZE, offset };
+            if (statusFilter) {
+                params.status = statusFilter;
+            }
+
+            const jobsResult = await API.call('service-jobs', 'list', params);
             currentData = jobsResult.jobs || jobsResult['service-jobs'] || jobsResult.data || [];
+            totalRecords = jobsResult.total || currentData.length;
+
+            const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
 
             TableComponent.render('#service-jobs-content', currentData, [
                 { key: 'scooters', label: 'Scooter', format: (val) => val ? (val.zyd_serial || val.id?.substring(0, 8) + '...') : 'N/A' },
@@ -21,7 +34,17 @@ const ServiceJobsPage = (() => {
                 { key: 'started_date', label: 'Started', format: (val) => val ? formatDate(val) : '-' },
                 { key: 'firmware_updated', label: 'FW Updated', format: (val) => val ? '✓' : '' }
             ], {
-                onRowClick: showServiceJobDetail
+                onRowClick: showServiceJobDetail,
+                pagination: totalPages > 1 ? {
+                    current: currentPage,
+                    total: totalPages,
+                    pageSize: PAGE_SIZE,
+                    totalRecords
+                } : null,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    load();
+                }
             });
         } catch (err) {
             toast(err.message, 'error');
@@ -289,14 +312,30 @@ const ServiceJobsPage = (() => {
     function init() {
         $('#service-jobs-export-btn')?.addEventListener('click', () => exportCSV(currentData, 'service-jobs.csv'));
         $('#service-jobs-create-btn')?.addEventListener('click', createServiceJob);
+
+        const filterEl = $('#service-jobs-status-filter');
+        if (filterEl) {
+            filterEl.addEventListener('change', (e) => {
+                statusFilter = e.target.value;
+                currentPage = 1;
+                load();
+            });
+        }
     }
 
     function onNavigate() {
+        RefreshController.attach('#service-jobs-content', load);
         // Clear cached reference data so it's fresh next time create is used
         scootersList = null;
         workshopsList = null;
+        currentPage = 1;
+        statusFilter = '';
         load();
     }
 
-    return { init, onNavigate };
+    function onLeave() {
+        RefreshController.detach();
+    }
+
+    return { init, onNavigate, onLeave };
 })();

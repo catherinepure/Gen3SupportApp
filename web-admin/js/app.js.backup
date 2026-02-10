@@ -1,5 +1,5 @@
 /**
- * Gen3 Admin — Main Application
+ * Pure eScooter Admin — Main Application
  * Pure vanilla JS SPA. No build step. No framework dependencies.
  * Designed for static hosting (e.g., HostingUK shared server).
  */

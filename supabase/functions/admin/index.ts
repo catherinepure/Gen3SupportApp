@@ -528,7 +528,7 @@ async function handleUsers(supabase: any, action: string, body: any, admin: any)
 }
 
 async function handleScooters(supabase: any, action: string, body: any, admin: any) {
-  const selectFields = '*, distributors(name)'
+  const selectFields = '*, distributors(name), scooter_models(code, name), battery_variants(code, name, capacity_ah), colour_options(code, name, hex_colour), block_codes(code, name, regions)'
 
   if (action === 'list') {
     let query = supabase.from('scooters').select(selectFields, { count: 'exact' })
@@ -555,7 +555,7 @@ async function handleScooters(supabase: any, action: string, body: any, admin: a
     }
 
     if (body.search) {
-      query = query.or(`zyd_serial.ilike.%${body.search}%,model.ilike.%${body.search}%`)
+      query = query.or(`zyd_serial.ilike.%${body.search}%,model.ilike.%${body.search}%,serial_number.ilike.%${body.search}%`)
     }
     if (body.distributor_id) query = query.eq('distributor_id', body.distributor_id)
     if (body.status) query = query.eq('status', body.status)
@@ -600,14 +600,57 @@ async function handleScooters(supabase: any, action: string, body: any, admin: a
   }
 
   if (action === 'create') {
-    if (!body.zyd_serial) return errorResponse('Serial number required')
+    if (!body.zyd_serial) return errorResponse('ZYD serial number required')
     const record: Record<string, any> = {
       zyd_serial: body.zyd_serial,
       distributor_id: body.distributor_id || null,
       model: body.model || null,
       hw_version: body.hw_version || null,
       notes: body.notes || null,
+      model_id: body.model_id || null,
+      battery_variant_id: body.battery_variant_id || null,
+      colour_id: body.colour_id || null,
+      block_code_id: body.block_code_id || null,
+      mac_address: body.mac_address || null,
     }
+
+    // Auto-generate serial number if model, variant, colour, and block are provided
+    if (body.model_id && body.battery_variant_id && body.colour_id && body.block_code_id) {
+      try {
+        // Look up the codes from reference tables
+        const [modelRes, variantRes, colourRes, blockRes] = await Promise.all([
+          supabase.from('scooter_models').select('code').eq('id', body.model_id).single(),
+          supabase.from('battery_variants').select('code').eq('id', body.battery_variant_id).single(),
+          supabase.from('colour_options').select('code').eq('id', body.colour_id).single(),
+          supabase.from('block_codes').select('code').eq('id', body.block_code_id).single(),
+        ])
+
+        if (modelRes.data && variantRes.data && colourRes.data && blockRes.data) {
+          // Call the next_serial_number function
+          const { data: serialResult, error: serialError } = await supabase.rpc('next_serial_number', {
+            p_block: blockRes.data.code,
+            p_model: modelRes.data.code,
+            p_variant: variantRes.data.code,
+            p_colour: colourRes.data.code,
+          })
+          if (!serialError && serialResult) {
+            record.serial_number = serialResult
+            // Set "at first registration" snapshot
+            record.original_serial_number = serialResult
+            record.original_zyd_serial = body.zyd_serial
+            record.original_mac_address = body.mac_address || null
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to auto-generate serial number:', e)
+      }
+    }
+
+    // If first_registration_address is provided, set it
+    if (body.first_registration_address) {
+      record.first_registration_address = body.first_registration_address
+    }
+
     const { data, error } = await supabase.from('scooters')
       .insert(record).select().single()
     if (error) return errorResponse(error.message, 500)
@@ -617,7 +660,9 @@ async function handleScooters(supabase: any, action: string, body: any, admin: a
   if (action === 'update') {
     if (!body.id) return errorResponse('Scooter ID required')
     const allowed = ['distributor_id', 'model', 'hw_version', 'notes', 'status',
-      'firmware_version', 'country_of_registration']
+      'firmware_version', 'country_of_registration',
+      'model_id', 'battery_variant_id', 'colour_id', 'block_code_id',
+      'mac_address', 'serial_number']
     const updates: Record<string, any> = {}
     for (const key of allowed) {
       if (body[key] !== undefined) updates[key] = body[key]
@@ -1490,6 +1535,44 @@ async function handleDashboard(supabase: any, _action: string, _body: any, admin
   }
   const { count: scooterCount } = await scooterQuery
 
+  // Scooter status breakdown - apply same territory filter
+  let statusQuery = supabase.from('scooters').select('status')
+  if (admin.territory.role === 'workshop_staff') {
+    // Workshop staff: only count scooters with active service jobs at their workshop
+    const { data: activeJobs } = await supabase
+      .from('service_jobs')
+      .select('scooter_id')
+      .eq('workshop_id', admin.territory.workshop_id)
+      .not('status', 'in', '("completed","cancelled")')
+    const scooterIds = activeJobs?.map((j: any) => j.scooter_id) || []
+    if (scooterIds.length > 0) {
+      statusQuery = statusQuery.in('id', scooterIds)
+    } else {
+      statusQuery = statusQuery.eq('id', '00000000-0000-0000-0000-000000000000')
+    }
+  } else {
+    const statusTerritoryFilter = buildTerritoryFilter('scooters', admin)
+    statusQuery = applyTerritoryFilter(statusQuery, statusTerritoryFilter)
+  }
+  const { data: scooterStatuses } = await statusQuery
+
+  // Count scooters by status
+  const statusBreakdown: Record<string, number> = {
+    active: 0,
+    in_service: 0,
+    stolen: 0,
+    decommissioned: 0
+  }
+
+  if (scooterStatuses) {
+    for (const scooter of scooterStatuses) {
+      const status = scooter.status || 'active'
+      if (status in statusBreakdown) {
+        statusBreakdown[status]++
+      }
+    }
+  }
+
   // Distributors count - apply territory filter
   let distributorQuery = supabase.from('distributors').select('id', { count: 'exact', head: true }).eq('is_active', true)
   const distributorTerritoryFilter = buildTerritoryFilter('distributors', admin)
@@ -1551,9 +1634,187 @@ async function handleDashboard(supabase: any, _action: string, _body: any, admin
       active_firmware: firmwareCount || 0,
       events_24h: recentEvents || 0,
       uploads_7d: recentUploads || 0,
+      scooter_statuses: statusBreakdown,
     }
   })
 }
+
+// ============================================================================
+// SETTINGS HANDLER (Reference Data: Models, Variants, Colours, Blocks)
+// ============================================================================
+
+async function handleSettings(supabase: any, action: string, body: any, admin: any) {
+  // All settings actions require manufacturer_admin role
+  const isAdmin = admin.territory.role === 'manufacturer_admin'
+
+  // --- SCOOTER MODELS ---
+  if (action === 'list-models') {
+    const { data, error } = await supabase.from('scooter_models')
+      .select('*').order('code', { ascending: true })
+    if (error) return errorResponse(error.message, 500)
+    return respond({ models: data })
+  }
+
+  if (action === 'create-model') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.code || !body.name) return errorResponse('Code and name are required')
+    const { data, error } = await supabase.from('scooter_models')
+      .insert({ code: body.code, name: body.name, description: body.description || null })
+      .select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, model: data }, 201)
+  }
+
+  if (action === 'update-model') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.id) return errorResponse('Model ID required')
+    const updates: Record<string, any> = {}
+    if (body.name !== undefined) updates.name = body.name
+    if (body.description !== undefined) updates.description = body.description
+    if (body.is_active !== undefined) updates.is_active = body.is_active
+    const { data, error } = await supabase.from('scooter_models')
+      .update(updates).eq('id', body.id).select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, model: data })
+  }
+
+  if (action === 'deactivate-model') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.id) return errorResponse('Model ID required')
+    const { data, error } = await supabase.from('scooter_models')
+      .update({ is_active: false }).eq('id', body.id).select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, model: data })
+  }
+
+  // --- BATTERY VARIANTS ---
+  if (action === 'list-variants') {
+    const { data, error } = await supabase.from('battery_variants')
+      .select('*').order('code', { ascending: true })
+    if (error) return errorResponse(error.message, 500)
+    return respond({ variants: data })
+  }
+
+  if (action === 'create-variant') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.code || !body.name || !body.capacity_ah) return errorResponse('Code, name, and capacity are required')
+    const { data, error } = await supabase.from('battery_variants')
+      .insert({
+        code: body.code, name: body.name,
+        capacity_ah: body.capacity_ah, voltage: body.voltage || 48.0,
+        description: body.description || null
+      }).select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, variant: data }, 201)
+  }
+
+  if (action === 'update-variant') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.id) return errorResponse('Variant ID required')
+    const updates: Record<string, any> = {}
+    if (body.name !== undefined) updates.name = body.name
+    if (body.capacity_ah !== undefined) updates.capacity_ah = body.capacity_ah
+    if (body.voltage !== undefined) updates.voltage = body.voltage
+    if (body.description !== undefined) updates.description = body.description
+    if (body.is_active !== undefined) updates.is_active = body.is_active
+    const { data, error } = await supabase.from('battery_variants')
+      .update(updates).eq('id', body.id).select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, variant: data })
+  }
+
+  if (action === 'deactivate-variant') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.id) return errorResponse('Variant ID required')
+    const { data, error } = await supabase.from('battery_variants')
+      .update({ is_active: false }).eq('id', body.id).select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, variant: data })
+  }
+
+  // --- COLOUR OPTIONS ---
+  if (action === 'list-colours') {
+    const { data, error } = await supabase.from('colour_options')
+      .select('*').order('code', { ascending: true })
+    if (error) return errorResponse(error.message, 500)
+    return respond({ colours: data })
+  }
+
+  if (action === 'create-colour') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.code || !body.name) return errorResponse('Code and name are required')
+    const { data, error } = await supabase.from('colour_options')
+      .insert({ code: body.code, name: body.name, hex_colour: body.hex_colour || null })
+      .select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, colour: data }, 201)
+  }
+
+  if (action === 'update-colour') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.id) return errorResponse('Colour ID required')
+    const updates: Record<string, any> = {}
+    if (body.name !== undefined) updates.name = body.name
+    if (body.hex_colour !== undefined) updates.hex_colour = body.hex_colour
+    if (body.is_active !== undefined) updates.is_active = body.is_active
+    const { data, error } = await supabase.from('colour_options')
+      .update(updates).eq('id', body.id).select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, colour: data })
+  }
+
+  if (action === 'deactivate-colour') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.id) return errorResponse('Colour ID required')
+    const { data, error } = await supabase.from('colour_options')
+      .update({ is_active: false }).eq('id', body.id).select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, colour: data })
+  }
+
+  // --- BLOCK CODES ---
+  if (action === 'list-blocks') {
+    const { data, error } = await supabase.from('block_codes')
+      .select('*').order('code', { ascending: true })
+    if (error) return errorResponse(error.message, 500)
+    return respond({ blocks: data })
+  }
+
+  if (action === 'create-block') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.code || !body.name) return errorResponse('Code and name are required')
+    const { data, error } = await supabase.from('block_codes')
+      .insert({ code: body.code, name: body.name, regions: body.regions || [] })
+      .select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, block: data }, 201)
+  }
+
+  if (action === 'update-block') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.id) return errorResponse('Block ID required')
+    const updates: Record<string, any> = {}
+    if (body.name !== undefined) updates.name = body.name
+    if (body.regions !== undefined) updates.regions = body.regions
+    if (body.is_active !== undefined) updates.is_active = body.is_active
+    const { data, error } = await supabase.from('block_codes')
+      .update(updates).eq('id', body.id).select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, block: data })
+  }
+
+  if (action === 'deactivate-block') {
+    if (!isAdmin) return errorResponse('Manufacturer admin access required', 403)
+    if (!body.id) return errorResponse('Block ID required')
+    const { data, error } = await supabase.from('block_codes')
+      .update({ is_active: false }).eq('id', body.id).select().single()
+    if (error) return errorResponse(error.message, 500)
+    return respond({ success: true, block: data })
+  }
+
+  return errorResponse('Invalid action for settings: ' + action)
+}
+
 
 // ============================================================================
 // MAIN HANDLER
@@ -1623,8 +1884,9 @@ serve(async (req) => {
       case 'sessions':     return await handleSessions(supabase, action, body, admin)
       case 'validation':   return await handleValidation(supabase, action, body, admin)
       case 'dashboard':    return await handleDashboard(supabase, action, body, admin)
+      case 'settings':     return await handleSettings(supabase, action, body, admin)
       default:
-        return errorResponse('Unknown resource: ' + resource + '. Available: users, scooters, distributors, workshops, firmware, service-jobs, telemetry, logs, events, addresses, sessions, validation, dashboard')
+        return errorResponse('Unknown resource: ' + resource + '. Available: users, scooters, distributors, workshops, firmware, service-jobs, telemetry, logs, events, addresses, sessions, validation, dashboard, settings')
     }
 
   } catch (error) {

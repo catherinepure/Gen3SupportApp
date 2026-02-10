@@ -50,8 +50,9 @@ const ScootersPage = (() => {
         const totalPages = Math.ceil(totalRecords / pageSize);
 
         TableComponent.render('#scooters-content', scooters, [
-            { key: 'serial_number', label: 'Serial Number' },
-            { key: 'scooter_type', label: 'Type', format: (val) => val || 'N/A' },
+            { key: 'serial_number', label: 'Serial Number', format: (val) => val ? `<code>${val}</code>` : '-' },
+            { key: 'zyd_serial', label: 'ZYD Serial' },
+            { key: 'scooter_models', label: 'Model', format: (val) => val?.name || '-' },
             { key: 'status', label: 'Status', format: (val) => {
                 const badges = {
                     'active': 'badge-active',
@@ -62,19 +63,20 @@ const ScootersPage = (() => {
                 const badgeClass = badges[val] || 'badge-inactive';
                 return `<span class="badge ${badgeClass}">${val || 'Unknown'}</span>`;
             }},
-            { key: 'firmware_version', label: 'Firmware', format: (val) => val || 'N/A' },
             { key: 'country_of_registration', label: 'Country', format: (val) => val || 'N/A' },
-            { key: 'registration_date', label: 'Registered', format: formatDate }
+            { key: 'created_at', label: 'Registered', format: formatDate }
         ], {
             onRowClick: showScooterDetail,
             emptyMessage: 'No scooters found',
-            pagination: {
-                currentPage,
-                totalPages,
-                onPageChange: (page) => {
-                    currentPage = page;
-                    load(currentFilters);
-                }
+            pagination: totalPages > 1 ? {
+                current: currentPage,
+                total: totalPages,
+                pageSize: pageSize,
+                totalRecords
+            } : null,
+            onPageChange: (page) => {
+                currentPage = page;
+                load(currentFilters);
             }
         });
     }
@@ -86,16 +88,32 @@ const ScootersPage = (() => {
             const fullScooter = result.scooter || scooter;
 
             // Build sections using DetailModal component
+            const modelInfo = fullScooter.scooter_models;
+            const variantInfo = fullScooter.battery_variants;
+            const colourInfo = fullScooter.colour_options;
+            const blockInfo = fullScooter.block_codes;
+
             const sections = [
-                // Basic Information
+                // Basic Identification
                 {
-                    title: 'Scooter Information',
+                    title: 'Identification',
                     fields: [
-                        { label: 'Serial Number', value: fullScooter.zyd_serial || fullScooter.serial_number || 'N/A', type: 'code' },
-                        { label: 'Model', value: fullScooter.model || fullScooter.scooter_type || 'N/A' },
-                        { label: 'Status', value: getStatusBadge(fullScooter.status), type: 'html' },
+                        { label: 'Product Serial', value: fullScooter.serial_number || 'N/A', type: 'code' },
+                        { label: 'ZYD Serial', value: fullScooter.zyd_serial || 'N/A', type: 'code' },
+                        { label: 'MAC Address', value: fullScooter.mac_address || 'N/A', type: 'code' },
+                        { label: 'Status', value: getStatusBadge(fullScooter.status), type: 'html' }
+                    ]
+                },
+                // Serial Number Breakdown
+                {
+                    title: 'Product Configuration',
+                    fields: [
+                        { label: 'Model', value: modelInfo ? `${modelInfo.code} - ${modelInfo.name}` : (fullScooter.model || 'N/A') },
+                        { label: 'Battery Variant', value: variantInfo ? `${variantInfo.code} - ${variantInfo.name} (${variantInfo.capacity_ah}Ah)` : 'N/A' },
+                        { label: 'Colour', value: colourInfo ? `${colourInfo.code} - ${colourInfo.name}` : 'N/A' },
+                        { label: 'Block/Region', value: blockInfo ? `${blockInfo.code} - ${blockInfo.name}` : 'N/A' },
                         { label: 'Firmware Version', value: fullScooter.firmware_version || 'N/A' },
-                        { label: 'Hardware Version', value: fullScooter.hw_version || fullScooter.hardware_version || 'N/A' }
+                        { label: 'Hardware Version', value: fullScooter.hw_version || 'N/A' }
                     ]
                 },
                 // Registration Information
@@ -103,8 +121,26 @@ const ScootersPage = (() => {
                     title: 'Registration',
                     fields: [
                         { label: 'Country', value: fullScooter.country_of_registration || 'N/A' },
-                        { label: 'Registration Date', value: fullScooter.registration_date, type: 'date' },
                         { label: 'Created', value: fullScooter.created_at, type: 'date' }
+                    ]
+                },
+                // First Registration Snapshot
+                {
+                    title: 'First Registration Snapshot',
+                    fields: [
+                        { label: 'Original Serial', value: fullScooter.original_serial_number || 'N/A', type: 'code' },
+                        { label: 'Original ZYD', value: fullScooter.original_zyd_serial || 'N/A', type: 'code' },
+                        { label: 'Original MAC', value: fullScooter.original_mac_address || 'N/A', type: 'code' },
+                        { label: 'Registration Address', value: fullScooter.first_registration_address
+                            ? [fullScooter.first_registration_address.line_1,
+                               fullScooter.first_registration_address.line_2,
+                               fullScooter.first_registration_address.city,
+                               fullScooter.first_registration_address.region,
+                               fullScooter.first_registration_address.postcode,
+                               fullScooter.first_registration_address.country
+                              ].filter(Boolean).join(', ')
+                            : 'N/A'
+                        }
                     ]
                 }
             ];
@@ -141,7 +177,7 @@ const ScootersPage = (() => {
                 result.service_jobs.slice(0, 5).forEach(job => {
                     const statusBadge = getStatusBadge(job.status);
                     jobsHtml += `
-                        <li style="margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
+                        <li class="item-card">
                             <strong>${formatDate(job.booked_date)}</strong> ${statusBadge}<br>
                             <span class="text-muted">${job.issue_description || 'No description'}</span>
                         </li>
@@ -195,12 +231,13 @@ const ScootersPage = (() => {
             }
 
             // Show with DetailModal
-            DetailModal.show(`Scooter: ${fullScooter.zyd_serial || fullScooter.serial_number}`, {
+            const displaySerial = fullScooter.serial_number || fullScooter.zyd_serial;
+            DetailModal.show(`Scooter: ${displaySerial}`, {
                 sections,
                 actions,
                 breadcrumbs: [
                     { label: 'Scooters', onClick: () => { ModalComponent.close(); } },
-                    { label: fullScooter.zyd_serial || fullScooter.serial_number }
+                    { label: displaySerial }
                 ]
             });
         } catch (err) {
@@ -225,10 +262,39 @@ const ScootersPage = (() => {
                 options: statusOptions
             },
             {
-                name: 'model',
+                name: 'model_id',
                 label: 'Model',
+                type: 'select',
+                value: scooter.model_id || '',
+                options: ReferenceData.isLoaded() ? ReferenceData.modelOptions() : [{ value: '', label: 'Loading...' }]
+            },
+            {
+                name: 'battery_variant_id',
+                label: 'Battery Variant',
+                type: 'select',
+                value: scooter.battery_variant_id || '',
+                options: ReferenceData.isLoaded() ? ReferenceData.variantOptions() : [{ value: '', label: 'Loading...' }]
+            },
+            {
+                name: 'colour_id',
+                label: 'Colour',
+                type: 'select',
+                value: scooter.colour_id || '',
+                options: ReferenceData.isLoaded() ? ReferenceData.colourOptions() : [{ value: '', label: 'Loading...' }]
+            },
+            {
+                name: 'block_code_id',
+                label: 'Block/Region',
+                type: 'select',
+                value: scooter.block_code_id || '',
+                options: ReferenceData.isLoaded() ? ReferenceData.blockOptions() : [{ value: '', label: 'Loading...' }]
+            },
+            {
+                name: 'mac_address',
+                label: 'MAC Address',
                 type: 'text',
-                value: scooter.model || ''
+                value: scooter.mac_address || '',
+                placeholder: 'AA:BB:CC:DD:EE:FF'
             },
             {
                 name: 'firmware_version',
@@ -323,10 +389,15 @@ const ScootersPage = (() => {
     }
 
     function onNavigate() {
+        RefreshController.attach('#scooters-content', load);
         currentPage = 1;
         currentFilters = {};
         load();
     }
 
-    return { init, onNavigate };
+    function onLeave() {
+        RefreshController.detach();
+    }
+
+    return { init, onNavigate, onLeave };
 })();

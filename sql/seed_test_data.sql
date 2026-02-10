@@ -25,20 +25,20 @@
 -- STEP 1: Distributors (3 regions)
 -- ============================================================================
 
-INSERT INTO distributors (id, name, activation_code, is_active, countries, phone, email, created_at)
+INSERT INTO distributors (id, name, is_active, countries, phone, email, created_at)
 VALUES
-  ('d1000000-0000-0000-0000-000000000001', 'Pure Electric UK', 'GEN3-UK-2026', true,
+  ('d1000000-0000-0000-0000-000000000001', 'Pure Electric UK', true,
    ARRAY['GB', 'IE']::TEXT[], '+44 20 7946 0958', 'ops@pureelectric-uk.example.com',
    NOW() - INTERVAL '365 days'),
 
-  ('d1000000-0000-0000-0000-000000000002', 'EcoRide America', 'GEN3-US-2026', true,
+  ('d1000000-0000-0000-0000-000000000002', 'EcoRide America', true,
    ARRAY['US']::TEXT[], '+1 555-0142', 'ops@ecoride-us.example.com',
    NOW() - INTERVAL '300 days'),
 
-  ('d1000000-0000-0000-0000-000000000003', 'VoltWerk Deutschland', 'GEN3-DE-2026', true,
+  ('d1000000-0000-0000-0000-000000000003', 'VoltWerk Deutschland', true,
    ARRAY['DE', 'AT', 'CH']::TEXT[], '+49 30 12345678', 'ops@voltwerk-de.example.com',
    NOW() - INTERVAL '280 days')
-ON CONFLICT (activation_code) DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 
 
 -- ============================================================================
@@ -102,40 +102,40 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO scooters (id, zyd_serial, distributor_id, model, hw_version, status, firmware_version, country_of_registration, created_at)
 VALUES
   -- UK scooters (Pure Electric UK) — 12 units
-  ('cc100000-0000-0000-0000-000000000001', 'ZYD-TEST-UK01', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Pro',   'V1.0', 'active',         'V2.3', 'GB', NOW() - INTERVAL '180 days'),
-  ('cc100000-0000-0000-0000-000000000002', 'ZYD-TEST-UK02', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Pro',   'V1.0', 'active',         'V2.3', 'GB', NOW() - INTERVAL '170 days'),
-  ('cc100000-0000-0000-0000-000000000003', 'ZYD-TEST-UK03', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Sport', 'V1.1', 'active',         'V2.3', 'GB', NOW() - INTERVAL '160 days'),
-  ('cc100000-0000-0000-0000-000000000004', 'ZYD-TEST-UK04', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Pro',   'V1.0', 'active',         'V2.2', 'GB', NOW() - INTERVAL '150 days'),
-  ('cc100000-0000-0000-0000-000000000005', 'ZYD-TEST-UK05', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Sport', 'V1.1', 'in_service',     'V2.3', 'GB', NOW() - INTERVAL '140 days'),
-  ('cc100000-0000-0000-0000-000000000006', 'ZYD-TEST-UK06', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Pro',   'V1.0', 'active',         'V2.3', 'GB', NOW() - INTERVAL '130 days'),
-  ('cc100000-0000-0000-0000-000000000007', 'ZYD-TEST-UK07', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Pro',   'V1.0', 'active',         'V2.1', 'GB', NOW() - INTERVAL '120 days'),
-  ('cc100000-0000-0000-0000-000000000008', 'ZYD-TEST-UK08', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Sport', 'V1.1', 'active',         'V2.3', 'GB', NOW() - INTERVAL '110 days'),
-  ('cc100000-0000-0000-0000-000000000009', 'ZYD-TEST-UK09', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Pro',   'V1.0', 'decommissioned', 'V2.0', 'GB', NOW() - INTERVAL '300 days'),
-  ('cc100000-0000-0000-0000-000000000010', 'ZYD-TEST-UK10', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Pro',   'V1.0', 'active',         'V2.3', 'GB', NOW() - INTERVAL '90 days'),
-  ('cc100000-0000-0000-0000-000000000011', 'ZYD-TEST-UK11', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Sport', 'V1.1', 'active',         'V2.3', 'IE', NOW() - INTERVAL '80 days'),
-  ('cc100000-0000-0000-0000-000000000012', 'ZYD-TEST-UK12', 'd1000000-0000-0000-0000-000000000001', 'Gen3 Pro',   'V1.0', 'stolen',         'V2.3', 'GB', NOW() - INTERVAL '200 days'),
+  ('cc100000-0000-0000-0000-000000000001', 'ZYD_1001001', 'd1000000-0000-0000-0000-000000000001', 'Advance',   'V1.0', 'active',         'V2.3', 'GB', NOW() - INTERVAL '180 days'),
+  ('cc100000-0000-0000-0000-000000000002', 'ZYD_1001002', 'd1000000-0000-0000-0000-000000000001', 'Advance',   'V1.0', 'active',         'V2.3', 'GB', NOW() - INTERVAL '170 days'),
+  ('cc100000-0000-0000-0000-000000000003', 'ZYD_1001003', 'd1000000-0000-0000-0000-000000000001', 'Sport', 'V1.1', 'active',         'V2.3', 'GB', NOW() - INTERVAL '160 days'),
+  ('cc100000-0000-0000-0000-000000000004', 'ZYD_1001004', 'd1000000-0000-0000-0000-000000000001', 'Advance',   'V1.0', 'active',         'V2.2', 'GB', NOW() - INTERVAL '150 days'),
+  ('cc100000-0000-0000-0000-000000000005', 'ZYD_1001005', 'd1000000-0000-0000-0000-000000000001', 'Sport', 'V1.1', 'in_service',     'V2.3', 'GB', NOW() - INTERVAL '140 days'),
+  ('cc100000-0000-0000-0000-000000000006', 'ZYD_1001006', 'd1000000-0000-0000-0000-000000000001', 'Advance',   'V1.0', 'active',         'V2.3', 'GB', NOW() - INTERVAL '130 days'),
+  ('cc100000-0000-0000-0000-000000000007', 'ZYD_1001007', 'd1000000-0000-0000-0000-000000000001', 'Advance',   'V1.0', 'active',         'V2.1', 'GB', NOW() - INTERVAL '120 days'),
+  ('cc100000-0000-0000-0000-000000000008', 'ZYD_1001008', 'd1000000-0000-0000-0000-000000000001', 'Sport', 'V1.1', 'active',         'V2.3', 'GB', NOW() - INTERVAL '110 days'),
+  ('cc100000-0000-0000-0000-000000000009', 'ZYD_1001009', 'd1000000-0000-0000-0000-000000000001', 'Advance',   'V1.0', 'decommissioned', 'V2.0', 'GB', NOW() - INTERVAL '300 days'),
+  ('cc100000-0000-0000-0000-000000000010', 'ZYD_1001010', 'd1000000-0000-0000-0000-000000000001', 'Advance',   'V1.0', 'active',         'V2.3', 'GB', NOW() - INTERVAL '90 days'),
+  ('cc100000-0000-0000-0000-000000000011', 'ZYD_1001011', 'd1000000-0000-0000-0000-000000000001', 'Sport', 'V1.1', 'active',         'V2.3', 'IE', NOW() - INTERVAL '80 days'),
+  ('cc100000-0000-0000-0000-000000000012', 'ZYD_1001012', 'd1000000-0000-0000-0000-000000000001', 'Advance',   'V1.0', 'stolen',         'V2.3', 'GB', NOW() - INTERVAL '200 days'),
 
   -- US scooters (EcoRide America) — 8 units
-  ('cc100000-0000-0000-0000-000000000021', 'ZYD-TEST-US01', 'd1000000-0000-0000-0000-000000000002', 'Gen3 Pro',   'V1.0', 'active',     'V2.3', 'US', NOW() - INTERVAL '150 days'),
-  ('cc100000-0000-0000-0000-000000000022', 'ZYD-TEST-US02', 'd1000000-0000-0000-0000-000000000002', 'Gen3 Sport', 'V1.1', 'active',     'V2.3', 'US', NOW() - INTERVAL '140 days'),
-  ('cc100000-0000-0000-0000-000000000023', 'ZYD-TEST-US03', 'd1000000-0000-0000-0000-000000000002', 'Gen3 Pro',   'V1.0', 'active',     'V2.2', 'US', NOW() - INTERVAL '130 days'),
-  ('cc100000-0000-0000-0000-000000000024', 'ZYD-TEST-US04', 'd1000000-0000-0000-0000-000000000002', 'Gen3 Pro',   'V1.0', 'active',     'V2.3', 'US', NOW() - INTERVAL '120 days'),
-  ('cc100000-0000-0000-0000-000000000025', 'ZYD-TEST-US05', 'd1000000-0000-0000-0000-000000000002', 'Gen3 Sport', 'V1.1', 'in_service', 'V2.3', 'US', NOW() - INTERVAL '100 days'),
-  ('cc100000-0000-0000-0000-000000000026', 'ZYD-TEST-US06', 'd1000000-0000-0000-0000-000000000002', 'Gen3 Pro',   'V1.0', 'active',     'V2.3', 'US', NOW() - INTERVAL '90 days'),
-  ('cc100000-0000-0000-0000-000000000027', 'ZYD-TEST-US07', 'd1000000-0000-0000-0000-000000000002', 'Gen3 Pro',   'V1.0', 'active',     'V2.1', 'US', NOW() - INTERVAL '80 days'),
-  ('cc100000-0000-0000-0000-000000000028', 'ZYD-TEST-US08', 'd1000000-0000-0000-0000-000000000002', 'Gen3 Sport', 'V1.1', 'active',     'V2.3', 'US', NOW() - INTERVAL '60 days'),
+  ('cc100000-0000-0000-0000-000000000021', 'ZYD_2001001', 'd1000000-0000-0000-0000-000000000002', 'Advance',   'V1.0', 'active',     'V2.3', 'US', NOW() - INTERVAL '150 days'),
+  ('cc100000-0000-0000-0000-000000000022', 'ZYD_2001002', 'd1000000-0000-0000-0000-000000000002', 'Sport', 'V1.1', 'active',     'V2.3', 'US', NOW() - INTERVAL '140 days'),
+  ('cc100000-0000-0000-0000-000000000023', 'ZYD_2001003', 'd1000000-0000-0000-0000-000000000002', 'Advance',   'V1.0', 'active',     'V2.2', 'US', NOW() - INTERVAL '130 days'),
+  ('cc100000-0000-0000-0000-000000000024', 'ZYD_2001004', 'd1000000-0000-0000-0000-000000000002', 'Advance',   'V1.0', 'active',     'V2.3', 'US', NOW() - INTERVAL '120 days'),
+  ('cc100000-0000-0000-0000-000000000025', 'ZYD_2001005', 'd1000000-0000-0000-0000-000000000002', 'Sport', 'V1.1', 'in_service', 'V2.3', 'US', NOW() - INTERVAL '100 days'),
+  ('cc100000-0000-0000-0000-000000000026', 'ZYD_2001006', 'd1000000-0000-0000-0000-000000000002', 'Advance',   'V1.0', 'active',     'V2.3', 'US', NOW() - INTERVAL '90 days'),
+  ('cc100000-0000-0000-0000-000000000027', 'ZYD_2001007', 'd1000000-0000-0000-0000-000000000002', 'Advance',   'V1.0', 'active',     'V2.1', 'US', NOW() - INTERVAL '80 days'),
+  ('cc100000-0000-0000-0000-000000000028', 'ZYD_2001008', 'd1000000-0000-0000-0000-000000000002', 'Sport', 'V1.1', 'active',     'V2.3', 'US', NOW() - INTERVAL '60 days'),
 
   -- German scooters (VoltWerk Deutschland) — 10 units
-  ('cc100000-0000-0000-0000-000000000031', 'ZYD-TEST-DE01', 'd1000000-0000-0000-0000-000000000003', 'Gen3 Pro',   'V1.0', 'active',         'V2.3', 'DE', NOW() - INTERVAL '160 days'),
-  ('cc100000-0000-0000-0000-000000000032', 'ZYD-TEST-DE02', 'd1000000-0000-0000-0000-000000000003', 'Gen3 Sport', 'V1.1', 'active',         'V2.3', 'DE', NOW() - INTERVAL '150 days'),
-  ('cc100000-0000-0000-0000-000000000033', 'ZYD-TEST-DE03', 'd1000000-0000-0000-0000-000000000003', 'Gen3 Pro',   'V1.0', 'active',         'V2.2', 'DE', NOW() - INTERVAL '140 days'),
-  ('cc100000-0000-0000-0000-000000000034', 'ZYD-TEST-DE04', 'd1000000-0000-0000-0000-000000000003', 'Gen3 Pro',   'V1.0', 'active',         'V2.3', 'DE', NOW() - INTERVAL '130 days'),
-  ('cc100000-0000-0000-0000-000000000035', 'ZYD-TEST-DE05', 'd1000000-0000-0000-0000-000000000003', 'Gen3 Sport', 'V1.1', 'active',         'V2.3', 'DE', NOW() - INTERVAL '120 days'),
-  ('cc100000-0000-0000-0000-000000000036', 'ZYD-TEST-DE06', 'd1000000-0000-0000-0000-000000000003', 'Gen3 Pro',   'V1.0', 'in_service',     'V2.3', 'DE', NOW() - INTERVAL '110 days'),
-  ('cc100000-0000-0000-0000-000000000037', 'ZYD-TEST-DE07', 'd1000000-0000-0000-0000-000000000003', 'Gen3 Pro',   'V1.0', 'active',         'V2.3', 'AT', NOW() - INTERVAL '100 days'),
-  ('cc100000-0000-0000-0000-000000000038', 'ZYD-TEST-DE08', 'd1000000-0000-0000-0000-000000000003', 'Gen3 Sport', 'V1.1', 'active',         'V2.3', 'CH', NOW() - INTERVAL '90 days'),
-  ('cc100000-0000-0000-0000-000000000039', 'ZYD-TEST-DE09', 'd1000000-0000-0000-0000-000000000003', 'Gen3 Pro',   'V1.0', 'decommissioned', 'V2.0', 'DE', NOW() - INTERVAL '280 days'),
-  ('cc100000-0000-0000-0000-000000000040', 'ZYD-TEST-DE10', 'd1000000-0000-0000-0000-000000000003', 'Gen3 Pro',   'V1.0', 'active',         'V2.3', 'DE', NOW() - INTERVAL '70 days')
+  ('cc100000-0000-0000-0000-000000000031', 'ZYD_3001001', 'd1000000-0000-0000-0000-000000000003', 'Advance',   'V1.0', 'active',         'V2.3', 'DE', NOW() - INTERVAL '160 days'),
+  ('cc100000-0000-0000-0000-000000000032', 'ZYD_3001002', 'd1000000-0000-0000-0000-000000000003', 'Sport', 'V1.1', 'active',         'V2.3', 'DE', NOW() - INTERVAL '150 days'),
+  ('cc100000-0000-0000-0000-000000000033', 'ZYD_3001003', 'd1000000-0000-0000-0000-000000000003', 'Advance',   'V1.0', 'active',         'V2.2', 'DE', NOW() - INTERVAL '140 days'),
+  ('cc100000-0000-0000-0000-000000000034', 'ZYD_3001004', 'd1000000-0000-0000-0000-000000000003', 'Advance',   'V1.0', 'active',         'V2.3', 'DE', NOW() - INTERVAL '130 days'),
+  ('cc100000-0000-0000-0000-000000000035', 'ZYD_3001005', 'd1000000-0000-0000-0000-000000000003', 'Sport', 'V1.1', 'active',         'V2.3', 'DE', NOW() - INTERVAL '120 days'),
+  ('cc100000-0000-0000-0000-000000000036', 'ZYD_3001006', 'd1000000-0000-0000-0000-000000000003', 'Advance',   'V1.0', 'in_service',     'V2.3', 'DE', NOW() - INTERVAL '110 days'),
+  ('cc100000-0000-0000-0000-000000000037', 'ZYD_3001007', 'd1000000-0000-0000-0000-000000000003', 'Advance',   'V1.0', 'active',         'V2.3', 'AT', NOW() - INTERVAL '100 days'),
+  ('cc100000-0000-0000-0000-000000000038', 'ZYD_3001008', 'd1000000-0000-0000-0000-000000000003', 'Sport', 'V1.1', 'active',         'V2.3', 'CH', NOW() - INTERVAL '90 days'),
+  ('cc100000-0000-0000-0000-000000000039', 'ZYD_3001009', 'd1000000-0000-0000-0000-000000000003', 'Advance',   'V1.0', 'decommissioned', 'V2.0', 'DE', NOW() - INTERVAL '280 days'),
+  ('cc100000-0000-0000-0000-000000000040', 'ZYD_3001010', 'd1000000-0000-0000-0000-000000000003', 'Advance',   'V1.0', 'active',         'V2.3', 'DE', NOW() - INTERVAL '70 days')
 ON CONFLICT (zyd_serial) DO NOTHING;
 
 
@@ -392,185 +392,185 @@ INSERT INTO user_scooters (user_id, scooter_id, zyd_serial, is_primary, register
     controller_hw_version, controller_sw_version, initial_odometer_km, initial_battery_soc)
 
 -- UK customers → UK scooters
-SELECT u.id, 'cc100000-0000-0000-0000-000000000001'::uuid, 'ZYD-TEST-UK01', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000001'::uuid, 'ZYD_1001001', true,
   NOW() - INTERVAL '170 days', NOW() - INTERVAL '2 days', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'james.wilson@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000001'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000002'::uuid, 'ZYD-TEST-UK02', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000002'::uuid, 'ZYD_1001002', true,
   NOW() - INTERVAL '160 days', NOW() - INTERVAL '1 day', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'sarah.thompson@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000002'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000003'::uuid, 'ZYD-TEST-UK03', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000003'::uuid, 'ZYD_1001003', true,
   NOW() - INTERVAL '150 days', NOW() - INTERVAL '5 days', 'V1.1', 'V2.3', 0, 98
 FROM users u WHERE u.email = 'david.brown@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000003'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000004'::uuid, 'ZYD-TEST-UK04', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000004'::uuid, 'ZYD_1001004', true,
   NOW() - INTERVAL '140 days', NOW() - INTERVAL '3 days', 'V1.0', 'V2.2', 0, 100
 FROM users u WHERE u.email = 'oliver.jones@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000004'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000005'::uuid, 'ZYD-TEST-UK05', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000005'::uuid, 'ZYD_1001005', true,
   NOW() - INTERVAL '130 days', NOW() - INTERVAL '30 days', 'V1.1', 'V2.3', 0, 95
 FROM users u WHERE u.email = 'charlotte.taylor@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000005'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000006'::uuid, 'ZYD-TEST-UK06', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000006'::uuid, 'ZYD_1001006', true,
   NOW() - INTERVAL '120 days', NOW() - INTERVAL '60 days', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'lucy.white@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000006'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000007'::uuid, 'ZYD-TEST-UK07', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000007'::uuid, 'ZYD_1001007', true,
   NOW() - INTERVAL '110 days', NOW() - INTERVAL '7 days', 'V1.0', 'V2.1', 0, 100
 FROM users u WHERE u.email = 'harry.clark@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000007'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000008'::uuid, 'ZYD-TEST-UK08', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000008'::uuid, 'ZYD_1001008', true,
   NOW() - INTERVAL '100 days', NOW() - INTERVAL '4 days', 'V1.1', 'V2.3', 0, 97
 FROM users u WHERE u.email = 'amelia.roberts@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000008'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000010'::uuid, 'ZYD-TEST-UK10', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000010'::uuid, 'ZYD_1001010', true,
   NOW() - INTERVAL '80 days', NOW() - INTERVAL '10 days', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'thomas.hall@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000010'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000011'::uuid, 'ZYD-TEST-UK11', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000011'::uuid, 'ZYD_1001011', true,
   NOW() - INTERVAL '70 days', NOW() - INTERVAL '10 days', 'V1.1', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'liam.murphy@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000011'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000012'::uuid, 'ZYD-TEST-UK12', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000012'::uuid, 'ZYD_1001012', true,
   NOW() - INTERVAL '190 days', NOW() - INTERVAL '90 days', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'ben.cooper@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000012'::uuid)
 
 -- David Brown's second scooter (decommissioned old one)
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000009'::uuid, 'ZYD-TEST-UK09', false,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000009'::uuid, 'ZYD_1001009', false,
   NOW() - INTERVAL '290 days', NOW() - INTERVAL '200 days', 'V1.0', 'V2.0', 0, 100
 FROM users u WHERE u.email = 'david.brown@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000009'::uuid)
 
 -- US customers → US scooters
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000021'::uuid, 'ZYD-TEST-US01', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000021'::uuid, 'ZYD_2001001', true,
   NOW() - INTERVAL '140 days', NOW() - INTERVAL '3 days', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'jennifer.davis@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000021'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000022'::uuid, 'ZYD-TEST-US02', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000022'::uuid, 'ZYD_2001002', true,
   NOW() - INTERVAL '130 days', NOW() - INTERVAL '4 days', 'V1.1', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'brandon.lee@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000022'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000023'::uuid, 'ZYD-TEST-US03', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000023'::uuid, 'ZYD_2001003', true,
   NOW() - INTERVAL '120 days', NOW() - INTERVAL '2 days', 'V1.0', 'V2.2', 0, 98
 FROM users u WHERE u.email = 'ashley.martinez@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000023'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000024'::uuid, 'ZYD-TEST-US04', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000024'::uuid, 'ZYD_2001004', true,
   NOW() - INTERVAL '110 days', NOW() - INTERVAL '6 days', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'tyler.wilson@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000024'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000025'::uuid, 'ZYD-TEST-US05', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000025'::uuid, 'ZYD_2001005', true,
   NOW() - INTERVAL '90 days', NOW() - INTERVAL '45 days', 'V1.1', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'samantha.taylor@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000025'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000026'::uuid, 'ZYD-TEST-US06', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000026'::uuid, 'ZYD_2001006', true,
   NOW() - INTERVAL '80 days', NOW() - INTERVAL '1 day', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'emily.anderson@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000026'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000027'::uuid, 'ZYD-TEST-US07', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000027'::uuid, 'ZYD_2001007', true,
   NOW() - INTERVAL '70 days', NOW() - INTERVAL '8 days', 'V1.0', 'V2.1', 0, 100
 FROM users u WHERE u.email = 'jason.patel@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000027'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000028'::uuid, 'ZYD-TEST-US08', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000028'::uuid, 'ZYD_2001008', true,
   NOW() - INTERVAL '50 days', NOW() - INTERVAL '3 days', 'V1.1', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'megan.campbell@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000028'::uuid)
 
 -- DE/AT/CH customers → DE scooters
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000031'::uuid, 'ZYD-TEST-DE01', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000031'::uuid, 'ZYD_3001001', true,
   NOW() - INTERVAL '150 days', NOW() - INTERVAL '3 days', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'hans.mueller@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000031'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000032'::uuid, 'ZYD-TEST-DE02', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000032'::uuid, 'ZYD_3001002', true,
   NOW() - INTERVAL '140 days', NOW() - INTERVAL '1 day', 'V1.1', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'anna.schmidt@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000032'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000033'::uuid, 'ZYD-TEST-DE03', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000033'::uuid, 'ZYD_3001003', true,
   NOW() - INTERVAL '130 days', NOW() - INTERVAL '5 days', 'V1.0', 'V2.2', 0, 99
 FROM users u WHERE u.email = 'lena.fischer@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000033'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000034'::uuid, 'ZYD-TEST-DE04', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000034'::uuid, 'ZYD_3001004', true,
   NOW() - INTERVAL '120 days', NOW() - INTERVAL '90 days', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'karl.wagner@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000034'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000035'::uuid, 'ZYD-TEST-DE05', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000035'::uuid, 'ZYD_3001005', true,
   NOW() - INTERVAL '110 days', NOW() - INTERVAL '8 days', 'V1.1', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'julia.becker@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000035'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000036'::uuid, 'ZYD-TEST-DE06', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000036'::uuid, 'ZYD_3001006', true,
   NOW() - INTERVAL '100 days', NOW() - INTERVAL '30 days', 'V1.0', 'V2.3', 0, 96
 FROM users u WHERE u.email = 'tobias.keller@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000036'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000037'::uuid, 'ZYD-TEST-DE07', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000037'::uuid, 'ZYD_3001007', true,
   NOW() - INTERVAL '90 days', NOW() - INTERVAL '1 day', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'katarina.novak@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000037'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000038'::uuid, 'ZYD-TEST-DE08', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000038'::uuid, 'ZYD_3001008', true,
   NOW() - INTERVAL '80 days', NOW() - INTERVAL '3 days', 'V1.1', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'sophie.meier@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000038'::uuid)
 
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000040'::uuid, 'ZYD-TEST-DE10', true,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000040'::uuid, 'ZYD_3001010', true,
   NOW() - INTERVAL '60 days', NOW() - INTERVAL '7 days', 'V1.0', 'V2.3', 0, 100
 FROM users u WHERE u.email = 'lukas.schwarz@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000040'::uuid)
 
 -- Hans Mueller's second scooter (decommissioned old one)
 UNION ALL
-SELECT u.id, 'cc100000-0000-0000-0000-000000000039'::uuid, 'ZYD-TEST-DE09', false,
+SELECT u.id, 'cc100000-0000-0000-0000-000000000039'::uuid, 'ZYD_3001009', false,
   NOW() - INTERVAL '270 days', NOW() - INTERVAL '180 days', 'V1.0', 'V2.0', 0, 100
 FROM users u WHERE u.email = 'hans.mueller@example.com'
   AND NOT EXISTS (SELECT 1 FROM user_scooters us WHERE us.user_id = u.id AND us.scooter_id = 'cc100000-0000-0000-0000-000000000039'::uuid)
@@ -739,12 +739,12 @@ FROM users u WHERE u.email = 'jennifer.davis@example.com';
 -- Scooter registrations
 INSERT INTO activity_events (event_type, scooter_id, user_id, country, distributor_id, payload, timestamp)
 SELECT 'scooter_registered', 'cc100000-0000-0000-0000-000000000028', u.id, 'US', 'd1000000-0000-0000-0000-000000000002',
-  '{"serial": "ZYD-TEST-US08", "model": "Gen3 Sport"}'::JSONB, NOW() - INTERVAL '50 days'
+  '{"serial": "ZYD_2001008", "model": "Gen3 Sport"}'::JSONB, NOW() - INTERVAL '50 days'
 FROM users u WHERE u.email = 'megan.campbell@example.com';
 
 INSERT INTO activity_events (event_type, scooter_id, user_id, country, distributor_id, payload, timestamp)
 SELECT 'scooter_registered', 'cc100000-0000-0000-0000-000000000040', u.id, 'DE', 'd1000000-0000-0000-0000-000000000003',
-  '{"serial": "ZYD-TEST-DE10", "model": "Gen3 Pro"}'::JSONB, NOW() - INTERVAL '60 days'
+  '{"serial": "ZYD_3001010", "model": "Gen3 Pro"}'::JSONB, NOW() - INTERVAL '60 days'
 FROM users u WHERE u.email = 'lukas.schwarz@example.com';
 
 -- Bluetooth connections
@@ -789,6 +789,5 @@ FROM users u WHERE u.email = 'george.evans@example.com';
 -- Firmware:       5 versions
 -- Events:        ~10 sample events
 --
--- Distributor codes: GEN3-UK-2026, GEN3-US-2026, GEN3-DE-2026
 -- All passwords: password123
 -- ============================================================================

@@ -8,7 +8,7 @@
 
 ## Overview
 
-Complete **password reset** flow for Gen3 Admin dashboard using secure token-based email verification.
+Complete **password reset** flow for Pure eScooter Admin dashboard using secure token-based email verification.
 
 ### Why "Reset" not "Recovery"?
 
@@ -208,7 +208,7 @@ sgMail.setApiKey(Deno.env.get('SENDGRID_API_KEY'))
 await sgMail.send({
   to: user.email,
   from: 'noreply@pureelectric.com',
-  subject: 'Reset Your Password - Gen3 Admin',
+  subject: 'Reset Your Password - Pure eScooter Admin',
   text: `Hi ${user.first_name},\n\nClick here to reset: ${resetUrl}`,
   html: `<p>Hi ${user.first_name},</p><p><a href="${resetUrl}">Reset Password</a></p>`
 })

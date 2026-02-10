@@ -1,5 +1,5 @@
 """
-Shared helpers for the Gen3 Admin GUI.
+Shared helpers for the Pure eScooter Admin GUI.
 Supabase client, threading, code generation, FK resolution, CSV export.
 """
 

@@ -63,6 +63,10 @@ if [ "$1" == "all" ]; then
     upload_file "$WEB_ADMIN_DIR/js/components/table.js" "/js/components/table.js"
     upload_file "$WEB_ADMIN_DIR/js/components/form.js" "/js/components/form.js"
     upload_file "$WEB_ADMIN_DIR/js/components/filters.js" "/js/components/filters.js"
+    upload_file "$WEB_ADMIN_DIR/js/components/breadcrumbs.js" "/js/components/breadcrumbs.js"
+    upload_file "$WEB_ADMIN_DIR/js/components/detail-modal.js" "/js/components/detail-modal.js"
+    upload_file "$WEB_ADMIN_DIR/js/components/refresh-controller.js" "/js/components/refresh-controller.js"
+    upload_file "$WEB_ADMIN_DIR/js/components/reference-data.js" "/js/components/reference-data.js"
 
     # JS Pages
     upload_file "$WEB_ADMIN_DIR/js/pages/dashboard.js" "/js/pages/dashboard.js"
@@ -76,6 +80,7 @@ if [ "$1" == "all" ]; then
     upload_file "$WEB_ADMIN_DIR/js/pages/logs.js" "/js/pages/logs.js"
     upload_file "$WEB_ADMIN_DIR/js/pages/events.js" "/js/pages/events.js"
     upload_file "$WEB_ADMIN_DIR/js/pages/validation.js" "/js/pages/validation.js"
+    upload_file "$WEB_ADMIN_DIR/js/pages/settings.js" "/js/pages/settings.js"
 
 elif [ -n "$1" ]; then
     # Deploy specific file

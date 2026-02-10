@@ -238,7 +238,7 @@ const UsersPage = (() => {
                     const scooter = link.scooters;
                     const isPrimary = link.is_primary ? ' ⭐ Primary' : '';
                     scootersHtml += `
-                        <div style="margin-bottom: 10px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
+                        <div class="item-card">
                             <strong>${scooter.zyd_serial}${isPrimary}</strong><br>
                             <span class="text-muted">${scooter.model || 'Unknown Model'}</span>
                             ${Utils.statusBadge(scooter.status)}
@@ -258,7 +258,7 @@ const UsersPage = (() => {
                 sessions.slice(0, 5).forEach(session => {
                     const isExpired = new Date(session.expires_at) < new Date();
                     sessionsHtml += `
-                        <div style="margin-bottom: 8px; padding: 6px; background: #f9f9f9; border-radius: 4px;">
+                        <div class="item-card">
                             <strong>${session.device_info || 'Unknown Device'}</strong><br>
                             <span class="text-muted">Created: ${formatDate(session.created_at)}</span>
                             ${isExpired ? ' <span class="badge badge-inactive">Expired</span>' : ' <span class="badge badge-active">Active</span>'}
@@ -410,11 +410,11 @@ const UsersPage = (() => {
                     const resetUrl = `https://ives.org.uk/app2026?token=${result.password_reset_token}`;
                     setTimeout(() => {
                         ModalComponent.show('User Created',
-                            `<div style="text-align: center;">
+                            `<div class="text-center">
                                 <p>User <strong>${formData.email}</strong> has been created.</p>
-                                <p style="margin: 15px 0;">They need to set their password using this link:</p>
-                                <p><code style="font-size: 0.9em; background: #f0f0f0; padding: 10px; border-radius: 4px; display: inline-block; word-break: break-all;">${resetUrl}</code></p>
-                                <p class="text-muted" style="margin-top: 15px;">This link expires in 72 hours. You can also trigger a password reset from their user detail page.</p>
+                                <p class="mt-3 mb-3">They need to set their password using this link:</p>
+                                <p><code class="code-block">${resetUrl}</code></p>
+                                <p class="text-muted mt-3">This link expires in 72 hours. You can also trigger a password reset from their user detail page.</p>
                             </div>`);
                     }, 300);
                 }
@@ -676,6 +676,8 @@ const UsersPage = (() => {
     }
 
     async function onNavigate() {
+        RefreshController.attach('#users-content', () => load(currentFilters));
+
         // Refresh reference data if cache expired
         await loadReferenceData();
 
@@ -694,8 +696,13 @@ const UsersPage = (() => {
         load();
     }
 
+    function onLeave() {
+        RefreshController.detach();
+    }
+
     return {
         init,
-        onNavigate
+        onNavigate,
+        onLeave
     };
 })();

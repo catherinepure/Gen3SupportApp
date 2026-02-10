@@ -1,5 +1,5 @@
 """
-Reusable dialog windows for the Gen3 Admin GUI.
+Reusable dialog windows for the Pure eScooter Admin GUI.
 """
 
 import tkinter as tk

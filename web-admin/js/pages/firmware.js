@@ -2,33 +2,39 @@
 const FirmwarePage = (() => {
     const { $, toast, exportCSV, formatDate } = Utils;
     let currentData = [];
-    let allData = [];
     let currentFilter = '';
+    let currentPage = 1;
+    let totalRecords = 0;
+    const PAGE_SIZE = 50;
 
     async function load() {
         try {
             $('#firmware-content').innerHTML = Utils.loading();
-            const result = await API.call('firmware', 'list', { limit: 100 });
-            allData = result.firmware || result.data || [];
-            applyFilter();
+
+            const offset = (currentPage - 1) * PAGE_SIZE;
+            const params = { limit: PAGE_SIZE, offset };
+
+            // Map filter value to server-side is_active param
+            if (currentFilter === 'active') {
+                params.is_active = true;
+            } else if (currentFilter === 'inactive') {
+                params.is_active = false;
+            }
+
+            const result = await API.call('firmware', 'list', params);
+            currentData = result.firmware || result.data || [];
+            totalRecords = result.total || currentData.length;
+
+            renderTable();
         } catch (err) {
             toast(err.message, 'error');
             $('#firmware-content').innerHTML = Utils.errorState('Failed to load firmware');
         }
     }
 
-    function applyFilter() {
-        if (currentFilter === 'active') {
-            currentData = allData.filter(f => f.is_active !== false);
-        } else if (currentFilter === 'inactive') {
-            currentData = allData.filter(f => f.is_active === false);
-        } else {
-            currentData = allData;
-        }
-        renderTable();
-    }
-
     function renderTable() {
+        const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+
         TableComponent.render('#firmware-content', currentData, [
             { key: 'version_label', label: 'Version' },
             { key: 'target_hw_version', label: 'Hardware', format: (val) => val || 'All' },
@@ -41,7 +47,17 @@ const FirmwarePage = (() => {
             },
             { key: 'created_at', label: 'Released', format: formatDate }
         ], {
-            onRowClick: showFirmwareDetail
+            onRowClick: showFirmwareDetail,
+            pagination: totalPages > 1 ? {
+                current: currentPage,
+                total: totalPages,
+                pageSize: PAGE_SIZE,
+                totalRecords
+            } : null,
+            onPageChange: (page) => {
+                currentPage = page;
+                load();
+            }
         });
     }
 
@@ -131,10 +147,22 @@ const FirmwarePage = (() => {
         if (filterEl) {
             filterEl.addEventListener('change', (e) => {
                 currentFilter = e.target.value;
-                applyFilter();
+                currentPage = 1;
+                load();
             });
         }
     }
 
-    return { init, onNavigate: load };
+    function onNavigate() {
+        RefreshController.attach('#firmware-content', load);
+        currentPage = 1;
+        currentFilter = '';
+        load();
+    }
+
+    function onLeave() {
+        RefreshController.detach();
+    }
+
+    return { init, onNavigate, onLeave };
 })();
