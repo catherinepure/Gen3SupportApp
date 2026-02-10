@@ -6,16 +6,16 @@
 
 ## Current Phase
 
-**Phase:** Pre-1 -- Backend, Database Prep, Admin Tooling & Web Admin
-**Status:** ✅ Web admin fully deployed and synchronized at ives.org.uk/app2026. All 11 pages have DetailModal integration, filters, and action buttons. Database fully seeded with realistic demo data (82 users, 32 scooters, 3 distributors, 4 workshops, 6 service jobs, 29 telemetry records). CORS opened to allow any origin. Dashboard fixed with scooter status breakdown. Serial number system schema created. All uncommitted work from previous sessions committed (0925e40). Ready for feature development.
-**Spec reference:** Section 9.3 (Phase 2 DB work pulled forward)
+**Phase:** Pre-1 Complete ✅ → Moving to Phase 1 (Flutter App Development)
+**Status:** ✅ Backend, database, and web admin fully complete and production-ready. Security hardened (RLS policies, rate limiting, audit logging). Performance optimized (60% faster dashboard, 8 composite indexes). All code committed and pushed to GitHub (8c749de). Web admin deployed to ives.org.uk/app2026. Database schema captured for reference. **Ready to begin Flutter app development.**
+**Spec reference:** Section 9.3 complete, moving to Section 9.4 (Phase 1 Flutter)
 
 ---
 
 ## In Progress
 
-- [x] Deploy Edge Functions with CORS fixes ✅ (deployed to Supabase)
-- [x] Web admin testing and deployment ✅ (deployed to ives.org.uk/app2026)
+- [ ] Begin Flutter Phase 1 - Core app structure and authentication
+- [ ] Review Flutter project setup and dependencies
 - [x] Web admin functionality enhancements (can work on this WITHOUT admin rights - see tasks below)
   - [x] Users page enhanced with filters, deactivate button, linked scooters/sessions display
   - [x] Users page UI bug fix: search fields disappearing ✅ (three bugs: CSS width, login init path, flex layout)
