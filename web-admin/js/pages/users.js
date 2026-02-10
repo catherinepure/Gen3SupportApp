@@ -237,18 +237,31 @@ const UsersPage = (() => {
                 scooters.forEach(link => {
                     const scooter = link.scooters;
                     const isPrimary = link.is_primary ? ' ⭐ Primary' : '';
+                    const pinStatus = scooter.pin_set_at
+                        ? '<span class="badge badge-active" style="font-size: 0.7em;">PIN SET</span>'
+                        : '<span class="badge badge-inactive" style="font-size: 0.7em;">NO PIN</span>';
+
                     scootersHtml += `
                         <div class="item-card">
-                            <strong>${scooter.zyd_serial}${isPrimary}</strong><br>
+                            <strong>${scooter.zyd_serial}${isPrimary}</strong> ${pinStatus}<br>
                             <span class="text-muted">${scooter.model || 'Unknown Model'}</span>
                             ${Utils.statusBadge(scooter.status)}
+                            <div style="margin-top: 8px;">
+                                ${scooter.pin_set_at
+                                    ? `<button class="btn btn-xs btn-primary" onclick="UsersPage.viewScooterPIN('${scooter.id}', '${scooter.zyd_serial}')">View PIN</button>
+                                       <button class="btn btn-xs btn-warning" onclick="UsersPage.setScooterPIN('${scooter.id}', '${scooter.zyd_serial}')">Change PIN</button>
+                                       <button class="btn btn-xs btn-danger" onclick="UsersPage.resetScooterPIN('${scooter.id}', '${scooter.zyd_serial}')">Clear PIN</button>`
+                                    : `<button class="btn btn-xs btn-primary" onclick="UsersPage.setScooterPIN('${scooter.id}', '${scooter.zyd_serial}')">Set PIN</button>`
+                                }
+                            </div>
                         </div>
                     `;
                 });
                 scootersHtml += '</div>';
                 sections.push({
                     title: `Linked Scooters (${scooters.length})`,
-                    html: scootersHtml
+                    html: scootersHtml,
+                    htmlSafe: true
                 });
             }
 
@@ -700,9 +713,89 @@ const UsersPage = (() => {
         RefreshController.detach();
     }
 
+    // ========================================================================
+    // PIN Management Functions (for scooters linked to users)
+    // ========================================================================
+
+    async function viewScooterPIN(scooterId, scooterSerial) {
+        if (!confirm(`View PIN for scooter ${scooterSerial}?\n\nThe PIN will be displayed in plain text.`)) {
+            return;
+        }
+
+        try {
+            const result = await API.call('admin', 'get-pin', { scooter_id: scooterId });
+
+            if (result.pin) {
+                alert(`PIN for ${scooterSerial}:\n\n${result.pin}\n\nPlease keep this secure.`);
+            } else {
+                Utils.toast('No PIN set for this scooter', 'warning');
+            }
+        } catch (err) {
+            Utils.toast(err.message, 'error');
+        }
+    }
+
+    async function setScooterPIN(scooterId, scooterSerial) {
+        const pin = prompt(`Set 6-digit PIN for scooter ${scooterSerial}:\n\nEnter exactly 6 digits (e.g., 123456)`);
+
+        if (!pin) {
+            return; // User cancelled
+        }
+
+        // Validate PIN format
+        if (!/^\d{6}$/.test(pin)) {
+            Utils.toast('PIN must be exactly 6 digits', 'error');
+            return;
+        }
+
+        try {
+            await API.call('admin', 'set-pin', {
+                scooter_id: scooterId,
+                pin: pin
+            });
+
+            Utils.toast('PIN set successfully', 'success');
+
+            // Reload the current user detail if visible
+            setTimeout(() => {
+                const currentUser = currentUsers.find(u => u.scooters?.some(s => s.id === scooterId));
+                if (currentUser) {
+                    showUserDetail(currentUser);
+                }
+            }, 500);
+        } catch (err) {
+            Utils.toast(err.message, 'error');
+        }
+    }
+
+    async function resetScooterPIN(scooterId, scooterSerial) {
+        if (!confirm(`Clear PIN for scooter ${scooterSerial}?\n\nThis will remove the PIN completely.`)) {
+            return;
+        }
+
+        try {
+            await API.call('admin', 'reset-pin', { scooter_id: scooterId });
+
+            Utils.toast('PIN cleared successfully', 'success');
+
+            // Reload the current user detail if visible
+            setTimeout(() => {
+                const currentUser = currentUsers.find(u => u.scooters?.some(s => s.id === scooterId));
+                if (currentUser) {
+                    showUserDetail(currentUser);
+                }
+            }, 500);
+        } catch (err) {
+            Utils.toast(err.message, 'error');
+        }
+    }
+
     return {
         init,
         onNavigate,
-        onLeave
+        onLeave,
+        viewScooterPIN,
+        setScooterPIN,
+        resetScooterPIN
     };
 })();
