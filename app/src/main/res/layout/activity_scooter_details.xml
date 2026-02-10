@@ -52,6 +52,38 @@
         android:layout_marginBottom="8dp"
         android:visibility="gone" />
 
+    <!-- Firmware Section -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCheckForUpdates"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Check for Updates"
+        android:textSize="14sp"
+        android:padding="12dp"
+        android:layout_marginBottom="4dp"
+        android:visibility="gone"
+        style="@style/Widget.MaterialComponents.Button" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnUpdateFirmware"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Update Firmware"
+        android:textSize="14sp"
+        android:padding="12dp"
+        android:layout_marginBottom="4dp"
+        android:visibility="gone"
+        style="@style/Widget.MaterialComponents.Button" />
+
+    <TextView
+        android:id="@+id/tvFirmwareStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="13sp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone" />
+
     <!-- Disconnect Button (shown when BLE connected) -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnDisconnect"

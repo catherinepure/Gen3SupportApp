@@ -1,5 +1,6 @@
 package com.pure.gen3firmwareupdater;
 
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.le.ScanResult;
 import android.content.Intent;
@@ -62,6 +63,7 @@ public class FirmwareUpdaterActivity extends AppCompatActivity
     private boolean shouldAutoLoadDistributor = false;
     private String pendingDistributorId = null;
     private String targetScooterSerial = null;  // Pre-selected scooter serial from intent
+    private String directConnectMac = null;      // MAC address for direct connect (skip scan)
 
     // Data state
     private DistributorInfo distributor;
@@ -103,6 +105,12 @@ public class FirmwareUpdaterActivity extends AppCompatActivity
         targetScooterSerial = getIntent().getStringExtra("target_scooter_serial");
         if (targetScooterSerial != null && !targetScooterSerial.isEmpty()) {
             Log.d(TAG, "Target scooter selected: " + targetScooterSerial);
+        }
+
+        // Check if a MAC address was provided for direct connect (skip scan)
+        directConnectMac = getIntent().getStringExtra("device_mac_address");
+        if (directConnectMac != null && !directConnectMac.isEmpty()) {
+            Log.d(TAG, "Direct connect MAC provided: " + directConnectMac);
         }
 
         if (session.isDistributor() && distributorId != null && !distributorId.isEmpty()) {
@@ -295,15 +303,22 @@ public class FirmwareUpdaterActivity extends AppCompatActivity
                 tvDistributorName.setText("Distributor: " + result.name);
                 tvDistributorName.setVisibility(View.VISIBLE);
 
-                // If a target scooter was selected, go directly to scanning
+                // If a target scooter was selected, go directly to scanning (or direct connect)
                 if (targetScooterSerial != null && !targetScooterSerial.isEmpty()) {
-                    Log.d(TAG, "Target scooter specified, starting scan immediately");
                     // Add the target scooter to the list so it can be matched
                     scooterSerials.clear();
                     scooterSerials.add(targetScooterSerial);
-                    // Start scanning directly
-                    setState(State.SCANNING);
-                    startBleScan();
+
+                    if (directConnectMac != null && !directConnectMac.isEmpty()) {
+                        // Direct connect — skip scan, connect via saved MAC address
+                        Log.d(TAG, "Direct connecting to " + targetScooterSerial + " via MAC " + directConnectMac);
+                        directConnectToDevice();
+                    } else {
+                        // No MAC — scan for the target scooter
+                        Log.d(TAG, "Target scooter specified, starting scan immediately");
+                        setState(State.SCANNING);
+                        startBleScan();
+                    }
                 } else {
                     // Fetch scooter list and proceed to scanning
                     fetchScooterList();
@@ -404,6 +419,26 @@ public class FirmwareUpdaterActivity extends AppCompatActivity
 
         setState(State.SCANNING);
         connectionService.startScan();
+    }
+
+    /**
+     * Connect directly to a device using its MAC address, skipping BLE scan.
+     * Used when launching from ScooterDetailsActivity where we already know the device.
+     */
+    private void directConnectToDevice() {
+        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        if (adapter == null || !adapter.isEnabled()) {
+            showError("Bluetooth is not enabled. Please enable Bluetooth and try again.");
+            return;
+        }
+
+        try {
+            BluetoothDevice device = adapter.getRemoteDevice(directConnectMac);
+            connectToScooter(device);
+        } catch (IllegalArgumentException e) {
+            Log.e(TAG, "Invalid MAC address: " + directConnectMac, e);
+            showError("Invalid device address. Please try scanning again.");
+        }
     }
 
     // ==================================================================================

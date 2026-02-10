@@ -1,6 +1,7 @@
 package com.pure.gen3firmwareupdater;
 
 import android.bluetooth.le.ScanResult;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -18,6 +19,7 @@ import com.google.android.material.button.MaterialButton;
 
 import com.pure.gen3firmwareupdater.services.ScooterConnectionService;
 import com.pure.gen3firmwareupdater.services.ServiceFactory;
+import com.pure.gen3firmwareupdater.services.SessionManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,8 +44,12 @@ public class ScooterDetailsActivity extends AppCompatActivity
     private MaterialButton btnClose;
     private MaterialButton btnViewCustomer;
     private MaterialButton btnDisconnect;
+    private MaterialButton btnCheckForUpdates;
+    private MaterialButton btnUpdateFirmware;
+    private TextView tvFirmwareStatus;
 
     private SupabaseClient supabase;
+    private SessionManager session;
     private ScooterConnectionService connectionService;
     private Handler handler = new Handler(Looper.getMainLooper());
     private String scooterSerial;
@@ -106,9 +112,17 @@ public class ScooterDetailsActivity extends AppCompatActivity
             btnViewCustomer.setVisibility(View.GONE);
         }
 
-        // Initialize Supabase client
+        // Initialize Supabase client and session
         ServiceFactory.init(this);
         supabase = ServiceFactory.getSupabaseClient();
+        session = ServiceFactory.getSessionManager();
+
+        // Firmware buttons
+        btnCheckForUpdates = findViewById(R.id.btnCheckForUpdates);
+        btnUpdateFirmware = findViewById(R.id.btnUpdateFirmware);
+        tvFirmwareStatus = findViewById(R.id.tvFirmwareStatus);
+
+        setupFirmwareButtons();
 
         // Attach to shared BLE connection service
         setupBleConnection();
@@ -215,6 +229,102 @@ public class ScooterDetailsActivity extends AppCompatActivity
 
     @Override
     public void onCommandSent(boolean success, String message) { /* not used */ }
+
+    // ==================================================================================
+    // FIRMWARE CHECK / UPDATE
+    // ==================================================================================
+
+    private void setupFirmwareButtons() {
+        if (session.isDistributor()) {
+            // Distributors: show "Update Firmware" button
+            btnUpdateFirmware.setVisibility(View.VISIBLE);
+            btnCheckForUpdates.setVisibility(View.GONE);
+            btnUpdateFirmware.setOnClickListener(v -> launchFirmwareUpdater());
+        } else {
+            // Normal users: show "Check for Updates" button
+            btnCheckForUpdates.setVisibility(View.VISIBLE);
+            btnUpdateFirmware.setVisibility(View.GONE);
+            btnCheckForUpdates.setOnClickListener(v -> checkForUpdates());
+        }
+    }
+
+    private void checkForUpdates() {
+        String hwVersion = getIntent().getStringExtra("hw_version");
+        String swVersion = getIntent().getStringExtra("sw_version");
+
+        if (hwVersion == null || hwVersion.isEmpty()) {
+            tvFirmwareStatus.setText("Cannot check: hardware version unknown");
+            tvFirmwareStatus.setVisibility(View.VISIBLE);
+            return;
+        }
+
+        btnCheckForUpdates.setEnabled(false);
+        btnCheckForUpdates.setText("Checking...");
+        tvFirmwareStatus.setVisibility(View.GONE);
+
+        supabase.getLatestFirmware(hwVersion, new SupabaseClient.Callback<FirmwareVersion>() {
+            @Override
+            public void onSuccess(FirmwareVersion latest) {
+                runOnUiThread(() -> {
+                    btnCheckForUpdates.setEnabled(true);
+                    btnCheckForUpdates.setText("Check for Updates");
+                    tvFirmwareStatus.setVisibility(View.VISIBLE);
+
+                    if (latest == null || !latest.is_active) {
+                        tvFirmwareStatus.setText("No firmware updates available for this hardware.");
+                        return;
+                    }
+
+                    // Compare versions
+                    if (swVersion != null && swVersion.equals(latest.version_label)) {
+                        tvFirmwareStatus.setText("Firmware is up to date (" + swVersion + ")");
+                    } else {
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("Update available: ").append(latest.version_label);
+                        if (swVersion != null) {
+                            sb.append("\nCurrent: ").append(swVersion);
+                        }
+                        if (latest.release_notes != null && !latest.release_notes.isEmpty()) {
+                            sb.append("\n\nRelease notes: ").append(latest.release_notes);
+                        }
+                        tvFirmwareStatus.setText(sb.toString());
+                    }
+                });
+            }
+
+            @Override
+            public void onError(String error) {
+                runOnUiThread(() -> {
+                    btnCheckForUpdates.setEnabled(true);
+                    btnCheckForUpdates.setText("Check for Updates");
+                    tvFirmwareStatus.setVisibility(View.VISIBLE);
+                    tvFirmwareStatus.setText("Could not check for updates: " + error);
+                });
+            }
+        });
+    }
+
+    private void launchFirmwareUpdater() {
+        Intent intent = new Intent(this, FirmwareUpdaterActivity.class);
+        intent.putExtra("target_scooter_serial", scooterSerial);
+
+        // Pass MAC address so FirmwareUpdaterActivity can skip scanning
+        // and connect directly to the already-known device
+        if (connectionService != null && connectionService.isConnected()) {
+            BLEManager ble = connectionService.getBLEManager();
+            if (ble != null && ble.getBluetoothGatt() != null) {
+                String mac = ble.getBluetoothGatt().getDevice().getAddress();
+                intent.putExtra("device_mac_address", mac);
+                Log.d(TAG, "Passing MAC " + mac + " to FirmwareUpdater for direct connect");
+            }
+            // Release the shared connection so the firmware updater can connect
+            ServiceFactory.releaseConnectionService();
+            connectionService = null;
+        }
+
+        startActivity(intent);
+        finish(); // Connection released, no point staying on this screen
+    }
 
     // ==================================================================================
     // DATA DISPLAY

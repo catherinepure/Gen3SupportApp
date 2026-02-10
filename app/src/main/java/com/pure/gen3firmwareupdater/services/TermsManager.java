@@ -219,7 +219,11 @@ public class TermsManager {
 
                 try {
                     ConsentCheckResult result = gson.fromJson(body, ConsentCheckResult.class);
-                    updateLastCheckTime();
+                    // Only throttle future checks when user is up-to-date.
+                    // If they still need to accept, don't set the timer so we re-check next launch.
+                    if (!result.needsAcceptance) {
+                        updateLastCheckTime();
+                    }
                     callback.onSuccess(result);
                 } catch (Exception e) {
                     Log.e(TAG, "Failed to parse consent check response", e);

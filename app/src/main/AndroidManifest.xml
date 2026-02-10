@@ -79,6 +79,12 @@
             android:name=".ScooterDetailsActivity"
             android:exported="false" />
 
+        <!-- User Dashboard (normal user home screen) -->
+        <activity
+            android:name=".UserDashboardActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- Firmware Updater (after login) -->
         <activity
             android:name=".FirmwareUpdaterActivity"

@@ -16,8 +16,9 @@ interface RegisterUserRequest {
   age_range?: string
   gender?: string
   scooter_use_type?: string
-  home_country?: string       // ISO 3166-1 alpha-2, from country detection
-  current_country?: string    // ISO 3166-1 alpha-2, from GPS/cell
+  home_country?: string            // ISO 3166-1 alpha-2, from country detection
+  current_country?: string         // ISO 3166-1 alpha-2, from GPS/cell
+  registration_country?: string    // ISO 3166-1 alpha-2, from reverse geocoding
 
   // Scooter information (required for user registration)
   scooter_serial: string
@@ -152,6 +153,7 @@ serve(async (req) => {
       scooter_use_type,
       home_country,
       current_country,
+      registration_country,
       scooter_serial,
       scooter_id,
       telemetry
@@ -225,6 +227,9 @@ serve(async (req) => {
     const expiresAt = new Date()
     expiresAt.setHours(expiresAt.getHours() + 24)
 
+    // Derive detected_region for T&C system from best available country source
+    const detectedRegion = registration_country || current_country || null
+
     // Create user
     const { data: newUser, error: insertError } = await supabase
       .from('users')
@@ -238,6 +243,8 @@ serve(async (req) => {
         scooter_use_type: scooter_use_type || null,
         home_country: home_country || null,
         current_country: current_country || null,
+        detected_region: detectedRegion,
+        registration_country: registration_country || null,
         roles: ['customer'],
         user_level: 'normal',
         registration_type: 'user',

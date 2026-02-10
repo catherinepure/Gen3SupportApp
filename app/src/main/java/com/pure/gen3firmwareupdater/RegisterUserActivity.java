@@ -183,7 +183,10 @@ public class RegisterUserActivity extends AppCompatActivity {
             data.addProperty("registration_longitude", capturedLocation.longitude);
             data.addProperty("registration_accuracy", capturedLocation.accuracy);
             if (capturedLocation.method != null) data.addProperty("registration_location_method", capturedLocation.method);
-            if (capturedLocation.country != null) data.addProperty("registration_country", capturedLocation.country);
+            if (capturedLocation.country != null) {
+                data.addProperty("registration_country", capturedLocation.country);
+                data.addProperty("current_country", capturedLocation.country);
+            }
             if (capturedLocation.region != null) data.addProperty("registration_region", capturedLocation.region);
             if (capturedLocation.city != null) data.addProperty("registration_city", capturedLocation.city);
         }

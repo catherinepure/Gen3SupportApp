@@ -11,4 +11,19 @@
     <color name="error">#C62828</color>
     <color name="warning">#EF6C00</color>
     <color name="white">#FFFFFF</color>
+
+    <!-- User Dashboard (dark theme) -->
+    <color name="dashboard_bg">#121212</color>
+    <color name="dashboard_card_bg">#1E1E2E</color>
+    <color name="dashboard_card_stroke">#2A2A3A</color>
+    <color name="dashboard_text_primary">#FFFFFF</color>
+    <color name="dashboard_text_secondary">#B0B0B0</color>
+    <color name="dashboard_accent">#60A5FA</color>
+    <color name="gauge_bg">#2A2A3A</color>
+    <color name="gauge_speed">#3B82F6</color>
+    <color name="gauge_battery_green">#10B981</color>
+    <color name="gauge_battery_yellow">#F59E0B</color>
+    <color name="gauge_battery_red">#EF4444</color>
+    <color name="control_active">#10B981</color>
+    <color name="control_inactive">#4B5563</color>
 </resources>

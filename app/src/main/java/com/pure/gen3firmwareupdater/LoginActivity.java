@@ -262,13 +262,7 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void navigateToMainActivity() {
-        Intent intent;
-        if (session.isDistributor()) {
-            intent = new Intent(LoginActivity.this, DistributorMenuActivity.class);
-        } else {
-            intent = new Intent(LoginActivity.this, FirmwareUpdaterActivity.class);
-        }
-
+        Intent intent = new Intent(LoginActivity.this, UserDashboardActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();

@@ -2,8 +2,6 @@ package com.pure.gen3firmwareupdater;
 
 import android.app.Dialog;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -20,9 +18,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -33,53 +28,43 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 /**
- * Dialog for setting a 6-digit PIN on a scooter after connection.
- * Shows PIN entry + confirmation with weak PIN detection.
+ * Dialog for entering a PIN to verify lock/unlock operations.
+ * Calls the user-pin Edge Function to verify the entered PIN.
  */
-public class PinSetupDialog extends DialogFragment {
-    private static final String TAG = "PinSetupDialog";
+public class PinEntryDialog extends DialogFragment {
+    private static final String TAG = "PinEntryDialog";
     private static final String ARG_SCOOTER_ID = "scooter_id";
     private static final String ARG_SESSION_TOKEN = "session_token";
-    private static final String ARG_USE_USER_ENDPOINT = "use_user_endpoint";
+    private static final String ARG_IS_LOCKING = "is_locking";
 
     private static final String BASE_URL = "https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1";
 
-    private static final Set<String> WEAK_PINS = new HashSet<>(Arrays.asList(
-            "000000", "111111", "222222", "333333", "444444",
-            "555555", "666666", "777777", "888888", "999999",
-            "123456", "654321", "123123", "112233"
-    ));
-
-    private TextInputEditText etPin, etConfirmPin;
-    private TextView tvPinStrength;
+    private TextInputEditText etPin;
+    private TextView tvError;
     private ProgressBar progressBar;
     private AlertDialog dialog;
 
     private OkHttpClient httpClient;
     private ExecutorService executor;
 
-    public interface PinSetupListener {
-        void onPinSet();
-        void onPinSkipped();
+    public interface PinEntryListener {
+        void onPinVerified(boolean isLocking);
+        void onPinCancelled();
     }
 
-    private PinSetupListener listener;
+    private PinEntryListener listener;
 
-    public static PinSetupDialog newInstance(String scooterId, String sessionToken) {
-        return newInstance(scooterId, sessionToken, false);
-    }
-
-    public static PinSetupDialog newInstance(String scooterId, String sessionToken, boolean useUserEndpoint) {
-        PinSetupDialog frag = new PinSetupDialog();
+    public static PinEntryDialog newInstance(String scooterId, String sessionToken, boolean isLocking) {
+        PinEntryDialog frag = new PinEntryDialog();
         Bundle args = new Bundle();
         args.putString(ARG_SCOOTER_ID, scooterId);
         args.putString(ARG_SESSION_TOKEN, sessionToken);
-        args.putBoolean(ARG_USE_USER_ENDPOINT, useUserEndpoint);
+        args.putBoolean(ARG_IS_LOCKING, isLocking);
         frag.setArguments(args);
         return frag;
     }
 
-    public void setPinSetupListener(PinSetupListener listener) {
+    public void setPinEntryListener(PinEntryListener listener) {
         this.listener = listener;
     }
 
@@ -89,56 +74,38 @@ public class PinSetupDialog extends DialogFragment {
         httpClient = new OkHttpClient();
         executor = Executors.newSingleThreadExecutor();
 
-        View view = LayoutInflater.from(getContext()).inflate(R.layout.dialog_pin_setup, null);
+        boolean isLocking = getArguments() != null && getArguments().getBoolean(ARG_IS_LOCKING, true);
+
+        View view = LayoutInflater.from(getContext()).inflate(R.layout.dialog_pin_entry, null);
         etPin = view.findViewById(R.id.etPin);
-        etConfirmPin = view.findViewById(R.id.etConfirmPin);
-        tvPinStrength = view.findViewById(R.id.tvPinStrength);
+        tvError = view.findViewById(R.id.tvError);
         progressBar = view.findViewById(R.id.progressBar);
 
-        etPin.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
-            @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
-            @Override
-            public void afterTextChanged(Editable s) {
-                updatePinStrength(s.toString());
-            }
-        });
+        TextView tvTitle = view.findViewById(R.id.tvPinTitle);
+        TextView tvMessage = view.findViewById(R.id.tvPinMessage);
+        tvTitle.setText(isLocking ? "Lock Scooter" : "Unlock Scooter");
+        tvMessage.setText(isLocking
+                ? "Enter your 6-digit PIN to lock the scooter"
+                : "Enter your 6-digit PIN to unlock the scooter");
 
         dialog = new AlertDialog.Builder(requireContext())
                 .setView(view)
-                .setPositiveButton("Set PIN", null)
-                .setNegativeButton("Skip", (d, w) -> {
-                    if (listener != null) listener.onPinSkipped();
+                .setPositiveButton("Confirm", null)
+                .setNegativeButton("Cancel", (d, w) -> {
+                    if (listener != null) listener.onPinCancelled();
                 })
                 .setCancelable(false)
                 .create();
 
         dialog.setOnShowListener(d -> {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> attemptSetPin());
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> attemptVerify());
         });
 
         return dialog;
     }
 
-    private void updatePinStrength(String pin) {
-        if (pin.length() < 6) {
-            tvPinStrength.setVisibility(View.GONE);
-            return;
-        }
-
-        tvPinStrength.setVisibility(View.VISIBLE);
-        if (WEAK_PINS.contains(pin)) {
-            tvPinStrength.setText("Weak PIN - try something less predictable");
-            tvPinStrength.setTextColor(getResources().getColor(R.color.warning, null));
-        } else {
-            tvPinStrength.setText("Good PIN");
-            tvPinStrength.setTextColor(getResources().getColor(R.color.success, null));
-        }
-    }
-
-    private void attemptSetPin() {
+    private void attemptVerify() {
         String pin = etPin.getText() != null ? etPin.getText().toString() : "";
-        String confirmPin = etConfirmPin.getText() != null ? etConfirmPin.getText().toString() : "";
 
         if (pin.length() != 6) {
             etPin.setError("PIN must be exactly 6 digits");
@@ -152,49 +119,37 @@ public class PinSetupDialog extends DialogFragment {
             return;
         }
 
-        if (!pin.equals(confirmPin)) {
-            etConfirmPin.setError("PINs do not match");
-            etConfirmPin.requestFocus();
-            return;
-        }
-
         // Show progress
         progressBar.setVisibility(View.VISIBLE);
+        tvError.setVisibility(View.GONE);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(false);
 
         String scooterId = getArguments() != null ? getArguments().getString(ARG_SCOOTER_ID) : null;
         String sessionToken = getArguments() != null ? getArguments().getString(ARG_SESSION_TOKEN) : null;
+        boolean isLocking = getArguments() != null && getArguments().getBoolean(ARG_IS_LOCKING, true);
 
         if (scooterId == null || sessionToken == null) {
             showError("Missing scooter or session info");
             return;
         }
 
-        sendSetPinRequest(scooterId, pin, sessionToken);
+        sendVerifyRequest(scooterId, pin, sessionToken, isLocking);
     }
 
-    private void sendSetPinRequest(String scooterId, String pin, String sessionToken) {
-        boolean useUserEndpoint = getArguments() != null
-                && getArguments().getBoolean(ARG_USE_USER_ENDPOINT, false);
-
+    private void sendVerifyRequest(String scooterId, String pin, String sessionToken, boolean isLocking) {
         executor.execute(() -> {
             try {
                 JsonObject body = new JsonObject();
-                body.addProperty("action", "set-pin");
+                body.addProperty("action", "verify-pin");
                 body.addProperty("session_token", sessionToken);
                 body.addProperty("scooter_id", scooterId);
                 body.addProperty("pin", pin);
-                if (!useUserEndpoint) {
-                    body.addProperty("resource", "scooters");
-                }
 
-                String endpoint = useUserEndpoint ? "/user-pin" : "/admin";
-                Log.d(TAG, "Sending set-pin request for scooter_id: " + scooterId
-                        + " via " + endpoint);
+                Log.d(TAG, "Sending verify-pin request for scooter_id: " + scooterId);
 
                 Request request = new Request.Builder()
-                        .url(BASE_URL + endpoint)
+                        .url(BASE_URL + "/user-pin")
                         .header("Authorization", "Bearer " + BuildConfig.SUPABASE_ANON_KEY)
                         .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
                         .header("Content-Type", "application/json")
@@ -204,19 +159,26 @@ public class PinSetupDialog extends DialogFragment {
 
                 Response response = httpClient.newCall(request).execute();
                 String responseBody = response.body() != null ? response.body().string() : "";
-                Log.d(TAG, "Set-pin response: HTTP " + response.code() + " - " + responseBody);
+                Log.d(TAG, "Verify-pin response: HTTP " + response.code() + " - " + responseBody);
 
                 if (response.isSuccessful()) {
-                    Log.d(TAG, "PIN set successfully");
+                    JsonObject result = new Gson().fromJson(responseBody, JsonObject.class);
+                    boolean valid = result.has("valid") && result.get("valid").getAsBoolean();
+
                     if (getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
-                            dismiss();
-                            if (listener != null) listener.onPinSet();
+                            if (valid) {
+                                dismiss();
+                                if (listener != null) listener.onPinVerified(isLocking);
+                            } else {
+                                showError("Incorrect PIN. Please try again.");
+                                etPin.setText("");
+                                etPin.requestFocus();
+                            }
                         });
                     }
                 } else {
-                    Log.e(TAG, "Set PIN failed: " + response.code() + " - " + responseBody);
-                    String errorMsg = "Failed to set PIN";
+                    String errorMsg = "Verification failed";
                     try {
                         JsonObject errJson = new Gson().fromJson(responseBody, JsonObject.class);
                         if (errJson.has("error")) errorMsg = errJson.get("error").getAsString();
@@ -227,7 +189,7 @@ public class PinSetupDialog extends DialogFragment {
                     }
                 }
             } catch (IOException e) {
-                Log.e(TAG, "Network error setting PIN", e);
+                Log.e(TAG, "Network error verifying PIN", e);
                 if (getActivity() != null) {
                     getActivity().runOnUiThread(() -> showError("Network error: " + e.getMessage()));
                 }
@@ -237,9 +199,10 @@ public class PinSetupDialog extends DialogFragment {
 
     private void showError(String message) {
         progressBar.setVisibility(View.GONE);
+        tvError.setVisibility(View.VISIBLE);
+        tvError.setText(message);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
-        etPin.setError(message);
     }
 
     @Override

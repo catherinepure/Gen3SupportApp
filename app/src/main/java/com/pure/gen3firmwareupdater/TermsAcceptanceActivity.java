@@ -17,6 +17,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.gson.JsonObject;
 import com.pure.gen3firmwareupdater.services.TermsManager;
 
+import java.io.IOException;
+import okhttp3.Call;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+
 /**
  * Terms & Conditions acceptance screen.
  * Features:
@@ -117,12 +123,43 @@ public class TermsAcceptanceActivity extends AppCompatActivity {
             }
         });
 
-        // Load T&C
-        webViewTerms.loadUrl(termsUrl);
+        // Fetch T&C HTML content and render it (Supabase storage serves .html as text/plain,
+        // which causes WebView.loadUrl() to show raw HTML source instead of rendered page)
+        fetchAndLoadHtml(termsUrl);
 
         // Button listeners
         btnAccept.setOnClickListener(v -> acceptTerms());
         btnDecline.setOnClickListener(v -> declineTerms());
+    }
+
+    /**
+     * Fetch HTML content from URL and load it into the WebView as rendered HTML.
+     * This works around Supabase storage serving .html files with text/plain content-type.
+     */
+    private void fetchAndLoadHtml(String url) {
+        OkHttpClient client = new OkHttpClient();
+        Request request = new Request.Builder().url(url).build();
+
+        client.newCall(request).enqueue(new okhttp3.Callback() {
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String html = response.body() != null ? response.body().string() : "";
+                runOnUiThread(() -> {
+                    webViewTerms.loadDataWithBaseURL(url, html, "text/html", "UTF-8", null);
+                    progressBar.setVisibility(View.GONE);
+                });
+            }
+
+            @Override
+            public void onFailure(Call call, IOException e) {
+                Log.e(TAG, "Failed to fetch T&C HTML", e);
+                runOnUiThread(() -> {
+                    progressBar.setVisibility(View.GONE);
+                    Toast.makeText(TermsAcceptanceActivity.this,
+                            "Failed to load Terms & Conditions", Toast.LENGTH_LONG).show();
+                });
+            }
+        });
     }
 
     /**

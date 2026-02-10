@@ -187,6 +187,9 @@ serve(async (req) => {
     const expiresAt = new Date()
     expiresAt.setHours(expiresAt.getHours() + 24)
 
+    // Derive detected_region for T&C system from best available country source
+    const detectedRegion = registration_country || current_country || null
+
     // Create user
     const { data: newUser, error: insertError } = await supabase
       .from('users')
@@ -200,6 +203,7 @@ serve(async (req) => {
         scooter_use_type: scooter_use_type || null,
         home_country: home_country || null,
         current_country: current_country || null,
+        detected_region: detectedRegion,
         registration_latitude: registration_latitude || null,
         registration_longitude: registration_longitude || null,
         registration_accuracy: registration_accuracy || null,

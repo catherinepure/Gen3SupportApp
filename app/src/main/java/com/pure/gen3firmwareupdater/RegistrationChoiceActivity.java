@@ -52,11 +52,9 @@ public class RegistrationChoiceActivity extends AppCompatActivity {
                 return;
             }
 
-            // No T&C check needed — proceed normally
-            if (session.isDistributor()) {
-                routeToDistributorMenu();
-                return;
-            }
+            // No T&C check needed — all users go to dashboard
+            routeToUserDashboard();
+            return;
         }
 
         showMainLayout();
@@ -128,11 +126,15 @@ public class RegistrationChoiceActivity extends AppCompatActivity {
     }
 
     private void proceedAfterTermsCheck() {
-        if (session.isDistributor()) {
-            routeToDistributorMenu();
-        } else {
-            showMainLayout();
-        }
+        routeToUserDashboard();
+    }
+
+    private void routeToUserDashboard() {
+        Log.d(TAG, "Routing to UserDashboardActivity");
+        Intent intent = new Intent(this, UserDashboardActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finish();
     }
 
     private void routeToDistributorMenu() {
