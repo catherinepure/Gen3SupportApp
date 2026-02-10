@@ -71,7 +71,10 @@ const SettingsPage = (() => {
                 { key: 'code', label: 'Code' },
                 { key: 'name', label: 'Name' },
                 { key: 'hex_colour', label: 'Colour', format: (val) =>
-                    val ? `<span style="display:inline-block;width:18px;height:18px;background:${val};border:1px solid #ccc;border-radius:3px;vertical-align:middle;margin-right:6px;"></span>${val}` : '-'
+                    val ? `<div class="colour-preview-cell">
+                        <span class="colour-swatch" style="background:${val};"></span>
+                        <span class="colour-hex">${val}</span>
+                    </div>` : '-'
                 },
                 { key: 'is_active', label: 'Status', format: (val) =>
                     `<span class="badge ${val ? 'badge-active' : 'badge-inactive'}">${val ? 'Active' : 'Inactive'}</span>`
@@ -80,7 +83,7 @@ const SettingsPage = (() => {
             formFields: (item) => [
                 { name: 'code', label: 'Code (1 digit)', type: 'text', value: item?.code || '', placeholder: 'e.g. 1', required: true },
                 { name: 'name', label: 'Name', type: 'text', value: item?.name || '', placeholder: 'e.g. Black', required: true },
-                { name: 'hex_colour', label: 'Hex Colour', type: 'text', value: item?.hex_colour || '', placeholder: '#000000' }
+                { name: 'hex_colour', label: 'Hex Colour', type: 'color', value: item?.hex_colour || '#000000', placeholder: '#000000' }
             ]
         },
         blocks: {
@@ -109,11 +112,35 @@ const SettingsPage = (() => {
 
     let currentData = {};
 
+    function getTabDescription(tabKey) {
+        const descriptions = {
+            models: 'Manage scooter model types and their specifications',
+            variants: 'Configure battery variants with capacity and voltage ratings',
+            colours: 'Define available colour options for scooters',
+            blocks: 'Set up zone codes for manufacturing regions and distribution'
+        };
+        return descriptions[tabKey] || '';
+    }
+
+    function getTabIcon(tabKey) {
+        const icons = {
+            models: '🛴',
+            variants: '🔋',
+            colours: '🎨',
+            blocks: '🌍'
+        };
+        return icons[tabKey] || '';
+    }
+
     function renderTabs() {
         let html = '<div class="settings-tabs">';
         for (const [key, tab] of Object.entries(tabs)) {
             const isActive = key === activeTab ? 'active' : '';
-            html += `<button class="settings-tab ${isActive}" data-tab="${key}">${tab.label}</button>`;
+            const icon = getTabIcon(key);
+            html += `<button class="settings-tab ${isActive}" data-tab="${key}">
+                <span class="settings-tab-icon">${icon}</span>
+                <span>${tab.label}</span>
+            </button>`;
         }
         html += '</div>';
         html += '<div id="settings-tab-content"></div>';
@@ -163,19 +190,60 @@ const SettingsPage = (() => {
         const contentEl = $('#settings-tab-content');
         if (!contentEl) return;
 
-        // Add create button above table
-        let html = `<div style="margin-bottom: 12px; text-align: right;">
-            <button class="btn btn-primary" id="settings-create-btn">Add ${tab.label.replace(/s$/, '')}</button>
+        // Header with description and create button
+        let html = '<div class="settings-header">';
+        html += `<div class="settings-header-info">`;
+        html += `<h3>${tab.label}</h3>`;
+        html += `<p class="text-muted">${getTabDescription(tabKey)}</p>`;
+        html += `</div>`;
+        html += `<button class="btn btn-primary" id="settings-create-btn">
+            <span style="font-size: 1.1em; margin-right: 4px;">+</span> Add ${tab.label.replace(/s$/, '')}
+        </button>`;
+        html += '</div>';
+
+        // Stats summary
+        const activeCount = data.filter(item => item.is_active).length;
+        const inactiveCount = data.length - activeCount;
+        html += `<div class="settings-stats">`;
+        html += `<div class="settings-stat">
+            <div class="settings-stat-value">${data.length}</div>
+            <div class="settings-stat-label">Total</div>
         </div>`;
+        html += `<div class="settings-stat">
+            <div class="settings-stat-value" style="color: var(--success);">${activeCount}</div>
+            <div class="settings-stat-label">Active</div>
+        </div>`;
+        html += `<div class="settings-stat">
+            <div class="settings-stat-value" style="color: var(--gray-400);">${inactiveCount}</div>
+            <div class="settings-stat-label">Inactive</div>
+        </div>`;
+        html += '</div>';
 
         html += '<div id="settings-table-container"></div>';
         contentEl.innerHTML = html;
 
-        // Render table using TableComponent
-        TableComponent.render('#settings-table-container', data, tab.columns, {
-            onRowClick: (item) => showEditForm(tabKey, item),
-            emptyMessage: `No ${tab.label.toLowerCase()} found`
-        });
+        // Render table using TableComponent or show empty state
+        if (data.length === 0) {
+            const containerEl = $('#settings-table-container');
+            if (containerEl) {
+                containerEl.innerHTML = `
+                    <div class="settings-empty-state">
+                        <div class="settings-empty-icon">${getTabIcon(tabKey)}</div>
+                        <h3>No ${tab.label} Yet</h3>
+                        <p>Get started by creating your first ${tab.label.replace(/s$/, '').toLowerCase()}</p>
+                        <button class="btn btn-primary" id="settings-empty-create-btn">
+                            <span style="font-size: 1.1em; margin-right: 4px;">+</span> Add ${tab.label.replace(/s$/, '')}
+                        </button>
+                    </div>
+                `;
+                $('#settings-empty-create-btn')?.addEventListener('click', () => showCreateForm(tabKey));
+            }
+        } else {
+            TableComponent.render('#settings-table-container', data, tab.columns, {
+                onRowClick: (item) => showEditForm(tabKey, item),
+                emptyMessage: `No ${tab.label.toLowerCase()} found`
+            });
+        }
 
         // Create button handler
         $('#settings-create-btn')?.addEventListener('click', () => showCreateForm(tabKey));
