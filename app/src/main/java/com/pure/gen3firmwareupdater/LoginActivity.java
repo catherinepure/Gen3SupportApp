@@ -58,7 +58,7 @@ public class LoginActivity extends AppCompatActivity {
         // Set up click listeners
         btnLogin.setOnClickListener(v -> login());
         tvRegister.setOnClickListener(v -> {
-            startActivity(new Intent(LoginActivity.this, RegisterUserActivity.class));
+            startActivity(new Intent(LoginActivity.this, RegistrationChoiceActivity.class));
         });
         tvResendVerification.setOnClickListener(v -> resendVerification());
     }

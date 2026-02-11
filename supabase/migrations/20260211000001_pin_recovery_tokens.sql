@@ -11,10 +11,10 @@ CREATE TABLE IF NOT EXISTS public.pin_recovery_tokens (
 );
 
 -- Index for faster token lookups
-CREATE INDEX idx_pin_recovery_tokens_token ON public.pin_recovery_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_pin_recovery_tokens_token ON public.pin_recovery_tokens(token);
 
 -- Index for cleanup queries
-CREATE INDEX idx_pin_recovery_tokens_expires_at ON public.pin_recovery_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_pin_recovery_tokens_expires_at ON public.pin_recovery_tokens(expires_at);
 
 -- Row Level Security
 ALTER TABLE public.pin_recovery_tokens ENABLE ROW LEVEL SECURITY;

@@ -22,6 +22,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.pure.gen3firmwareupdater.services.PinCacheManager;
 import com.pure.gen3firmwareupdater.services.ServiceFactory;
+import com.pure.gen3firmwareupdater.services.UserSettingsManager;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
@@ -385,9 +386,15 @@ public class PinEntryDialog extends DialogFragment {
                     if (getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
                             if (valid) {
-                                // Cache the PIN for 7 days
-                                pinCache.cachePin(scooterId, pin);
-                                Log.d(TAG, "PIN verified and cached for 7 days");
+                                // Cache the PIN for 7 days (only if PIN save is enabled)
+                                UserSettingsManager userSettings = ServiceFactory.getUserSettingsManager();
+                                if (userSettings.isPinSaveEnabled()) {
+                                    pinCache.cachePin(scooterId, pin);
+                                    Log.d(TAG, "PIN verified and cached for 7 days");
+                                } else {
+                                    pinCache.clearCachedPin(scooterId);
+                                    Log.d(TAG, "PIN verified (caching disabled by user)");
+                                }
 
                                 dismiss();
                                 if (listener != null) listener.onPinVerified(isLocking);

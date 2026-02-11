@@ -30,6 +30,7 @@ public class ServiceFactory {
     private static SessionManager sessionManager;
     private static TermsManager termsManager;
     private static PinCacheManager pinCacheManager;
+    private static UserSettingsManager userSettingsManager;
 
     // Shared BLE connection service (persists across activity transitions)
     private static ScooterConnectionService sharedConnectionService;
@@ -56,6 +57,9 @@ public class ServiceFactory {
         }
         if (pinCacheManager == null) {
             pinCacheManager = new PinCacheManager(appContext);
+        }
+        if (userSettingsManager == null) {
+            userSettingsManager = new UserSettingsManager(appContext);
         }
     }
 
@@ -130,6 +134,19 @@ public class ServiceFactory {
                     "ServiceFactory.init(context) must be called before getPinCacheManager()");
         }
         return pinCacheManager;
+    }
+
+    /**
+     * Get the shared UserSettingsManager instance.
+     *
+     * @throws IllegalStateException if init() hasn't been called yet
+     */
+    public static UserSettingsManager getUserSettingsManager() {
+        if (userSettingsManager == null) {
+            throw new IllegalStateException(
+                    "ServiceFactory.init(context) must be called before getUserSettingsManager()");
+        }
+        return userSettingsManager;
     }
 
     /**

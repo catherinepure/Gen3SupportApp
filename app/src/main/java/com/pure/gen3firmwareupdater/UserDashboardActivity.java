@@ -10,6 +10,7 @@ import android.util.Log;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -29,6 +30,7 @@ import com.pure.gen3firmwareupdater.services.ServiceFactory;
 import com.pure.gen3firmwareupdater.services.SessionManager;
 import com.pure.gen3firmwareupdater.services.SupabaseBaseRepository;
 import com.pure.gen3firmwareupdater.services.TermsManager;
+import com.pure.gen3firmwareupdater.services.UserSettingsManager;
 import com.pure.gen3firmwareupdater.views.BatteryGaugeView;
 import com.pure.gen3firmwareupdater.views.SpeedGaugeView;
 
@@ -54,6 +56,7 @@ public class UserDashboardActivity extends AppCompatActivity
     private ScooterConnectionService connectionService;
     private SessionManager session;
     private TermsManager termsManager;
+    private UserSettingsManager userSettings;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     // State
@@ -63,6 +66,7 @@ public class UserDashboardActivity extends AppCompatActivity
     private int lastMaxSpeed = 25;
     private boolean pollingActive = false;
     private boolean updatingToggles = false; // Prevents toggle listener feedback loop
+    private boolean autoConnectAttempted = false; // Only attempt auto-connect once per scan
 
     // Stored BLE data for passing to ScooterDetailsActivity
     private String connectedDeviceName; // ZYD serial (BLE device name) — used as DB key
@@ -77,6 +81,7 @@ public class UserDashboardActivity extends AppCompatActivity
     // UI - Header
     private View statusDot;
     private TextView tvConnectionStatus;
+    private ImageButton btnSettings;
     private MaterialButton btnLogout;
 
     // UI - Disconnected state
@@ -142,6 +147,7 @@ public class UserDashboardActivity extends AppCompatActivity
         ServiceFactory.init(this);
         session = ServiceFactory.getSessionManager();
         termsManager = ServiceFactory.getTermsManager();
+        userSettings = ServiceFactory.getUserSettingsManager();
 
         initViews();
         setupListeners();
@@ -203,6 +209,7 @@ public class UserDashboardActivity extends AppCompatActivity
         // Header
         statusDot = findViewById(R.id.statusDot);
         tvConnectionStatus = findViewById(R.id.tvConnectionStatus);
+        btnSettings = findViewById(R.id.btnSettings);
         btnLogout = findViewById(R.id.btnLogout);
 
         // Disconnected
@@ -230,6 +237,7 @@ public class UserDashboardActivity extends AppCompatActivity
         btnConnect.setOnClickListener(v -> startScanAndConnect());
         btnScooterDetails.setOnClickListener(v -> openScooterDetails());
         btnDisconnect.setOnClickListener(v -> disconnectScooter());
+        btnSettings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         btnLogout.setOnClickListener(v -> logout());
 
         switchHeadlight.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -338,6 +346,7 @@ public class UserDashboardActivity extends AppCompatActivity
         connectionService = null;
         scooterDbId = null;
         scooterHasPin = false;
+        autoConnectAttempted = false;
         setState(State.DISCONNECTED);
 
         // Reset gauges
@@ -690,6 +699,25 @@ public class UserDashboardActivity extends AppCompatActivity
             return;
         }
 
+        // Auto-connect: if enabled and we have a saved MAC, look for it in results
+        if (!autoConnectAttempted && userSettings.isAutoConnectEnabled()) {
+            autoConnectAttempted = true;
+            String savedMac = userSettings.getLastConnectedMac();
+            String savedName = userSettings.getLastConnectedName();
+            if (savedMac != null) {
+                for (ScanResult result : devices) {
+                    if (savedMac.equals(result.getDevice().getAddress())) {
+                        Log.d(TAG, "Auto-connecting to saved scooter: " + savedName);
+                        runOnUiThread(() -> tvConnectingStatus.setText(
+                                "Connecting to " + (savedName != null ? savedName : "scooter") + "..."));
+                        connectionService.connectToDevice(result.getDevice());
+                        return;
+                    }
+                }
+                Log.d(TAG, "Saved scooter not found in scan results, showing picker");
+            }
+        }
+
         if (devices.size() == 1) {
             // Auto-connect to the only device found
             runOnUiThread(() -> tvConnectingStatus.setText("Connecting..."));
@@ -717,6 +745,18 @@ public class UserDashboardActivity extends AppCompatActivity
         runOnUiThread(() -> tvConnectionStatus.setText("Connected - " + deviceName));
         setState(State.CONNECTED);
         startTelemetryPolling();
+
+        // Save last connected scooter for auto-connect
+        if (deviceName != null) {
+            userSettings.setLastConnectedName(deviceName);
+        }
+        if (connectionService != null && connectionService.getBLEManager() != null
+                && connectionService.getBLEManager().getBluetoothGatt() != null) {
+            String mac = connectionService.getBLEManager().getBluetoothGatt().getDevice().getAddress();
+            if (mac != null) {
+                userSettings.setLastConnectedMac(mac);
+            }
+        }
 
         // Look up scooter DB ID and PIN status for lock functionality
         lookupScooterPinStatus(deviceName);

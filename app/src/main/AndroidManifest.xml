@@ -99,5 +99,17 @@
             android:exported="false"
             android:label="Terms &amp; Conditions"
             android:theme="@style/Theme.Gen3FirmwareUpdater" />
+
+        <!-- Settings -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- Change Email -->
+        <activity
+            android:name=".ChangeEmailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
     </application>
 </manifest>

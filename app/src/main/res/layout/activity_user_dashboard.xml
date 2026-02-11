@@ -37,6 +37,15 @@
                 android:textColor="@color/dashboard_text_secondary"
                 android:textSize="14sp" />
 
+            <ImageButton
+                android:id="@+id/btnSettings"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_settings"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Settings"
+                app:tint="@color/dashboard_text_secondary" />
+
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnLogout"
                 style="@style/Widget.Material3.Button.TextButton"
