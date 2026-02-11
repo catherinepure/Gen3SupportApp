@@ -2,6 +2,7 @@ package com.pure.gen3firmwareupdater.services;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 /**
  * Centralized session/preferences management.
@@ -64,10 +65,14 @@ public class SessionManager {
 
         // Clear all cached PINs on logout for security
         try {
-            PinCacheManager pinCache = new PinCacheManager(context);
-            pinCache.clearAllCachedPins();
+            // Use ServiceFactory singleton so we clear the ACTUAL cached instance,
+            // not a throwaway new instance that shares nothing with the real one
+            PinCacheManager pinCache = ServiceFactory.getPinCacheManager();
+            if (pinCache != null) {
+                pinCache.clearAllCachedPins();
+            }
         } catch (Exception e) {
-            // Ignore if PinCacheManager not available
+            Log.w("SessionManager", "Failed to clear PIN cache on logout", e);
         }
     }
 

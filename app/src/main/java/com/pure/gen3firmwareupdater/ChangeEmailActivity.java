@@ -165,7 +165,9 @@ public class ChangeEmailActivity extends AppCompatActivity {
                 Response response = httpClient.newCall(request).execute();
                 String responseBody = response.body() != null ? response.body().string() : "";
 
+                if (isFinishing() || isDestroyed()) return;
                 runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
                     progressRequest.setVisibility(View.GONE);
                     btnSendCode.setEnabled(true);
 
@@ -183,7 +185,9 @@ public class ChangeEmailActivity extends AppCompatActivity {
                 });
             } catch (IOException e) {
                 Log.e(TAG, "Network error requesting email change", e);
+                if (isFinishing() || isDestroyed()) return;
                 runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
                     progressRequest.setVisibility(View.GONE);
                     btnSendCode.setEnabled(true);
                     Toast.makeText(ChangeEmailActivity.this,
@@ -242,7 +246,9 @@ public class ChangeEmailActivity extends AppCompatActivity {
                 Response response = httpClient.newCall(request).execute();
                 String responseBody = response.body() != null ? response.body().string() : "";
 
+                if (isFinishing() || isDestroyed()) return;
                 runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
                     progressVerify.setVisibility(View.GONE);
                     btnVerifyCode.setEnabled(true);
                     btnResendCode.setEnabled(true);
@@ -266,7 +272,9 @@ public class ChangeEmailActivity extends AppCompatActivity {
                 });
             } catch (IOException e) {
                 Log.e(TAG, "Network error verifying code", e);
+                if (isFinishing() || isDestroyed()) return;
                 runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
                     progressVerify.setVisibility(View.GONE);
                     btnVerifyCode.setEnabled(true);
                     btnResendCode.setEnabled(true);

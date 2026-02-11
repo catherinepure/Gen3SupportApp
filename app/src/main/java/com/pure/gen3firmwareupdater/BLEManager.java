@@ -309,6 +309,12 @@ public class BLEManager {
         @Override
         public void onCharacteristicRead(BluetoothGatt gatt,
                                          BluetoothGattCharacteristic characteristic, int status) {
+            if (characteristic == null) {
+                Log.w(TAG, "onCharacteristicRead: characteristic is null, skipping");
+                readNextDeviceInfoCharacteristic();
+                return;
+            }
+
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 byte[] data = characteristic.getValue();
                 String uuid = characteristic.getUuid().toString().toUpperCase();

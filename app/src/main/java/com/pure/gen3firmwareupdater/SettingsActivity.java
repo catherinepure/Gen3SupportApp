@@ -21,6 +21,8 @@ import com.pure.gen3firmwareupdater.services.ServiceFactory;
 import com.pure.gen3firmwareupdater.services.SessionManager;
 import com.pure.gen3firmwareupdater.services.UserSettingsManager;
 
+import io.intercom.android.sdk.Intercom;
+
 /**
  * Settings screen for user preferences.
  * Sections are role-based: admin/manager see extra options.
@@ -122,6 +124,24 @@ public class SettingsActivity extends AppCompatActivity {
             Log.d(TAG, "Auto-connect: " + isChecked);
         });
 
+        // Contact Support (opens new conversation — Fin AI will respond first)
+        findViewById(R.id.btnContactSupport).setOnClickListener(v -> {
+            if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+                Intercom.client().displayMessageComposer();
+            } else {
+                Toast.makeText(this, "Support chat not available — coming soon", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // Message History (opens past conversations list)
+        findViewById(R.id.btnMessageHistory).setOnClickListener(v -> {
+            if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+                Intercom.client().displayConversationsList();
+            } else {
+                Toast.makeText(this, "Support chat not available — coming soon", Toast.LENGTH_SHORT).show();
+            }
+        });
+
         // Logout
         MaterialButton btnLogout = findViewById(R.id.btnLogout);
         btnLogout.setOnClickListener(v -> confirmLogout());
@@ -158,6 +178,7 @@ public class SettingsActivity extends AppCompatActivity {
                 new com.pure.gen3firmwareupdater.services.SupabaseBaseRepository.Callback<com.google.gson.JsonObject>() {
                     @Override
                     public void onSuccess(com.google.gson.JsonObject scooter) {
+                        if (isFinishing() || isDestroyed()) return;
                         String scooterId = scooter.has("id") ? scooter.get("id").getAsString() : null;
                         if (scooterId == null) {
                             runOnUiThread(() -> Toast.makeText(SettingsActivity.this,
@@ -169,6 +190,7 @@ public class SettingsActivity extends AppCompatActivity {
 
                     @Override
                     public void onError(String error) {
+                        if (isFinishing() || isDestroyed()) return;
                         runOnUiThread(() -> Toast.makeText(SettingsActivity.this,
                                 "Error: " + error, Toast.LENGTH_SHORT).show());
                     }
@@ -248,6 +270,9 @@ public class SettingsActivity extends AppCompatActivity {
                     }
                     session.clearSession();
                     pinCache.clearAllCachedPins();
+                    if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+                        Intercom.client().logout();
+                    }
 
                     Intent intent = new Intent(this, RegistrationChoiceActivity.class);
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);

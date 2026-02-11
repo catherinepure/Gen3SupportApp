@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "301169651901",
+    "project_id": "pure-app-2026",
+    "storage_bucket": "pure-app-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:301169651901:android:6e5b8fe67d84eb4153c7d4",
+        "android_client_info": {
+          "package_name": "com.pure.gen3firmwareupdater"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCCIUivD-MIGhSYicFqJBI-zNm8UBWrt4Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

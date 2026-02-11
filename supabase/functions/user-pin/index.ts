@@ -392,6 +392,20 @@ serve(async (req) => {
         return errorResponse('PIN must be exactly 6 digits')
       }
 
+      // Rate limit: max 5 failed attempts per scooter per 15 minutes
+      const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+      const { data: recentFailures, error: rateError } = await supabase
+        .from('pin_verification_attempts')
+        .select('id')
+        .eq('scooter_id', scooter_id)
+        .eq('success', false)
+        .gte('attempted_at', fifteenMinAgo)
+
+      if (!rateError && recentFailures && recentFailures.length >= 5) {
+        console.warn(`PIN rate limit hit for scooter ${scooter_id} by user ${user.id}`)
+        return errorResponse('Too many failed attempts. Please wait 15 minutes before trying again.', 429)
+      }
+
       const ENCRYPTION_KEY = Deno.env.get('PIN_ENCRYPTION_KEY')
       if (!ENCRYPTION_KEY) {
         console.error('PIN_ENCRYPTION_KEY not configured')
@@ -416,6 +430,21 @@ serve(async (req) => {
       // Constant-time comparison to prevent timing attacks
       const isValid = pin.length === decryptedPin.length &&
         pin.split('').every((c: string, i: number) => c === decryptedPin[i])
+
+      // Log the attempt for rate limiting
+      try {
+        await supabase
+          .from('pin_verification_attempts')
+          .insert({
+            scooter_id: scooter_id,
+            user_id: user.id,
+            success: isValid,
+            attempted_at: new Date().toISOString()
+          })
+      } catch (logErr) {
+        // Don't fail the request if logging fails — table may not exist yet
+        console.warn('Failed to log PIN attempt (table may not exist):', logErr)
+      }
 
       return respond({ valid: isValid })
     }

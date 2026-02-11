@@ -1,10 +1,11 @@
 plugins {
     id 'com.android.application'
+    id 'com.google.gms.google-services'
 }
 
 android {
     namespace 'com.pure.gen3firmwareupdater'
-    compileSdk 34
+    compileSdk 35
 
     buildFeatures {
         buildConfig true
@@ -23,6 +24,10 @@ android {
         // All admin operations go through Edge Functions which use the
         // service_role key server-side via Deno.env.
         buildConfigField "String", "SUPABASE_ANON_KEY", '"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocHhtbHJwZGhhcmhoendqeHVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMDgwNTQsImV4cCI6MjA4NTc4NDA1NH0.w_9rkrz6Mw12asETIAk7jenY-yjVVxrLeWz642k3PVM"'
+
+        // Intercom SDK credentials (obtain from Intercom Settings > Installation > Android)
+        buildConfigField "String", "INTERCOM_API_KEY", '"android_sdk-fae378bfdb88881f0524ace589c6c9958ebcb126"'
+        buildConfigField "String", "INTERCOM_APP_ID", '"lsv3q9i8"'
     }
 
     buildTypes {
@@ -52,4 +57,11 @@ dependencies {
 
     // Location services for registration
     implementation 'com.google.android.gms:play-services-location:21.0.1'
+
+    // Intercom SDK (full, with push notification support)
+    implementation 'io.intercom.android:intercom-sdk:17.4.4'
+
+    // Firebase Cloud Messaging (required for Intercom push notifications)
+    implementation platform('com.google.firebase:firebase-bom:33.7.0')
+    implementation 'com.google.firebase:firebase-messaging'
 }

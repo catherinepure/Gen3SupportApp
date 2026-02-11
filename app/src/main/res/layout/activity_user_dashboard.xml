@@ -70,9 +70,8 @@
             <ImageView
                 android:layout_width="100dp"
                 android:layout_height="100dp"
-                android:src="@drawable/ic_electric_scooter"
-                android:layout_marginBottom="24dp"
-                app:tint="@color/dashboard_text_secondary" />
+                android:src="@drawable/ic_brand_p"
+                android:layout_marginBottom="24dp" />
 
             <TextView
                 android:layout_width="wrap_content"

@@ -1331,6 +1331,86 @@ async function handleWorkshops(supabase: any, action: string, body: any, admin: 
   return errorResponse('Invalid action for workshops: ' + action)
 }
 
+/**
+ * Fire active notification templates for a firmware update event.
+ * Creates a push_notification for each HW target and invokes send-notification.
+ */
+async function fireFirmwareUpdateTemplates(
+  supabase: any,
+  firmware: { id: string; version_label: string; release_notes?: string },
+  hwTargets: string[],
+  adminUserId: string
+) {
+  if (hwTargets.length === 0) return
+
+  // Find active firmware_update templates
+  const { data: templates } = await supabase
+    .from('notification_templates')
+    .select('*')
+    .eq('trigger_type', 'firmware_update')
+    .eq('is_active', true)
+
+  if (!templates || templates.length === 0) return
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+  const templateData = {
+    firmware_version: firmware.version_label,
+    release_notes: firmware.release_notes || '',
+  }
+
+  for (const template of templates) {
+    for (const hwVersion of hwTargets) {
+      // Determine target type
+      let targetType = template.target_type
+      let targetValue = template.target_value
+
+      if (targetType === 'trigger_match') {
+        // For firmware_update trigger_match, target users by HW version
+        targetType = 'hw_version'
+        targetValue = hwVersion
+      }
+
+      // Create push_notifications record
+      const { data: notification, error } = await supabase
+        .from('push_notifications')
+        .insert({
+          title: template.title_template,
+          body: template.body_template,
+          action: template.tap_action || 'none',
+          target_type: targetType,
+          target_value: targetValue,
+          sent_by: adminUserId,
+          status: 'pending',
+          template_id: template.id,
+          template_data: { ...templateData, hw_version: hwVersion },
+        })
+        .select()
+        .single()
+
+      if (error || !notification) {
+        console.error('Failed to create notification from template:', error?.message)
+        continue
+      }
+
+      // Fire-and-forget
+      fetch(`${supabaseUrl}/functions/v1/send-notification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ notification_id: notification.id }),
+      }).catch(err => {
+        console.error('Failed to invoke send-notification for template:', err)
+      })
+    }
+  }
+
+  console.log(`Fired firmware update templates for ${hwTargets.length} HW target(s)`)
+}
+
 async function handleFirmware(supabase: any, action: string, body: any, _admin: any) {
   if (action === 'list') {
     let query = supabase.from('firmware_versions')
@@ -1401,6 +1481,14 @@ async function handleFirmware(supabase: any, action: string, body: any, _admin: 
       await supabase.from('firmware_hw_targets').insert(targets)
     }
 
+    // Fire firmware update notification templates (if any are active)
+    const hwTargets = body.hw_targets || (body.target_hw_version ? [body.target_hw_version] : [])
+    if (hwTargets.length > 0) {
+      fireFirmwareUpdateTemplates(supabase, data, hwTargets, _admin?.user?.id).catch(err => {
+        console.error('Template trigger error:', err)
+      })
+    }
+
     return respond({ success: true, firmware: data }, 201)
   }
 
@@ -1441,6 +1529,17 @@ async function handleFirmware(supabase: any, action: string, body: any, _admin: 
     const { data, error } = await supabase.from('firmware_versions')
       .update({ is_active: true }).eq('id', body.id).select().single()
     if (error) return errorResponse(error.message, 500)
+
+    // Fire firmware update notification templates on reactivation
+    const { data: hwTargetRows } = await supabase.from('firmware_hw_targets')
+      .select('hw_version').eq('firmware_version_id', body.id)
+    const hwTargets = (hwTargetRows || []).map((t: any) => t.hw_version)
+    if (hwTargets.length > 0) {
+      fireFirmwareUpdateTemplates(supabase, data, hwTargets, _admin?.user?.id).catch(err => {
+        console.error('Template trigger error on reactivate:', err)
+      })
+    }
+
     return respond({ success: true, firmware: data })
   }
 
@@ -2287,6 +2386,370 @@ async function handleSettings(supabase: any, action: string, body: any, admin: a
 
 
 // ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+async function handleNotifications(supabase: any, action: string, body: any, admin: any) {
+  // Only admins can manage notifications
+  if (admin.territory.role !== 'manufacturer_admin') {
+    return errorResponse('Manufacturer admin access required', 403)
+  }
+
+  switch (action) {
+    case 'send': {
+      const { title, body: messageBody, target_type, target_value, tap_action } = body
+
+      if (!title || !messageBody) return errorResponse('Title and body are required')
+      if (!target_type || !['all', 'user', 'role', 'hw_version', 'scooter_owner'].includes(target_type)) {
+        return errorResponse('target_type must be one of: all, user, role, hw_version, scooter_owner')
+      }
+      if (target_type === 'user' && !target_value) return errorResponse('target_value (user ID) is required for user target')
+      if (target_type === 'role' && !['admin', 'manager', 'normal'].includes(target_value)) {
+        return errorResponse('target_value must be admin, manager, or normal for role target')
+      }
+
+      // Create notification record
+      const { data: notification, error: insertError } = await supabase
+        .from('push_notifications')
+        .insert({
+          title,
+          body: messageBody,
+          action: tap_action || 'none',
+          target_type,
+          target_value: target_type === 'all' ? null : target_value,
+          sent_by: admin.user.id,
+          status: 'pending',
+        })
+        .select()
+        .single()
+
+      if (insertError) return errorResponse('Failed to create notification: ' + insertError.message, 500)
+
+      // Invoke send-notification Edge Function asynchronously
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+      // Fire-and-forget: don't await (let it process in background)
+      fetch(`${supabaseUrl}/functions/v1/send-notification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ notification_id: notification.id }),
+      }).catch(err => {
+        console.error('Failed to invoke send-notification:', err)
+      })
+
+      return respond({ success: true, notification_id: notification.id, status: 'pending' }, 201)
+    }
+
+    case 'list': {
+      const limit = body.limit || 25
+      const offset = body.offset || 0
+
+      const { data, error, count } = await supabase
+        .from('push_notifications')
+        .select('id, title, body, action, target_type, target_value, sent_at, total_recipients, success_count, failure_count, status', { count: 'exact' })
+        .order('sent_at', { ascending: false })
+        .range(offset, offset + limit - 1)
+
+      if (error) return errorResponse(error.message, 500)
+
+      // Get sender info
+      const senderIds = [...new Set((data || []).map((n: any) => n.sent_by).filter(Boolean))]
+      let senderMap: Record<string, string> = {}
+      if (senderIds.length > 0) {
+        const { data: senders } = await supabase
+          .from('push_notifications')
+          .select('id, sent_by')
+          .in('id', (data || []).map((n: any) => n.id))
+
+        // Join with users
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, email')
+          .in('id', senderIds)
+
+        if (users) {
+          for (const u of users) {
+            senderMap[u.id] = u.email
+          }
+        }
+      }
+
+      return respond({
+        notifications: data || [],
+        total: count || 0,
+        limit,
+        offset,
+      })
+    }
+
+    case 'get': {
+      if (!body.id) return errorResponse('Notification ID required')
+
+      const { data, error } = await supabase
+        .from('push_notifications')
+        .select('*')
+        .eq('id', body.id)
+        .single()
+
+      if (error || !data) return errorResponse('Notification not found', 404)
+
+      // Get sender email
+      const { data: sender } = await supabase
+        .from('users')
+        .select('email')
+        .eq('id', data.sent_by)
+        .single()
+
+      return respond({
+        notification: {
+          ...data,
+          sent_by_email: sender?.email || 'Unknown',
+        },
+      })
+    }
+
+    case 'list-tokens': {
+      const limit = body.limit || 50
+      const offset = body.offset || 0
+
+      const { data, error, count } = await supabase
+        .from('device_tokens')
+        .select('id, user_id, device_name, platform, app_version, updated_at', { count: 'exact' })
+        .order('updated_at', { ascending: false })
+        .range(offset, offset + limit - 1)
+
+      if (error) return errorResponse(error.message, 500)
+
+      // Get user emails
+      const userIds = [...new Set((data || []).map((t: any) => t.user_id))]
+      let userMap: Record<string, string> = {}
+      if (userIds.length > 0) {
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, email')
+          .in('id', userIds)
+
+        if (users) {
+          for (const u of users) {
+            userMap[u.id] = u.email
+          }
+        }
+      }
+
+      const tokens = (data || []).map((t: any) => ({
+        ...t,
+        user_email: userMap[t.user_id] || 'Unknown',
+      }))
+
+      return respond({ tokens, total: count || 0, limit, offset })
+    }
+
+    // ============================================================
+    // Template CRUD Actions
+    // ============================================================
+
+    case 'create-template': {
+      const { name, title_template, body_template, tap_action, trigger_type, trigger_config, target_type: tgtType, target_value: tgtValue } = body
+      if (!name || !title_template || !body_template || !trigger_type) {
+        return errorResponse('name, title_template, body_template, and trigger_type are required')
+      }
+      const validTriggers = ['firmware_update', 'scooter_status', 'user_event', 'scheduled', 'manual']
+      if (!validTriggers.includes(trigger_type)) {
+        return errorResponse('trigger_type must be one of: ' + validTriggers.join(', '))
+      }
+      const validTargets = ['all', 'role', 'hw_version', 'trigger_match', 'user']
+      if (tgtType && !validTargets.includes(tgtType)) {
+        return errorResponse('target_type must be one of: ' + validTargets.join(', '))
+      }
+
+      const { data, error } = await supabase
+        .from('notification_templates')
+        .insert({
+          name,
+          title_template,
+          body_template,
+          tap_action: tap_action || 'none',
+          trigger_type,
+          trigger_config: trigger_config || {},
+          target_type: tgtType || 'trigger_match',
+          target_value: tgtValue || null,
+          is_active: false,
+          created_by: admin.user.id,
+        })
+        .select()
+        .single()
+
+      if (error) return errorResponse('Failed to create template: ' + error.message, 500)
+      return respond({ success: true, template: data }, 201)
+    }
+
+    case 'update-template': {
+      if (!body.id) return errorResponse('Template ID required')
+      const allowed = ['name', 'title_template', 'body_template', 'tap_action', 'trigger_type', 'trigger_config', 'target_type', 'target_value']
+      const updates: Record<string, any> = { updated_at: new Date().toISOString() }
+      for (const key of allowed) {
+        if (body[key] !== undefined) updates[key] = body[key]
+      }
+
+      const { data, error } = await supabase
+        .from('notification_templates')
+        .update(updates)
+        .eq('id', body.id)
+        .select()
+        .single()
+
+      if (error) return errorResponse('Failed to update template: ' + error.message, 500)
+      return respond({ success: true, template: data })
+    }
+
+    case 'list-templates': {
+      const limit = body.limit || 50
+      const offset = body.offset || 0
+
+      const { data, error, count } = await supabase
+        .from('notification_templates')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1)
+
+      if (error) return errorResponse(error.message, 500)
+      return respond({ templates: data || [], total: count || 0, limit, offset })
+    }
+
+    case 'get-template': {
+      if (!body.id) return errorResponse('Template ID required')
+
+      const { data, error } = await supabase
+        .from('notification_templates')
+        .select('*')
+        .eq('id', body.id)
+        .single()
+
+      if (error || !data) return errorResponse('Template not found', 404)
+
+      // Get creator email
+      let creatorEmail = 'Unknown'
+      if (data.created_by) {
+        const { data: creator } = await supabase.from('users').select('email').eq('id', data.created_by).single()
+        if (creator) creatorEmail = creator.email
+      }
+
+      return respond({ template: { ...data, created_by_email: creatorEmail } })
+    }
+
+    case 'delete-template': {
+      if (!body.id) return errorResponse('Template ID required')
+
+      const { error } = await supabase
+        .from('notification_templates')
+        .delete()
+        .eq('id', body.id)
+
+      if (error) return errorResponse('Failed to delete template: ' + error.message, 500)
+      return respond({ success: true })
+    }
+
+    case 'toggle-template': {
+      if (!body.id) return errorResponse('Template ID required')
+
+      // Get current state
+      const { data: current, error: getErr } = await supabase
+        .from('notification_templates')
+        .select('is_active')
+        .eq('id', body.id)
+        .single()
+
+      if (getErr || !current) return errorResponse('Template not found', 404)
+
+      const newState = body.is_active !== undefined ? body.is_active : !current.is_active
+
+      const { data, error } = await supabase
+        .from('notification_templates')
+        .update({ is_active: newState, updated_at: new Date().toISOString() })
+        .eq('id', body.id)
+        .select()
+        .single()
+
+      if (error) return errorResponse('Failed to toggle template: ' + error.message, 500)
+      return respond({ success: true, template: data })
+    }
+
+    case 'send-template': {
+      if (!body.id) return errorResponse('Template ID required')
+
+      const { data: template, error: tplErr } = await supabase
+        .from('notification_templates')
+        .select('*')
+        .eq('id', body.id)
+        .single()
+
+      if (tplErr || !template) return errorResponse('Template not found', 404)
+
+      // template_data can be passed for placeholder resolution (e.g. firmware version info)
+      const templateData = body.template_data || {}
+
+      // Determine target type and value
+      let sendTargetType = template.target_type
+      let sendTargetValue = template.target_value
+
+      // For trigger_match with manual send, fall back to 'all' if no context
+      if (sendTargetType === 'trigger_match') {
+        if (body.target_override_type) {
+          sendTargetType = body.target_override_type
+          sendTargetValue = body.target_override_value || null
+        } else {
+          sendTargetType = 'all'
+          sendTargetValue = null
+        }
+      }
+
+      // Create push_notifications record
+      const { data: notification, error: insertError } = await supabase
+        .from('push_notifications')
+        .insert({
+          title: template.title_template,
+          body: template.body_template,
+          action: template.tap_action || 'none',
+          target_type: sendTargetType,
+          target_value: sendTargetValue,
+          sent_by: admin.user.id,
+          status: 'pending',
+          template_id: template.id,
+          template_data: templateData,
+        })
+        .select()
+        .single()
+
+      if (insertError) return errorResponse('Failed to create notification: ' + insertError.message, 500)
+
+      // Invoke send-notification Edge Function
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+      fetch(`${supabaseUrl}/functions/v1/send-notification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ notification_id: notification.id }),
+      }).catch(err => {
+        console.error('Failed to invoke send-notification:', err)
+      })
+
+      return respond({ success: true, notification_id: notification.id, status: 'pending' }, 201)
+    }
+
+    default:
+      return errorResponse('Unknown notifications action: ' + action + '. Available: send, list, get, list-tokens, create-template, update-template, list-templates, get-template, delete-template, toggle-template, send-template')
+  }
+}
+
+// ============================================================================
 // MAIN HANDLER
 // ============================================================================
 
@@ -2355,8 +2818,9 @@ serve(async (req) => {
       case 'validation':   return await handleValidation(supabase, action, body, admin)
       case 'dashboard':    return await handleDashboard(supabase, action, body, admin)
       case 'settings':     return await handleSettings(supabase, action, body, admin)
+      case 'notifications': return await handleNotifications(supabase, action, body, admin)
       default:
-        return errorResponse('Unknown resource: ' + resource + '. Available: users, scooters, distributors, workshops, firmware, service-jobs, telemetry, logs, events, addresses, sessions, validation, dashboard, settings')
+        return errorResponse('Unknown resource: ' + resource + '. Available: users, scooters, distributors, workshops, firmware, service-jobs, telemetry, logs, events, addresses, sessions, validation, dashboard, settings, notifications')
     }
 
   } catch (error) {

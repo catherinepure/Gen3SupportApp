@@ -21,9 +21,11 @@ import androidx.core.app.ActivityCompat;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 import android.widget.Toast;
 
+import com.pure.gen3firmwareupdater.services.DeviceTokenManager;
 import com.pure.gen3firmwareupdater.services.PermissionHelper;
 import com.pure.gen3firmwareupdater.services.ScooterConnectionService;
 import com.pure.gen3firmwareupdater.services.ServiceFactory;
@@ -34,7 +36,11 @@ import com.pure.gen3firmwareupdater.services.UserSettingsManager;
 import com.pure.gen3firmwareupdater.views.BatteryGaugeView;
 import com.pure.gen3firmwareupdater.views.SpeedGaugeView;
 
+import io.intercom.android.sdk.Intercom;
+import io.intercom.android.sdk.identity.Registration;
+
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Dashboard activity for normal (non-distributor) users.
@@ -47,6 +53,7 @@ public class UserDashboardActivity extends AppCompatActivity
 
     private static final String TAG = "UserDashboard";
     private static final int PERMISSION_REQUEST_CODE = 300;
+    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 301;
     private static final int REQUEST_CODE_TERMS = 1002;
     private static final long TELEMETRY_POLL_INTERVAL_MS = 2000;
 
@@ -64,9 +71,10 @@ public class UserDashboardActivity extends AppCompatActivity
     private int lastControlFlags = 0;
     private int lastCruiseSpeed = 0;
     private int lastMaxSpeed = 25;
-    private boolean pollingActive = false;
-    private boolean updatingToggles = false; // Prevents toggle listener feedback loop
+    private final AtomicBoolean pollingActive = new AtomicBoolean(false);
+    private final AtomicBoolean updatingToggles = new AtomicBoolean(false); // Prevents toggle listener feedback loop
     private boolean autoConnectAttempted = false; // Only attempt auto-connect once per scan
+    private boolean devicePickerShown = false; // Prevent duplicate device picker dialogs
 
     // Stored BLE data for passing to ScooterDetailsActivity
     private String connectedDeviceName; // ZYD serial (BLE device name) — used as DB key
@@ -123,7 +131,7 @@ public class UserDashboardActivity extends AppCompatActivity
                     }, 300);
                 }
             }
-            if (pollingActive) {
+            if (pollingActive.get()) {
                 handler.postDelayed(this, TELEMETRY_POLL_INTERVAL_MS);
             }
         }
@@ -174,20 +182,106 @@ public class UserDashboardActivity extends AppCompatActivity
             setState(State.CONNECTED);
             startTelemetryPolling();
         }
+
+        // Ensure user is registered with Intercom (needed when app auto-routes
+        // here via RegistrationChoiceActivity, bypassing LoginActivity)
+        ensureIntercomRegistered();
+
+        // Register FCM token with Supabase (covers auto-login bypass path)
+        ensureFcmTokenRegistered();
+
+        // Request notification permission for Intercom push (Android 13+)
+        requestNotificationPermission();
+    }
+
+    private void requestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                        NOTIFICATION_PERMISSION_REQUEST_CODE);
+            }
+        }
+    }
+
+    /**
+     * Register FCM token with Supabase for custom push notifications.
+     * Covers the auto-login path that bypasses LoginActivity.
+     */
+    private void ensureFcmTokenRegistered() {
+        if (session.getSessionToken() == null) return;
+        FirebaseMessaging.getInstance().getToken()
+                .addOnSuccessListener(token -> {
+                    Log.d(TAG, "FCM token obtained, registering with Supabase");
+                    new DeviceTokenManager().registerToken(token);
+                })
+                .addOnFailureListener(e ->
+                        Log.w(TAG, "Failed to get FCM token", e));
+    }
+
+    /**
+     * Register the current user with Intercom so the messenger works.
+     * This is idempotent — calling it when already registered is a no-op.
+     * Needed because users who are already logged in bypass LoginActivity
+     * and go straight to this dashboard via RegistrationChoiceActivity.
+     */
+    private void ensureIntercomRegistered() {
+        if (!Gen3FirmwareUpdaterApp.isIntercomInitialized()) return;
+        String userId = session.getUserId();
+        if (userId == null) return;
+
+        try {
+            Registration registration = Registration.create().withUserId(userId);
+            Intercom.client().loginIdentifiedUser(registration, new io.intercom.android.sdk.IntercomStatusCallback() {
+                @Override
+                public void onSuccess() {
+                    Log.d(TAG, "Intercom user registered: " + userId);
+                    io.intercom.android.sdk.UserAttributes userAttributes =
+                            new io.intercom.android.sdk.UserAttributes.Builder()
+                                    .withEmail(session.getUserEmail())
+                                    .withCustomAttribute("role", session.getUserRole() != null ? session.getUserRole() : "normal")
+                                    .withCustomAttribute("app_version", BuildConfig.VERSION_NAME)
+                                    .build();
+                    Intercom.client().updateUser(userAttributes);
+                }
+
+                @Override
+                public void onFailure(io.intercom.android.sdk.IntercomError intercomError) {
+                    Log.w(TAG, "Intercom registration failed: " + intercomError.getErrorMessage());
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "Intercom registration error", e);
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        // Show Intercom launcher (floating support button) on dashboard
+        if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+            Intercom.client().setLauncherVisibility(Intercom.Visibility.VISIBLE);
+        }
+
         // Re-attach as BLE listener when returning from ScooterDetailsActivity
         if (connectionService != null && connectionService.isConnected()) {
             connectionService.setListener(this);
-            if (!pollingActive) {
+            if (!pollingActive.get()) {
                 startTelemetryPolling();
             }
         } else if (connectionService != null && !connectionService.isConnected()) {
             // Connection was lost or released while away
             setState(State.DISCONNECTED);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Hide Intercom launcher when leaving dashboard
+        if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+            Intercom.client().setLauncherVisibility(Intercom.Visibility.GONE);
         }
     }
 
@@ -241,17 +335,17 @@ public class UserDashboardActivity extends AppCompatActivity
         btnLogout.setOnClickListener(v -> logout());
 
         switchHeadlight.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (!updatingToggles) {
+            if (!updatingToggles.get()) {
                 toggleHeadlight(isChecked);
             }
         });
         switchCruise.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (!updatingToggles) {
+            if (!updatingToggles.get()) {
                 toggleCruise(isChecked);
             }
         });
         switchLock.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (!updatingToggles) {
+            if (!updatingToggles.get()) {
                 toggleLock(isChecked);
             }
         });
@@ -300,6 +394,8 @@ public class UserDashboardActivity extends AppCompatActivity
 
         setState(State.CONNECTING);
         tvConnectingStatus.setText("Scanning for scooters...");
+        devicePickerShown = false; // Reset so picker can show for this new scan
+        autoConnectAttempted = false;
 
         connectionService = ServiceFactory.getConnectionService(this, handler);
         connectionService.setListener(this);
@@ -319,6 +415,9 @@ public class UserDashboardActivity extends AppCompatActivity
     }
 
     private void showDevicePicker(List<ScanResult> devices) {
+        if (devicePickerShown) return; // Prevent duplicate picker if scan fires twice
+        devicePickerShown = true;
+
         String[] names = new String[devices.size()];
         for (int i = 0; i < devices.size(); i++) {
             BluetoothDevice d = devices.get(i).getDevice();
@@ -347,6 +446,7 @@ public class UserDashboardActivity extends AppCompatActivity
         scooterDbId = null;
         scooterHasPin = false;
         autoConnectAttempted = false;
+        devicePickerShown = false;
         setState(State.DISCONNECTED);
 
         // Reset gauges
@@ -354,11 +454,11 @@ public class UserDashboardActivity extends AppCompatActivity
         batteryGauge.setBatteryPercent(0);
         tvOdometer.setText("0 km");
         tvRange.setText("0 km");
-        updatingToggles = true;
+        updatingToggles.set(true);
         switchHeadlight.setChecked(false);
         switchCruise.setChecked(false);
         switchLock.setChecked(false);
-        updatingToggles = false;
+        updatingToggles.set(false);
     }
 
     private void logout() {
@@ -367,7 +467,16 @@ public class UserDashboardActivity extends AppCompatActivity
             ServiceFactory.releaseConnectionService();
             connectionService = null;
         }
+        // Unregister device token before clearing session (needs session token)
+        try {
+            new DeviceTokenManager().unregisterToken();
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to unregister device token", e);
+        }
         session.clearSession();
+        if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+            Intercom.client().logout();
+        }
 
         Intent intent = new Intent(this, RegistrationChoiceActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
@@ -486,14 +595,13 @@ public class UserDashboardActivity extends AppCompatActivity
     // ==================================================================================
 
     private void startTelemetryPolling() {
-        if (pollingActive) return;
-        pollingActive = true;
+        if (pollingActive.getAndSet(true)) return;
         handler.post(telemetryPoller);
         Log.d(TAG, "Telemetry polling started");
     }
 
     private void stopTelemetryPolling() {
-        pollingActive = false;
+        pollingActive.set(false);
         handler.removeCallbacks(telemetryPoller);
         Log.d(TAG, "Telemetry polling stopped");
     }
@@ -547,9 +655,9 @@ public class UserDashboardActivity extends AppCompatActivity
 
     private void toggleLock(boolean on) {
         // Revert the toggle immediately — we'll set it again after PIN verification
-        updatingToggles = true;
+        updatingToggles.set(true);
         switchLock.setChecked(!on);
-        updatingToggles = false;
+        updatingToggles.set(false);
 
         if (scooterDbId == null) {
             Log.w(TAG, "No scooter DB ID — cannot check PIN");
@@ -641,20 +749,25 @@ public class UserDashboardActivity extends AppCompatActivity
         sendControlCommand(newFlags);
         // Update the toggle to reflect the new state
         runOnUiThread(() -> {
-            updatingToggles = true;
+            updatingToggles.set(true);
             switchLock.setChecked(on);
-            updatingToggles = false;
+            updatingToggles.set(false);
         });
     }
 
     private void sendControlCommand(int controlFlags) {
         if (connectionService == null || !connectionService.isConnected()) {
             Log.w(TAG, "Cannot send control command - not connected");
+            Toast.makeText(this, "Not connected to scooter", Toast.LENGTH_SHORT).show();
             return;
         }
 
         BLEManager ble = connectionService.getBLEManager();
-        if (ble == null) return;
+        if (ble == null) {
+            Log.w(TAG, "BLE manager not ready");
+            Toast.makeText(this, "Connection not ready — try again", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
         byte[] packet = new byte[15];
         packet[0] = (byte) ble.getProtocolHeader();
@@ -824,11 +937,11 @@ public class UserDashboardActivity extends AppCompatActivity
             tvRange.setText(data.remainingRange + " km");
 
             // Update toggles without triggering listeners
-            updatingToggles = true;
+            updatingToggles.set(true);
             switchHeadlight.setChecked(data.headlightsOn);
             switchCruise.setChecked(data.cruiseEnabled);
             switchLock.setChecked(data.deviceLocked);
-            updatingToggles = false;
+            updatingToggles.set(false);
         });
     }
 

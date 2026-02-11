@@ -16,6 +16,8 @@ import com.pure.gen3firmwareupdater.services.ServiceFactory;
 import com.pure.gen3firmwareupdater.services.SessionManager;
 import com.pure.gen3firmwareupdater.services.TermsManager;
 
+import io.intercom.android.sdk.Intercom;
+
 /**
  * Home screen. Shows registration/login options when not logged in,
  * or a user hub (scan scooter, logout) when logged in as a regular user.
@@ -117,6 +119,9 @@ public class RegistrationChoiceActivity extends AppCompatActivity {
                         .setPositiveButton("Try Again", (dialog, which) -> checkTermsBeforeProceeding())
                         .setNegativeButton("Logout", (dialog, which) -> {
                             session.clearSession();
+                            if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+                                Intercom.client().logout();
+                            }
                             recreate();
                         })
                         .setCancelable(false)
@@ -170,6 +175,9 @@ public class RegistrationChoiceActivity extends AppCompatActivity {
             MaterialButton btnLogout = findViewById(R.id.btnLogout);
             btnLogout.setOnClickListener(v -> {
                 session.clearSession();
+                if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+                    Intercom.client().logout();
+                }
                 recreate();
             });
         } else {

@@ -239,7 +239,9 @@ public class TermsAcceptanceActivity extends AppCompatActivity {
                 new TermsManager.TermsCallback<JsonObject>() {
                     @Override
                     public void onSuccess(JsonObject result) {
+                        if (isFinishing() || isDestroyed()) return;
                         runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
                             Toast.makeText(TermsAcceptanceActivity.this,
                                     "Terms accepted", Toast.LENGTH_SHORT).show();
                             setResult(RESULT_OK);
@@ -249,7 +251,9 @@ public class TermsAcceptanceActivity extends AppCompatActivity {
 
                     @Override
                     public void onError(String error) {
+                        if (isFinishing() || isDestroyed()) return;
                         runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
                             Log.e(TAG, "Failed to record consent: " + error);
                             progressBar.setVisibility(View.GONE);
                             btnAccept.setEnabled(true);

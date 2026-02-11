@@ -36,8 +36,8 @@ const FirmwarePage = (() => {
         const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
 
         TableComponent.render('#firmware-content', currentData, [
-            { key: 'version_label', label: 'Version' },
-            { key: 'target_hw_version', label: 'Hardware', format: (val) => val || 'All' },
+            { key: 'version_label', label: 'SW Version' },
+            { key: 'target_hw_version', label: 'HW Version', format: (val) => val || 'All' },
             { key: 'file_size_bytes', label: 'Size', format: (val) => val ? Utils.formatBytes(val) : 'N/A' },
             { key: 'access_level', label: 'Access Level', format: (val) => val || 'N/A' },
             { key: 'is_active', label: 'Status', format: (val) =>
@@ -66,8 +66,8 @@ const FirmwarePage = (() => {
             {
                 title: 'Firmware Information',
                 fields: [
-                    { label: 'Version', value: firmware.version_label },
-                    { label: 'Target Hardware', value: firmware.target_hw_version || 'All' },
+                    { label: 'SW Version', value: firmware.version_label },
+                    { label: 'HW Version', value: firmware.target_hw_version || 'All' },
                     { label: 'Min SW Version', value: firmware.min_sw_version || 'None' },
                     { label: 'Access Level', value: firmware.access_level || 'N/A' },
                     { label: 'Status', value: firmware.is_active === false ? 'inactive' : 'active', type: 'badge-status' }

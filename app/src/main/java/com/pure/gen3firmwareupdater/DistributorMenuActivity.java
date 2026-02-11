@@ -9,6 +9,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 
+import io.intercom.android.sdk.Intercom;
+
 /**
  * Main menu for distributors after login
  * Shows various options for distributor operations
@@ -59,6 +61,9 @@ public class DistributorMenuActivity extends AppCompatActivity {
 
     private void logout() {
         com.pure.gen3firmwareupdater.services.ServiceFactory.getSessionManager().clearSession();
+        if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+            Intercom.client().logout();
+        }
 
         Intent intent = new Intent(DistributorMenuActivity.this, RegistrationChoiceActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);

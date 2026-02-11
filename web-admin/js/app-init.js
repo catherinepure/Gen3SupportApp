@@ -18,6 +18,7 @@ window.Pages = {
     validation: ValidationPage,
     'terms-management': TermsManagementPage,
     'consent-history': ConsentHistoryPage,
+    notifications: NotificationsPage,
     settings: SettingsPage
 };
 

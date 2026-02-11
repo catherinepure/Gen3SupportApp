@@ -147,7 +147,8 @@ serve(async (req) => {
         .single()
 
       if (existing) {
-        return errorResponse('This email address is already in use')
+        // Generic message to prevent email enumeration attacks
+        return errorResponse('Unable to change to this email address. Please try a different one.')
       }
 
       // Rate limit: 1 request per 5 minutes

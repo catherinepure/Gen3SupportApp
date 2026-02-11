@@ -13,9 +13,14 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.firebase.messaging.FirebaseMessaging;
+import com.pure.gen3firmwareupdater.services.DeviceTokenManager;
 import com.pure.gen3firmwareupdater.services.ServiceFactory;
 import com.pure.gen3firmwareupdater.services.SessionManager;
 import com.pure.gen3firmwareupdater.services.TermsManager;
+
+import io.intercom.android.sdk.Intercom;
+import io.intercom.android.sdk.identity.Registration;
 
 public class LoginActivity extends AppCompatActivity {
     private static final String TAG = "LoginActivity";
@@ -75,6 +80,13 @@ public class LoginActivity extends AppCompatActivity {
                     if (user.id != null && session.getUserId() == null) {
                         session.setUserId(user.id);
                     }
+
+                    // Re-register with Intercom (handles edge cases like cleared app data)
+                    String userId = user.id != null ? user.id : session.getUserId();
+                    if (userId != null) {
+                        registerIntercomUser(userId, session.getUserEmail(), session.getUserRole());
+                    }
+
                     checkTermsAndProceed();
                 });
             }
@@ -116,11 +128,17 @@ public class LoginActivity extends AppCompatActivity {
         authClient.login(email, password, deviceInfo, new AuthClient.Callback<AuthClient.LoginResponse>() {
             @Override
             public void onSuccess(AuthClient.LoginResponse response) {
-                Log.d(TAG, "Login successful! Session token: " + response.sessionToken.substring(0, 10) + "...");
+                Log.d(TAG, "Login successful");
                 runOnUiThread(() -> {
                     // Save session (now includes userId)
                     session.saveLogin(response.user.id, response.sessionToken, response.user.email,
                             response.user.role, response.user.distributorId);
+
+                    // Register user with Intercom for support messaging
+                    registerIntercomUser(response.user.id, response.user.email, response.user.role);
+
+                    // Register FCM token with Supabase for custom push notifications
+                    registerFcmToken();
 
                     Toast.makeText(LoginActivity.this, "Login successful", Toast.LENGTH_SHORT).show();
                     checkTermsAndProceed();
@@ -180,6 +198,51 @@ public class LoginActivity extends AppCompatActivity {
 
     private void clearSession() {
         session.clearSession();
+        if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+            Intercom.client().logout();
+        }
+    }
+
+    private void registerIntercomUser(String userId, String email, String role) {
+        if (!Gen3FirmwareUpdaterApp.isIntercomInitialized()) return;
+        try {
+            Registration registration = Registration.create().withUserId(userId);
+            Intercom.client().loginIdentifiedUser(registration, new io.intercom.android.sdk.IntercomStatusCallback() {
+                @Override
+                public void onSuccess() {
+                    Log.d(TAG, "Intercom user registered: " + userId);
+
+                    io.intercom.android.sdk.UserAttributes userAttributes =
+                            new io.intercom.android.sdk.UserAttributes.Builder()
+                                    .withEmail(email)
+                                    .withCustomAttribute("role", role != null ? role : "normal")
+                                    .withCustomAttribute("app_version", BuildConfig.VERSION_NAME)
+                                    .build();
+                    Intercom.client().updateUser(userAttributes);
+                }
+
+                @Override
+                public void onFailure(io.intercom.android.sdk.IntercomError intercomError) {
+                    Log.w(TAG, "Intercom registration failed: " + intercomError.getErrorMessage());
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "Intercom registration error", e);
+        }
+    }
+
+    /**
+     * Register FCM token with Supabase for custom push notifications.
+     * Called after login so the backend knows this device's token.
+     */
+    private void registerFcmToken() {
+        FirebaseMessaging.getInstance().getToken()
+                .addOnSuccessListener(token -> {
+                    Log.d(TAG, "FCM token obtained, registering with Supabase");
+                    new DeviceTokenManager().registerToken(token);
+                })
+                .addOnFailureListener(e ->
+                        Log.w(TAG, "Failed to get FCM token", e));
     }
 
     private void checkTermsAndProceed() {
@@ -187,9 +250,12 @@ public class LoginActivity extends AppCompatActivity {
         String sessionToken = session.getSessionToken();
 
         if (userId == null || sessionToken == null) {
-            // No userId available (legacy session) — skip T&C check
-            Log.w(TAG, "No userId in session, skipping T&C check");
-            navigateToMainActivity();
+            // No userId available (legacy session) — force re-login to ensure T&C compliance
+            Log.w(TAG, "No userId in session, clearing stale session and requiring re-login");
+            clearSession();
+            progressBar.setVisibility(View.GONE);
+            btnLogin.setEnabled(true);
+            Toast.makeText(this, "Session expired — please log in again", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -258,6 +324,14 @@ public class LoginActivity extends AppCompatActivity {
                         .setCancelable(false)
                         .show();
             }
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (authClient != null) {
+            authClient.shutdown();
         }
     }
 

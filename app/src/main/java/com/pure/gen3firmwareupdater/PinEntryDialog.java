@@ -109,9 +109,9 @@ public class PinEntryDialog extends DialogFragment {
         String sessionToken = getArguments() != null ? getArguments().getString(ARG_SESSION_TOKEN) : null;
 
         // Check for cached PIN first (skip for security-sensitive flows like PIN change)
-        if (!skipCache && scooterId != null && pinCache.hasCachedPin(scooterId)) {
-            String cachedPin = pinCache.getCachedPin(scooterId);
-            if (cachedPin != null) {
+        // Get the value once to avoid race where PIN expires between hasCachedPin() and getCachedPin()
+        String cachedPin = (!skipCache && scooterId != null) ? pinCache.getCachedPin(scooterId) : null;
+        if (cachedPin != null) {
                 if (!ServiceFactory.isNetworkAvailable()) {
                     // Offline: trust the cached PIN without server verification
                     Log.d(TAG, "Offline — trusting cached PIN for lock/unlock");
@@ -126,7 +126,6 @@ public class PinEntryDialog extends DialogFragment {
                 autoVerifyWithCachedPin(cachedPin, scooterId, sessionToken, isLocking);
                 // Return a dummy dialog that never shows
                 return new AlertDialog.Builder(requireContext()).create();
-            }
         }
 
         // No cached PIN or cache expired - check if offline

@@ -218,6 +218,12 @@ public class PinCacheManager {
 
         byte[] combined = Base64.decode(encryptedData, Base64.DEFAULT);
 
+        // Validate minimum length: 12-byte IV + at least 1 byte ciphertext + 16-byte GCM tag
+        if (combined.length < 29) {
+            Log.w(TAG, "Corrupted cached PIN data (too short), clearing");
+            throw new GeneralSecurityException("Encrypted data too short to contain IV + ciphertext");
+        }
+
         // Extract IV (first 12 bytes for GCM)
         byte[] iv = new byte[12];
         byte[] ciphertext = new byte[combined.length - 12];

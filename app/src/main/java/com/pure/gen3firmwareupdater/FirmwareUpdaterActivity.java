@@ -30,6 +30,8 @@ import com.pure.gen3firmwareupdater.services.ScooterConnectionService;
 import com.pure.gen3firmwareupdater.services.ServiceFactory;
 import com.pure.gen3firmwareupdater.services.SessionManager;
 
+import io.intercom.android.sdk.Intercom;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -988,6 +990,9 @@ public class FirmwareUpdaterActivity extends AppCompatActivity
 
         // Clear session and go to registration choice
         session.clearSession();
+        if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+            Intercom.client().logout();
+        }
         Intent intent = new Intent(FirmwareUpdaterActivity.this, RegistrationChoiceActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
