@@ -31,9 +31,11 @@ public class SessionManager {
     private static final String KEY_ACTIVATION_CODE = "last_activation_code";
 
     private final SharedPreferences prefs;
+    private final Context context;
 
     public SessionManager(Context context) {
-        this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        this.context = context.getApplicationContext();
+        this.prefs = this.context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
     // ==================================================================================
@@ -55,9 +57,18 @@ public class SessionManager {
 
     /**
      * Clear all session data (logout).
+     * Also clears all cached PINs for security.
      */
     public void clearSession() {
         prefs.edit().clear().apply();
+
+        // Clear all cached PINs on logout for security
+        try {
+            PinCacheManager pinCache = new PinCacheManager(context);
+            pinCache.clearAllCachedPins();
+        } catch (Exception e) {
+            // Ignore if PinCacheManager not available
+        }
     }
 
     /**

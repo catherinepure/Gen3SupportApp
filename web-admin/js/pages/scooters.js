@@ -220,8 +220,9 @@ const ScootersPage = (() => {
                 });
             }
 
-            // PIN Management
-            sections.push(buildPINSection(fullScooter));
+            // PIN Management (await async call)
+            const pinSection = await buildPINSection(fullScooter);
+            sections.push(pinSection);
 
             // Metadata
             sections.push(DetailModal.metadataSection(fullScooter));
@@ -407,11 +408,32 @@ const ScootersPage = (() => {
     // PIN Management Functions
     // ========================================================================
 
-    function buildPINSection(scooter) {
+    async function buildPINSection(scooter) {
         const pinFields = [];
 
-        // Check if scooter has a PIN set
-        const hasPIN = scooter.pin_set_at !== null && scooter.pin_set_at !== undefined;
+        // Check if scooter has a PIN set via API
+        let hasPIN = false;
+        try {
+            const response = await fetch('https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1/user-pin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocHhtbHJwZGhhcmhoendqeHVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMDgwNTQsImV4cCI6MjA4NTc4NDA1NH0.w_9rkrz6Mw12asETIAk7jenY-yjVVxrLeWz642k3PVM`,
+                    'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocHhtbHJwZGhhcmhoendqeHVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMDgwNTQsImV4cCI6MjA4NTc4NDA1NH0.w_9rkrz6Mw12asETIAk7jenY-yjVVxrLeWz642k3PVM',
+                },
+                body: JSON.stringify({
+                    action: 'check-pin',
+                    session_token: API.getSessionToken(),
+                    scooter_id: scooter.id
+                })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                hasPIN = data.has_pin || false;
+            }
+        } catch (err) {
+            console.error('Failed to check PIN status:', err);
+        }
 
         if (hasPIN) {
             pinFields.push({
@@ -510,10 +532,27 @@ const ScootersPage = (() => {
         }
 
         try {
-            await API.call('scooters', 'set-pin', {
-                scooter_id: scooterId,
-                pin: pin
+            // Call user-pin Edge Function directly (admin bypass)
+            const response = await fetch('https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1/user-pin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocHhtbHJwZGhhcmhoendqeHVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMDgwNTQsImV4cCI6MjA4NTc4NDA1NH0.w_9rkrz6Mw12asETIAk7jenY-yjVVxrLeWz642k3PVM`,
+                    'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocHhtbHJwZGhhcmhoendqeHVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMDgwNTQsImV4cCI6MjA4NTc4NDA1NH0.w_9rkrz6Mw12asETIAk7jenY-yjVVxrLeWz642k3PVM',
+                    'X-Session-Token': API.getSessionToken(),
+                },
+                body: JSON.stringify({
+                    action: 'set-pin',
+                    session_token: API.getSessionToken(),
+                    scooter_id: scooterId,
+                    pin: pin
+                })
             });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to set PIN');
+            }
 
             toast('PIN set successfully', 'success');
 
@@ -535,7 +574,26 @@ const ScootersPage = (() => {
         }
 
         try {
-            await API.call('scooters', 'reset-pin', { scooter_id: scooterId });
+            // Call user-pin Edge Function directly (admin bypass)
+            const response = await fetch('https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1/user-pin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${API.anonKey}`,
+                    'apikey': API.anonKey,
+                    'X-Session-Token': API.getSessionToken(),
+                },
+                body: JSON.stringify({
+                    action: 'clear-pin',
+                    session_token: API.getSessionToken(),
+                    scooter_id: scooterId
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to clear PIN');
+            }
 
             toast('PIN cleared successfully', 'success');
 

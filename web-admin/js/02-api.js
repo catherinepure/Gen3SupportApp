@@ -152,6 +152,7 @@ const API = (() => {
 
     function getUser() { return currentUser; }
     function isLoggedIn() { return !!sessionToken; }
+    function getSessionToken() { return sessionToken; }
 
     return {
         call,
@@ -160,6 +161,7 @@ const API = (() => {
         restoreSession,
         getUser,
         isLoggedIn,
+        getSessionToken,
         baseUrl: `${CONFIG.supabaseUrl}/functions/v1`,
         anonKey: CONFIG.anonKey
     };

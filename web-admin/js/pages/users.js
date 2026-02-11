@@ -17,6 +17,7 @@ const UsersPage = (() => {
     let totalRecords = 0;
     let distributorsList = [];
     let workshopsList = [];
+    let currentDetailUserId = null;
 
     // ---- Reference Data ----
 
@@ -188,6 +189,7 @@ const UsersPage = (() => {
 
     async function showUserDetail(user) {
         try {
+            currentDetailUserId = user.id;
             const result = await API.call('users', 'get', { id: user.id });
             const fullUser = result.user;
             const scooters = result.scooters || [];
@@ -767,7 +769,7 @@ const UsersPage = (() => {
         }
 
         try {
-            const result = await API.call('admin', 'get-pin', { scooter_id: scooterId });
+            const result = await API.call('scooters', 'get-pin', { scooter_id: scooterId });
 
             if (result.pin) {
                 alert(`PIN for ${scooterSerial}:\n\n${result.pin}\n\nPlease keep this secure.`);
@@ -793,20 +795,34 @@ const UsersPage = (() => {
         }
 
         try {
-            await API.call('admin', 'set-pin', {
-                scooter_id: scooterId,
-                pin: pin
+            // Call user-pin Edge Function directly (admin bypass)
+            const response = await fetch('https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1/user-pin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${API.anonKey}`,
+                    'apikey': API.anonKey,
+                    'X-Session-Token': API.getSessionToken(),
+                },
+                body: JSON.stringify({
+                    action: 'set-pin',
+                    session_token: API.getSessionToken(),
+                    scooter_id: scooterId,
+                    pin: pin
+                })
             });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to set PIN');
+            }
 
             Utils.toast('PIN set successfully', 'success');
 
-            // Reload the current user detail if visible
-            setTimeout(() => {
-                const currentUser = currentUsers.find(u => u.scooters?.some(s => s.id === scooterId));
-                if (currentUser) {
-                    showUserDetail(currentUser);
-                }
-            }, 500);
+            // Reload the current user detail to refresh PIN status
+            if (currentDetailUserId) {
+                showUserDetail({ id: currentDetailUserId });
+            }
         } catch (err) {
             Utils.toast(err.message, 'error');
         }
@@ -818,17 +834,33 @@ const UsersPage = (() => {
         }
 
         try {
-            await API.call('admin', 'reset-pin', { scooter_id: scooterId });
+            // Call user-pin Edge Function directly (admin bypass)
+            const response = await fetch('https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1/user-pin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${API.anonKey}`,
+                    'apikey': API.anonKey,
+                    'X-Session-Token': API.getSessionToken(),
+                },
+                body: JSON.stringify({
+                    action: 'clear-pin',
+                    session_token: API.getSessionToken(),
+                    scooter_id: scooterId
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to clear PIN');
+            }
 
             Utils.toast('PIN cleared successfully', 'success');
 
-            // Reload the current user detail if visible
-            setTimeout(() => {
-                const currentUser = currentUsers.find(u => u.scooters?.some(s => s.id === scooterId));
-                if (currentUser) {
-                    showUserDetail(currentUser);
-                }
-            }, 500);
+            // Reload the current user detail to refresh PIN status
+            if (currentDetailUserId) {
+                showUserDetail({ id: currentDetailUserId });
+            }
         } catch (err) {
             Utils.toast(err.message, 'error');
         }

@@ -489,7 +489,7 @@ async function handleUsers(supabase: any, action: string, body: any, admin: any)
 
     // Get linked scooters
     const { data: scooters } = await supabase.from('user_scooters')
-      .select('*, scooters(zyd_serial, model, status)')
+      .select('*, scooters(id, zyd_serial, model, status, pin_set_at, pin_encrypted, pin_set_by_user_id)')
       .eq('user_id', body.id)
 
     // Get recent sessions

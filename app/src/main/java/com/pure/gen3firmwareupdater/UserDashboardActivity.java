@@ -585,6 +585,14 @@ public class UserDashboardActivity extends AppCompatActivity
                 // Toggle stays in its original position (already reverted)
                 Log.d(TAG, "Lock PIN entry cancelled");
             }
+
+            @Override
+            public void onPinNotSet(boolean isLocking) {
+                // PIN was cleared remotely — update local state and show setup dialog
+                Log.d(TAG, "PIN was cleared remotely, redirecting to PIN setup");
+                scooterHasPin = false;
+                showPinSetupForLock(isLocking);
+            }
         });
         dialog.show(getSupportFragmentManager(), "pin_entry");
     }
@@ -606,8 +614,9 @@ public class UserDashboardActivity extends AppCompatActivity
 
             @Override
             public void onPinSkipped() {
-                // User chose not to set a PIN — don't send lock command
-                Log.d(TAG, "PIN setup skipped — lock cancelled");
+                // Never lock without a PIN — locking without PIN gives false sense of security
+                // since anyone connecting via BLE could unlock it
+                Log.d(TAG, "PIN setup skipped — lock not allowed without PIN");
             }
         });
         dialog.show(getSupportFragmentManager(), "pin_setup");

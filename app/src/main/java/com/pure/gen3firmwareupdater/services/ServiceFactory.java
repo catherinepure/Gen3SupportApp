@@ -1,6 +1,8 @@
 package com.pure.gen3firmwareupdater.services;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -23,9 +25,11 @@ import com.pure.gen3firmwareupdater.SupabaseClient;
  */
 public class ServiceFactory {
 
+    private static Context appContext;
     private static SupabaseClient supabaseClient;
     private static SessionManager sessionManager;
     private static TermsManager termsManager;
+    private static PinCacheManager pinCacheManager;
 
     // Shared BLE connection service (persists across activity transitions)
     private static ScooterConnectionService sharedConnectionService;
@@ -38,7 +42,7 @@ public class ServiceFactory {
      * @param context Application context (or any context - getApplicationContext() is called internally)
      */
     public static synchronized void init(Context context) {
-        Context appContext = context.getApplicationContext();
+        appContext = context.getApplicationContext();
         if (sessionManager == null) {
             sessionManager = new SessionManager(appContext);
         }
@@ -49,6 +53,9 @@ public class ServiceFactory {
         if (termsManager == null) {
             termsManager = new TermsManager(appContext,
                     BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY);
+        }
+        if (pinCacheManager == null) {
+            pinCacheManager = new PinCacheManager(appContext);
         }
     }
 
@@ -110,6 +117,35 @@ public class ServiceFactory {
                     "ServiceFactory.init(context) must be called before getTermsManager()");
         }
         return termsManager;
+    }
+
+    /**
+     * Get the shared PinCacheManager instance.
+     *
+     * @throws IllegalStateException if init() hasn't been called yet
+     */
+    public static PinCacheManager getPinCacheManager() {
+        if (pinCacheManager == null) {
+            throw new IllegalStateException(
+                    "ServiceFactory.init(context) must be called before getPinCacheManager()");
+        }
+        return pinCacheManager;
+    }
+
+    /**
+     * Check if the device has an active internet connection.
+     * Used to decide whether to attempt server-side PIN verification
+     * or trust the local cache for offline operation.
+     */
+    public static boolean isNetworkAvailable() {
+        if (appContext == null) return false;
+        ConnectivityManager cm = (ConnectivityManager)
+                appContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm == null) return false;
+        NetworkCapabilities caps = cm.getNetworkCapabilities(cm.getActiveNetwork());
+        return caps != null && (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                || caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET));
     }
 
     // --- Shared BLE connection service (persists across activity transitions) ---
