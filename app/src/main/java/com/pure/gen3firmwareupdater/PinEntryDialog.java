@@ -43,6 +43,9 @@ public class PinEntryDialog extends DialogFragment {
     private static final String ARG_SCOOTER_ID = "scooter_id";
     private static final String ARG_SESSION_TOKEN = "session_token";
     private static final String ARG_IS_LOCKING = "is_locking";
+    private static final String ARG_CUSTOM_TITLE = "custom_title";
+    private static final String ARG_CUSTOM_MESSAGE = "custom_message";
+    private static final String ARG_SKIP_CACHE = "skip_cache";
 
     private static final String BASE_URL = "https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1";
 
@@ -75,6 +78,20 @@ public class PinEntryDialog extends DialogFragment {
         return frag;
     }
 
+    public static PinEntryDialog newInstance(String scooterId, String sessionToken, boolean isLocking,
+                                              String customTitle, String customMessage) {
+        return newInstance(scooterId, sessionToken, isLocking, customTitle, customMessage, false);
+    }
+
+    public static PinEntryDialog newInstance(String scooterId, String sessionToken, boolean isLocking,
+                                              String customTitle, String customMessage, boolean skipCache) {
+        PinEntryDialog frag = newInstance(scooterId, sessionToken, isLocking);
+        frag.getArguments().putString(ARG_CUSTOM_TITLE, customTitle);
+        frag.getArguments().putString(ARG_CUSTOM_MESSAGE, customMessage);
+        frag.getArguments().putBoolean(ARG_SKIP_CACHE, skipCache);
+        return frag;
+    }
+
     public void setPinEntryListener(PinEntryListener listener) {
         this.listener = listener;
     }
@@ -87,11 +104,12 @@ public class PinEntryDialog extends DialogFragment {
         pinCache = ServiceFactory.getPinCacheManager();
 
         boolean isLocking = getArguments() != null && getArguments().getBoolean(ARG_IS_LOCKING, true);
+        boolean skipCache = getArguments() != null && getArguments().getBoolean(ARG_SKIP_CACHE, false);
         String scooterId = getArguments() != null ? getArguments().getString(ARG_SCOOTER_ID) : null;
         String sessionToken = getArguments() != null ? getArguments().getString(ARG_SESSION_TOKEN) : null;
 
-        // Check for cached PIN first
-        if (scooterId != null && pinCache.hasCachedPin(scooterId)) {
+        // Check for cached PIN first (skip for security-sensitive flows like PIN change)
+        if (!skipCache && scooterId != null && pinCache.hasCachedPin(scooterId)) {
             String cachedPin = pinCache.getCachedPin(scooterId);
             if (cachedPin != null) {
                 if (!ServiceFactory.isNetworkAvailable()) {
@@ -136,10 +154,20 @@ public class PinEntryDialog extends DialogFragment {
 
         TextView tvTitle = view.findViewById(R.id.tvPinTitle);
         TextView tvMessage = view.findViewById(R.id.tvPinMessage);
-        tvTitle.setText(isLocking ? "Lock Scooter" : "Unlock Scooter");
-        tvMessage.setText(isLocking
-                ? "Enter your 6-digit PIN to lock the scooter"
-                : "Enter your 6-digit PIN to unlock the scooter");
+        String customTitle = getArguments() != null ? getArguments().getString(ARG_CUSTOM_TITLE) : null;
+        String customMessage = getArguments() != null ? getArguments().getString(ARG_CUSTOM_MESSAGE) : null;
+        if (customTitle != null) {
+            tvTitle.setText(customTitle);
+        } else {
+            tvTitle.setText(isLocking ? "Lock Scooter" : "Unlock Scooter");
+        }
+        if (customMessage != null) {
+            tvMessage.setText(customMessage);
+        } else {
+            tvMessage.setText(isLocking
+                    ? "Enter your 6-digit PIN to lock the scooter"
+                    : "Enter your 6-digit PIN to unlock the scooter");
+        }
 
         // Show cache expiry hint if applicable
         if (scooterId != null && pinCache.shouldReVerify(scooterId)) {

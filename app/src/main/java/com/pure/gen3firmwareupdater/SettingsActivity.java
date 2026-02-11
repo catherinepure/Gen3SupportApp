@@ -153,7 +153,7 @@ public class SettingsActivity extends AppCompatActivity {
             return;
         }
 
-        // Look up scooter DB ID by serial name, then show PIN setup dialog
+        // Look up scooter DB ID, then verify current PIN before allowing change
         ServiceFactory.scooterRepo().getScooterBySerial(lastName,
                 new com.pure.gen3firmwareupdater.services.SupabaseBaseRepository.Callback<com.google.gson.JsonObject>() {
                     @Override
@@ -164,7 +164,7 @@ public class SettingsActivity extends AppCompatActivity {
                                     "Could not find scooter in database", Toast.LENGTH_SHORT).show());
                             return;
                         }
-                        runOnUiThread(() -> showPinSetupDialog(scooterId));
+                        runOnUiThread(() -> verifyCurrentPinThenChange(scooterId));
                     }
 
                     @Override
@@ -175,6 +175,44 @@ public class SettingsActivity extends AppCompatActivity {
                 });
     }
 
+    /**
+     * Step 1: Verify current PIN for security before allowing a PIN change.
+     */
+    private void verifyCurrentPinThenChange(String scooterId) {
+        String sessionToken = session.getSessionToken();
+        if (sessionToken == null) {
+            Toast.makeText(this, "Session expired — please re-login", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        PinEntryDialog verifyDialog = PinEntryDialog.newInstance(scooterId, sessionToken, false,
+                "Verify Current PIN", "Enter your current 6-digit PIN to change it", true);
+        verifyDialog.setPinEntryListener(new PinEntryDialog.PinEntryListener() {
+            @Override
+            public void onPinVerified(boolean isLocking) {
+                // Current PIN verified — now show PIN setup for the new PIN
+                Log.d(TAG, "Current PIN verified, showing new PIN setup");
+                showPinSetupDialog(scooterId);
+            }
+
+            @Override
+            public void onPinCancelled() {
+                Log.d(TAG, "PIN change cancelled — current PIN not verified");
+            }
+
+            @Override
+            public void onPinNotSet(boolean isLocking) {
+                // No PIN set — go straight to setup
+                Log.d(TAG, "No PIN set, going to PIN setup directly");
+                showPinSetupDialog(scooterId);
+            }
+        });
+        verifyDialog.show(getSupportFragmentManager(), "pin_verify_current");
+    }
+
+    /**
+     * Step 2: Show PIN setup dialog for the new PIN (after current PIN verified).
+     */
     private void showPinSetupDialog(String scooterId) {
         String sessionToken = session.getSessionToken();
         if (sessionToken == null) {
