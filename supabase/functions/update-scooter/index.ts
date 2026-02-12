@@ -5,10 +5,12 @@
 // All writes use service_role after session token validation.
 //
 // Actions:
-//   get-or-create      — lookup scooter by zyd_serial, create if not found, return ID
-//   update-version     — update firmware versions, model, embedded_serial, last_connected_at
-//   create-telemetry   — insert scooter_telemetry record + update scooter version info
-//   create-scan-record — insert firmware_uploads record (scan tracking)
+//   get-or-create       — lookup scooter by zyd_serial, create if not found, return ID
+//   update-version      — update firmware versions, model, embedded_serial, last_connected_at
+//   create-telemetry    — insert scooter_telemetry record + update scooter version info
+//   create-scan-record  — insert firmware_uploads record (scan tracking)
+//   request-diagnostic  — (admin/manager) set diagnostic flag + config on a scooter
+//   clear-diagnostic    — clear diagnostic flag, optionally record decline timestamp
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -176,6 +178,7 @@ serve(async (req) => {
     // ================================================================
     if (action === 'create-telemetry') {
       const { scooter_id, distributor_id, hw_version, sw_version, scan_type,
+              record_type,
               // Version info for scooter update
               controller_hw_version, controller_sw_version,
               meter_hw_version, meter_sw_version, bms_hw_version, bms_sw_version,
@@ -235,6 +238,9 @@ serve(async (req) => {
         sw_version: sw_version || null,
         scan_type: scan_type || 'unknown',
       }
+
+      // Add record_type if provided (start/stop/riding)
+      if (record_type) telemetryData.record_type = record_type
 
       // Add telemetry fields if present
       if (voltage !== undefined) telemetryData.voltage = voltage
@@ -349,6 +355,81 @@ serve(async (req) => {
       }
 
       return respond({ id: scan.id })
+    }
+
+    // ================================================================
+    // ACTION: request-diagnostic — Admin/manager sets diagnostic flag
+    // ================================================================
+    if (action === 'request-diagnostic') {
+      const { scooter_id, diagnostic_config } = body
+
+      if (!scooter_id) {
+        return errorResponse('scooter_id required')
+      }
+
+      // Only admin or manager can request diagnostics
+      if (user.user_level !== 'admin' && user.user_level !== 'manager') {
+        return errorResponse('Only admin or manager can request diagnostics', 403)
+      }
+
+      if (!diagnostic_config || !diagnostic_config.reason) {
+        return errorResponse('diagnostic_config with reason is required')
+      }
+
+      const { error: diagError } = await supabase
+        .from('scooters')
+        .update({
+          diagnostic_requested: true,
+          diagnostic_config: diagnostic_config,
+          diagnostic_requested_by: user.id,
+          diagnostic_requested_at: new Date().toISOString(),
+          diagnostic_declined_at: null,
+        })
+        .eq('id', scooter_id)
+
+      if (diagError) {
+        console.error('request-diagnostic error:', diagError)
+        return errorResponse('Failed to set diagnostic flag: ' + diagError.message, 500)
+      }
+
+      return respond({ success: true, message: 'Diagnostic requested' })
+    }
+
+    // ================================================================
+    // ACTION: clear-diagnostic — Clear diagnostic flag on scooter
+    // ================================================================
+    if (action === 'clear-diagnostic') {
+      const { scooter_id, declined } = body
+
+      if (!scooter_id) {
+        return errorResponse('scooter_id required')
+      }
+
+      const updateData: any = {
+        diagnostic_requested: false,
+        diagnostic_config: null,
+        diagnostic_requested_by: null,
+        diagnostic_requested_at: null,
+      }
+
+      // If user declined, record the timestamp
+      if (declined) {
+        updateData.diagnostic_declined_at = new Date().toISOString()
+      } else {
+        updateData.diagnostic_declined_at = null
+      }
+
+      const { error: clearError } = await supabase
+        .from('scooters')
+        .update(updateData)
+        .eq('id', scooter_id)
+
+      if (clearError) {
+        console.error('clear-diagnostic error:', clearError)
+        return errorResponse('Failed to clear diagnostic flag: ' + clearError.message, 500)
+      }
+
+      return respond({ success: true, message: 'Diagnostic cleared' })
     }
 
     return errorResponse('Unknown action: ' + action)

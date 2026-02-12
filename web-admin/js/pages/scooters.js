@@ -224,6 +224,10 @@ const ScootersPage = (() => {
             const pinSection = await buildPINSection(fullScooter);
             sections.push(pinSection);
 
+            // Diagnostics section
+            const diagSection = buildDiagnosticSection(fullScooter);
+            sections.push(diagSection);
+
             // Metadata
             sections.push(DetailModal.metadataSection(fullScooter));
 
@@ -609,6 +613,174 @@ const ScootersPage = (() => {
         }
     }
 
+    // ========================================================================
+    // Diagnostic Management Functions
+    // ========================================================================
+
+    function buildDiagnosticSection(scooter) {
+        const fields = [];
+        const diagRequested = scooter.diagnostic_requested || false;
+        const diagConfig = scooter.diagnostic_config;
+        const diagDeclinedAt = scooter.diagnostic_declined_at;
+
+        if (diagRequested && diagConfig) {
+            fields.push({
+                label: 'Status',
+                value: '<span class="badge badge-warning">REQUESTED</span>',
+                type: 'html'
+            });
+            if (diagConfig.reason) {
+                fields.push({ label: 'Reason', value: diagConfig.reason });
+            }
+            if (diagConfig.frequency_seconds) {
+                fields.push({ label: 'Frequency', value: `Every ${diagConfig.frequency_seconds} seconds` });
+            }
+            if (diagConfig.max_duration_minutes) {
+                fields.push({ label: 'Max Duration', value: `${diagConfig.max_duration_minutes} minutes` });
+            }
+            if (diagConfig.data_types && diagConfig.data_types.length > 0) {
+                fields.push({ label: 'Data Types', value: diagConfig.data_types.join(', ') });
+            }
+            if (scooter.diagnostic_requested_at) {
+                fields.push({ label: 'Requested At', value: scooter.diagnostic_requested_at, type: 'date' });
+            }
+
+            // Cancel button
+            const cancelBtn = `
+                <div style="margin-top: 10px;">
+                    <button class="btn btn-sm btn-danger" onclick="ScootersPage.cancelDiagnostic('${scooter.id}')">
+                        Cancel Request
+                    </button>
+                </div>
+            `;
+            fields.push({ label: 'Actions', value: cancelBtn, type: 'html' });
+
+        } else if (diagDeclinedAt) {
+            fields.push({
+                label: 'Status',
+                value: '<span class="badge badge-inactive">DECLINED</span>',
+                type: 'html'
+            });
+            fields.push({ label: 'Declined At', value: diagDeclinedAt, type: 'date' });
+
+            // Request again button
+            const requestBtn = `
+                <div style="margin-top: 10px;">
+                    <button class="btn btn-sm btn-primary" onclick="ScootersPage.requestDiagnostic('${scooter.id}')">
+                        Request Again
+                    </button>
+                </div>
+            `;
+            fields.push({ label: 'Actions', value: requestBtn, type: 'html' });
+
+        } else {
+            fields.push({
+                label: 'Status',
+                value: '<span class="badge badge-inactive">NONE</span>',
+                type: 'html'
+            });
+
+            // Request button
+            const requestBtn = `
+                <div style="margin-top: 10px;">
+                    <button class="btn btn-sm btn-primary" onclick="ScootersPage.requestDiagnostic('${scooter.id}')">
+                        Request Diagnostic
+                    </button>
+                </div>
+            `;
+            fields.push({ label: 'Actions', value: requestBtn, type: 'html' });
+        }
+
+        return {
+            title: 'Diagnostics',
+            fields
+        };
+    }
+
+    async function requestDiagnostic(scooterId) {
+        const reason = prompt('Reason for diagnostic request:\n\n(e.g., "Investigating battery drain reported by customer")');
+        if (!reason) return;
+
+        const frequencyStr = prompt('Data collection frequency in seconds (default: 10):', '10');
+        const frequency = parseInt(frequencyStr) || 10;
+
+        const durationStr = prompt('Maximum collection duration in minutes (default: 30):', '30');
+        const duration = parseInt(durationStr) || 30;
+
+        try {
+            const response = await fetch(`${API.baseUrl}/functions/v1/update-scooter`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${API.anonKey}`,
+                    'apikey': API.anonKey,
+                },
+                body: JSON.stringify({
+                    action: 'request-diagnostic',
+                    session_token: API.getSessionToken(),
+                    scooter_id: scooterId,
+                    diagnostic_config: {
+                        reason: reason,
+                        frequency_seconds: frequency,
+                        max_duration_minutes: duration,
+                        data_types: ['telemetry', 'battery_history']
+                    }
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to request diagnostic');
+            }
+
+            toast('Diagnostic requested successfully', 'success');
+
+            // Reload detail view
+            setTimeout(() => {
+                const scooter = currentScooters.find(s => s.id === scooterId);
+                if (scooter) showScooterDetail(scooter);
+            }, 500);
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    }
+
+    async function cancelDiagnostic(scooterId) {
+        if (!confirm('Cancel the diagnostic request for this scooter?')) return;
+
+        try {
+            const response = await fetch(`${API.baseUrl}/functions/v1/update-scooter`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${API.anonKey}`,
+                    'apikey': API.anonKey,
+                },
+                body: JSON.stringify({
+                    action: 'clear-diagnostic',
+                    session_token: API.getSessionToken(),
+                    scooter_id: scooterId,
+                    declined: false
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to cancel diagnostic');
+            }
+
+            toast('Diagnostic request cancelled', 'success');
+
+            // Reload detail view
+            setTimeout(() => {
+                const scooter = currentScooters.find(s => s.id === scooterId);
+                if (scooter) showScooterDetail(scooter);
+            }, 500);
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    }
+
     async function unlinkOwner(scooterId, userId, ownerEmail) {
         if (!confirm(`Remove owner ${ownerEmail} from this scooter?\n\nThis will unlink the user from the scooter.`)) {
             return;
@@ -679,5 +851,5 @@ const ScootersPage = (() => {
         RefreshController.detach();
     }
 
-    return { init, onNavigate, onLeave, viewPIN, setPIN, resetPIN, unlinkOwner };
+    return { init, onNavigate, onLeave, viewPIN, setPIN, resetPIN, unlinkOwner, requestDiagnostic, cancelDiagnostic };
 })();

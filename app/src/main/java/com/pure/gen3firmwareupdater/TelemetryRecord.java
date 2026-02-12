@@ -45,6 +45,7 @@ public class TelemetryRecord {
 
     // Metadata
     public String scanType;  // 'distributor_scan', 'user_connection', 'firmware_update'
+    public String recordType; // 'start', 'stop', 'riding' — null for legacy records
     public String notes;
     public String scannedAt;
 

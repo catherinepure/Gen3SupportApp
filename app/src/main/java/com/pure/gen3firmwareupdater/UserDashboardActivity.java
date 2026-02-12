@@ -25,12 +25,14 @@ import com.google.firebase.messaging.FirebaseMessaging;
 
 import android.widget.Toast;
 
+import com.google.gson.JsonObject;
 import com.pure.gen3firmwareupdater.services.DeviceTokenManager;
 import com.pure.gen3firmwareupdater.services.PermissionHelper;
 import com.pure.gen3firmwareupdater.services.ScooterConnectionService;
 import com.pure.gen3firmwareupdater.services.ServiceFactory;
 import com.pure.gen3firmwareupdater.services.SessionManager;
 import com.pure.gen3firmwareupdater.services.SupabaseBaseRepository;
+import com.pure.gen3firmwareupdater.services.TelemetryQueueManager;
 import com.pure.gen3firmwareupdater.services.TermsManager;
 import com.pure.gen3firmwareupdater.services.UserSettingsManager;
 import com.pure.gen3firmwareupdater.views.BatteryGaugeView;
@@ -82,6 +84,17 @@ public class UserDashboardActivity extends AppCompatActivity
     private VersionInfo storedVersion;
     private RunningDataInfo storedRunningData;
     private BMSDataInfo storedBMSData;
+
+    // Stop telemetry guard — prevents duplicate stop records
+    private final AtomicBoolean stopRecordCreated = new AtomicBoolean(false);
+
+    // Snapshot fields for stop telemetry (saved on connect, updated on each A0/A1 callback)
+    private String savedScooterSerial;
+    private String savedDistributorId;
+    private VersionInfo savedVersion;
+    private RunningDataInfo savedRunningData;
+    private BMSDataInfo savedBMSData;
+    private String savedEmbeddedSerial;
 
     // PIN / Lock state
     private String scooterDbId;         // UUID from scooters table (looked up on connect)
@@ -498,6 +511,9 @@ public class UserDashboardActivity extends AppCompatActivity
 
     private void disconnectScooter() {
         stopTelemetryPolling();
+        // Create stop telemetry BEFORE releasing connection service
+        // (releaseConnectionService nulls scooterDbId and connectionService)
+        createStopTelemetry();
         ServiceFactory.releaseConnectionService();
         connectionService = null;
         scooterDbId = null;
@@ -682,6 +698,20 @@ public class UserDashboardActivity extends AppCompatActivity
                                 && !scooter.get("pin_encrypted").isJsonNull();
                         Log.d(TAG, "Scooter DB lookup: id=" + scooterDbId
                                 + " hasPin=" + scooterHasPin);
+
+                        // Check if CS team has requested diagnostics for this scooter
+                        boolean diagRequested = scooter.has("diagnostic_requested")
+                                && !scooter.get("diagnostic_requested").isJsonNull()
+                                && scooter.get("diagnostic_requested").getAsBoolean();
+                        if (diagRequested && scooter.has("diagnostic_config")
+                                && !scooter.get("diagnostic_config").isJsonNull()) {
+                            JsonObject config = scooter.get("diagnostic_config").getAsJsonObject();
+                            runOnUiThread(() -> {
+                                if (!isDestroyed() && !isFinishing()) {
+                                    showDiagnosticConsentDialog(config);
+                                }
+                            });
+                        }
                     }
 
                     @Override
@@ -913,9 +943,13 @@ public class UserDashboardActivity extends AppCompatActivity
     public void onConnected(String deviceName, String serialNumber) {
         Log.d(TAG, "Connected to: " + deviceName + " serial: " + serialNumber);
         connectedDeviceName = deviceName; // ZYD name used as DB key
+        stopRecordCreated.set(false); // Reset for new connection
         runOnUiThread(() -> tvConnectionStatus.setText("Connected - " + deviceName));
         setState(State.CONNECTED);
         startTelemetryPolling();
+
+        // Upload any queued offline telemetry from previous disconnects
+        drainTelemetryQueue();
 
         // Save last connected scooter for auto-connect
         if (deviceName != null) {
@@ -950,8 +984,8 @@ public class UserDashboardActivity extends AppCompatActivity
     }
 
     /**
-     * Create a telemetry record and update the scooter's static record on connection.
-     * This ensures firmware versions and last_connected_at are updated in the DB.
+     * Create a "start" telemetry record and update the scooter's static record on connection.
+     * Also saves snapshot data for the later "stop" record at disconnect.
      * Fire-and-forget — does not block UI.
      */
     private void createConnectionTelemetry(VersionInfo version) {
@@ -959,20 +993,28 @@ public class UserDashboardActivity extends AppCompatActivity
         String embeddedSerial = (version.embeddedSerialNumber != null && !version.embeddedSerialNumber.isEmpty())
                 ? version.embeddedSerialNumber : null;
 
+        // Save snapshots for stop telemetry at disconnect
+        savedScooterSerial = connectedDeviceName;
+        savedDistributorId = distributorId;
+        savedVersion = version;
+        savedRunningData = storedRunningData;
+        savedBMSData = storedBMSData;
+        savedEmbeddedSerial = embeddedSerial;
+
         SupabaseClient supabase = ServiceFactory.getSupabaseClient();
         supabase.createTelemetryRecord(connectedDeviceName, distributorId,
                 version.controllerHwVersion, version.controllerSwVersion,
                 storedRunningData, storedBMSData, embeddedSerial, "user_dashboard",
-                version, null,
+                version, null, "start",
                 new SupabaseClient.Callback<String>() {
                     @Override
                     public void onSuccess(String recordId) {
-                        Log.d(TAG, "Dashboard telemetry record created: " + recordId);
+                        Log.d(TAG, "Start telemetry record created: " + recordId);
                     }
 
                     @Override
                     public void onError(String error) {
-                        Log.w(TAG, "Failed to create dashboard telemetry: " + error);
+                        Log.w(TAG, "Failed to create start telemetry: " + error);
                     }
                 });
     }
@@ -981,6 +1023,7 @@ public class UserDashboardActivity extends AppCompatActivity
     public void onRunningDataReceived(RunningDataInfo data) {
         if (data == null) return;
         storedRunningData = data;
+        savedRunningData = data; // Keep snapshot current for stop telemetry
 
         lastControlFlags = data.controlFlags;
         lastCruiseSpeed = data.cruiseSpeed;
@@ -1007,6 +1050,7 @@ public class UserDashboardActivity extends AppCompatActivity
     public void onBMSDataReceived(BMSDataInfo data) {
         if (data == null) return;
         storedBMSData = data;
+        savedBMSData = data; // Keep snapshot current for stop telemetry
 
         runOnUiThread(() -> batteryGauge.setBatteryPercent(data.batteryPercent));
     }
@@ -1025,6 +1069,13 @@ public class UserDashboardActivity extends AppCompatActivity
     public void onDisconnected(boolean wasExpected) {
         Log.d(TAG, "Disconnected (expected=" + wasExpected + ")");
         stopTelemetryPolling();
+
+        // For unexpected disconnects, create stop telemetry here
+        // (for expected disconnects, it's already called in disconnectScooter() before release)
+        if (!wasExpected) {
+            createStopTelemetry();
+        }
+
         setState(State.DISCONNECTED);
     }
 
@@ -1047,5 +1098,203 @@ public class UserDashboardActivity extends AppCompatActivity
     @Override
     public void onCommandSent(boolean success, String message) {
         Log.d(TAG, "Command sent: success=" + success + " msg=" + message);
+    }
+
+    // ==================================================================================
+    // STOP TELEMETRY & OFFLINE QUEUE
+    // ==================================================================================
+
+    /**
+     * Create a "stop" telemetry record at disconnect.
+     * Uses saved snapshot data (which is updated on every A0/A1 callback).
+     * Guarded by stopRecordCreated to prevent duplicate records.
+     * If offline, queues the record for later upload.
+     */
+    private void createStopTelemetry() {
+        // Prevent duplicate stop records (both disconnectScooter and onDisconnected could fire)
+        if (stopRecordCreated.getAndSet(true)) {
+            Log.d(TAG, "Stop telemetry already created, skipping");
+            return;
+        }
+
+        // Need at least a serial to create a meaningful record
+        if (savedScooterSerial == null) {
+            Log.w(TAG, "No saved scooter serial for stop telemetry");
+            return;
+        }
+
+        Log.d(TAG, "Creating stop telemetry for: " + savedScooterSerial);
+
+        // Check network availability
+        if (!ServiceFactory.isNetworkAvailable()) {
+            Log.d(TAG, "No network — queuing stop telemetry for later upload");
+            queueStopTelemetry();
+            return;
+        }
+
+        // Try direct upload
+        String hwVersion = savedVersion != null ? savedVersion.controllerHwVersion : null;
+        String swVersion = savedVersion != null ? savedVersion.controllerSwVersion : null;
+
+        SupabaseClient supabase = ServiceFactory.getSupabaseClient();
+        supabase.createTelemetryRecord(savedScooterSerial, savedDistributorId,
+                hwVersion, swVersion,
+                savedRunningData, savedBMSData, savedEmbeddedSerial, "user_dashboard",
+                savedVersion, null, "stop",
+                new SupabaseClient.Callback<String>() {
+                    @Override
+                    public void onSuccess(String recordId) {
+                        Log.d(TAG, "Stop telemetry record created: " + recordId);
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        Log.w(TAG, "Failed to create stop telemetry, queuing: " + error);
+                        queueStopTelemetry();
+                    }
+                });
+    }
+
+    /**
+     * Queue a stop telemetry record for later upload (offline scenario).
+     * Builds a JsonObject with all telemetry fields from saved snapshots.
+     */
+    private void queueStopTelemetry() {
+        try {
+            JsonObject record = new JsonObject();
+            record.addProperty("scooter_serial", savedScooterSerial);
+            record.addProperty("record_type", "stop");
+            record.addProperty("scan_type", "user_dashboard");
+            record.addProperty("queued_at", new java.text.SimpleDateFormat(
+                    "yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(new java.util.Date()));
+
+            if (savedDistributorId != null) record.addProperty("distributor_id", savedDistributorId);
+
+            // Version info
+            if (savedVersion != null) {
+                if (savedVersion.controllerHwVersion != null) {
+                    record.addProperty("hw_version", savedVersion.controllerHwVersion);
+                    record.addProperty("controller_hw_version", savedVersion.controllerHwVersion);
+                }
+                if (savedVersion.controllerSwVersion != null) {
+                    record.addProperty("sw_version", savedVersion.controllerSwVersion);
+                    record.addProperty("controller_sw_version", savedVersion.controllerSwVersion);
+                }
+                if (savedVersion.meterHwVersion != null) record.addProperty("meter_hw_version", savedVersion.meterHwVersion);
+                if (savedVersion.meterSwVersion != null) record.addProperty("meter_sw_version", savedVersion.meterSwVersion);
+                if (savedVersion.bmsHwVersion != null) record.addProperty("bms_hw_version", savedVersion.bmsHwVersion);
+                if (savedVersion.bmsSwVersion != null) record.addProperty("bms_sw_version", savedVersion.bmsSwVersion);
+            }
+
+            if (savedEmbeddedSerial != null) record.addProperty("embedded_serial", savedEmbeddedSerial);
+
+            // BMS data (0xA1)
+            if (savedBMSData != null) {
+                record.addProperty("voltage", savedBMSData.batteryVoltage);
+                record.addProperty("current", savedBMSData.batteryCurrent);
+                record.addProperty("battery_soc", savedBMSData.batterySOC);
+                record.addProperty("battery_health", savedBMSData.batteryHealth);
+                record.addProperty("battery_charge_cycles", savedBMSData.chargeCycles);
+                record.addProperty("battery_discharge_cycles", savedBMSData.dischargeCycles);
+                record.addProperty("remaining_capacity_mah", savedBMSData.remainingCapacity);
+                record.addProperty("full_capacity_mah", savedBMSData.fullCapacity);
+                record.addProperty("battery_temp", savedBMSData.batteryTemperature);
+            }
+
+            // Running data (0xA0)
+            if (savedRunningData != null) {
+                record.addProperty("speed_kmh", savedRunningData.currentSpeed);
+                record.addProperty("odometer_km", savedRunningData.totalDistance);
+                record.addProperty("motor_temp", savedRunningData.motorTemp);
+                record.addProperty("controller_temp", savedRunningData.controllerTemp);
+                record.addProperty("fault_code", savedRunningData.faultCode);
+                record.addProperty("gear_level", savedRunningData.gearLevel);
+                record.addProperty("trip_distance_km", savedRunningData.tripDistance);
+                record.addProperty("remaining_range_km", savedRunningData.remainingRange);
+                record.addProperty("motor_rpm", savedRunningData.motorRPM);
+                record.addProperty("current_limit", savedRunningData.currentLimit);
+            }
+
+            ServiceFactory.getTelemetryQueueManager().enqueue(record);
+            Log.d(TAG, "Stop telemetry queued for later upload");
+
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to queue stop telemetry: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Upload any queued offline telemetry records from previous disconnects.
+     * Called on new BLE connection (onConnected). Fire-and-forget.
+     */
+    private void drainTelemetryQueue() {
+        TelemetryQueueManager queueManager = ServiceFactory.getTelemetryQueueManager();
+        if (!queueManager.hasPending()) return;
+
+        java.util.List<JsonObject> queued = queueManager.drainQueue();
+        Log.d(TAG, "Drained " + queued.size() + " queued telemetry records");
+
+        for (JsonObject record : queued) {
+            ServiceFactory.telemetryRepo().uploadQueuedTelemetry(record);
+        }
+    }
+
+    // ==================================================================================
+    // DIAGNOSTIC CONSENT
+    // ==================================================================================
+
+    /**
+     * Show a consent dialog when CS team has requested diagnostics for this scooter.
+     * The user can Accept (stores consent locally for Phase 3) or Decline (clears flag in DB).
+     */
+    private void showDiagnosticConsentDialog(JsonObject config) {
+        String reason = config.has("reason") && !config.get("reason").isJsonNull()
+                ? config.get("reason").getAsString() : "Diagnostic data collection requested";
+
+        int frequencySec = config.has("frequency_seconds") ? config.get("frequency_seconds").getAsInt() : 0;
+        int maxDurationMin = config.has("max_duration_minutes") ? config.get("max_duration_minutes").getAsInt() : 0;
+
+        StringBuilder message = new StringBuilder();
+        message.append("Pure Electric support has requested diagnostic data from your scooter.\n\n");
+        message.append("Reason: ").append(reason).append("\n");
+        if (frequencySec > 0) {
+            message.append("Data frequency: every ").append(frequencySec).append(" seconds\n");
+        }
+        if (maxDurationMin > 0) {
+            message.append("Maximum duration: ").append(maxDurationMin).append(" minutes\n");
+        }
+        message.append("\nThis helps us improve your scooter's performance and safety.");
+        message.append("\n\nDo you consent to this data collection?");
+
+        new AlertDialog.Builder(this)
+                .setTitle("Diagnostic Data Request")
+                .setMessage(message.toString())
+                .setPositiveButton("Accept", (dialog, which) -> {
+                    Log.d(TAG, "User accepted diagnostic request");
+                    // Store consent locally (Phase 3 will use this to start collection)
+                    ServiceFactory.getUserSettingsManager()
+                            .getClass(); // Placeholder — Phase 3 will add diagnostic consent storage
+                    Toast.makeText(this, "Diagnostic collection accepted", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Decline", (dialog, which) -> {
+                    Log.d(TAG, "User declined diagnostic request");
+                    if (scooterDbId != null) {
+                        ServiceFactory.scooterRepo().clearDiagnosticFlag(scooterDbId, true,
+                                new SupabaseBaseRepository.Callback<Void>() {
+                                    @Override
+                                    public void onSuccess(Void result) {
+                                        Log.d(TAG, "Diagnostic flag cleared (declined)");
+                                    }
+
+                                    @Override
+                                    public void onError(String error) {
+                                        Log.w(TAG, "Failed to clear diagnostic flag: " + error);
+                                    }
+                                });
+                    }
+                    Toast.makeText(this, "Diagnostic request declined", Toast.LENGTH_SHORT).show();
+                })
+                .setCancelable(false)
+                .show();
     }
 }

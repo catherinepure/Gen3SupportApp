@@ -92,11 +92,25 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
                                        String embeddedSerial, String scanType,
                                        Callback<String> callback) {
         createTelemetryRecord(scooterSerial, distributorId, hwVersion, swVersion,
-                runningData, bmsData, embeddedSerial, scanType, null, null, callback);
+                runningData, bmsData, embeddedSerial, scanType, null, null, null, callback);
     }
 
     /**
      * Create a telemetry record and update the static scooter record with version info.
+     * Backward-compatible overload — delegates to the full version with recordType=null.
+     */
+    public void createTelemetryRecord(String scooterSerial, String distributorId,
+                                       String hwVersion, String swVersion,
+                                       RunningDataInfo runningData, BMSDataInfo bmsData,
+                                       String embeddedSerial, String scanType,
+                                       VersionInfo versionInfo, String model,
+                                       Callback<String> callback) {
+        createTelemetryRecord(scooterSerial, distributorId, hwVersion, swVersion,
+                runningData, bmsData, embeddedSerial, scanType, versionInfo, model, null, callback);
+    }
+
+    /**
+     * Create a telemetry record with record_type (start/stop/riding).
      * Uses Edge Function for all writes (service_role), keeping user_id lookup server-side.
      */
     public void createTelemetryRecord(String scooterSerial, String distributorId,
@@ -104,6 +118,7 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
                                        RunningDataInfo runningData, BMSDataInfo bmsData,
                                        String embeddedSerial, String scanType,
                                        VersionInfo versionInfo, String model,
+                                       String recordType,
                                        Callback<String> callback) {
         executor.execute(() -> {
             try {
@@ -117,6 +132,7 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
                 if (hwVersion != null) body.addProperty("hw_version", hwVersion);
                 if (swVersion != null) body.addProperty("sw_version", swVersion);
                 if (scanType != null) body.addProperty("scan_type", scanType);
+                if (recordType != null) body.addProperty("record_type", recordType);
 
                 // Version info for scooter record update
                 if (versionInfo != null) {
@@ -309,5 +325,66 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
 
         record.embeddedSerial = obj.has("embedded_serial") && !obj.get("embedded_serial").isJsonNull()
                 ? obj.get("embedded_serial").getAsString() : null;
+
+        record.recordType = obj.has("record_type") && !obj.get("record_type").isJsonNull()
+                ? obj.get("record_type").getAsString() : null;
+    }
+
+    /**
+     * Upload a pre-built telemetry record from the offline queue.
+     * Resolves scooter_id from serial before sending.
+     * Must be called from a background thread.
+     */
+    public void uploadQueuedTelemetry(JsonObject queuedRecord) {
+        executor.execute(() -> {
+            try {
+                // Resolve scooter_id from serial (queued records store serial, not ID)
+                String serial = queuedRecord.has("scooter_serial")
+                        ? queuedRecord.get("scooter_serial").getAsString() : null;
+                if (serial == null) {
+                    Log.w(TAG, "Queued telemetry missing scooter_serial, skipping");
+                    return;
+                }
+
+                String distributorId = queuedRecord.has("distributor_id")
+                        && !queuedRecord.get("distributor_id").isJsonNull()
+                        ? queuedRecord.get("distributor_id").getAsString() : null;
+
+                String scooterId = scooterRepo.getOrCreateScooterId(serial, distributorId, null, null);
+
+                // Build Edge Function request from queued data
+                JsonObject body = new JsonObject();
+                body.addProperty("action", "create-telemetry");
+                body.addProperty("scooter_id", scooterId);
+
+                // Copy all telemetry fields from queued record
+                String[] fields = {
+                    "distributor_id", "hw_version", "sw_version", "scan_type", "record_type",
+                    "voltage", "current", "battery_soc", "battery_health",
+                    "battery_charge_cycles", "battery_discharge_cycles",
+                    "remaining_capacity_mah", "full_capacity_mah", "battery_temp",
+                    "speed_kmh", "odometer_km", "motor_temp", "controller_temp",
+                    "fault_code", "gear_level", "trip_distance_km", "remaining_range_km",
+                    "motor_rpm", "current_limit", "embedded_serial",
+                    "controller_hw_version", "controller_sw_version",
+                    "meter_hw_version", "meter_sw_version",
+                    "bms_hw_version", "bms_sw_version", "model"
+                };
+
+                for (String field : fields) {
+                    if (queuedRecord.has(field) && !queuedRecord.get(field).isJsonNull()) {
+                        body.add(field, queuedRecord.get(field));
+                    }
+                }
+
+                Log.d(TAG, "Uploading queued telemetry for scooter: " + serial);
+                callEdgeFunction("update-scooter", body);
+                Log.d(TAG, "Queued telemetry uploaded successfully for: " + serial);
+
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to upload queued telemetry: " + e.getMessage());
+                // Don't re-queue — avoid infinite retry loop
+            }
+        });
     }
 }

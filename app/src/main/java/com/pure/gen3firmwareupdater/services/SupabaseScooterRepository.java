@@ -162,6 +162,35 @@ public class SupabaseScooterRepository extends SupabaseBaseRepository {
     }
 
     /**
+     * Clear the diagnostic flag on a scooter (e.g., after user declines or collection completes).
+     * Calls the Edge Function clear-diagnostic action.
+     *
+     * @param scooterId  The scooter UUID
+     * @param declined   True if user declined the request
+     * @param callback   Callback for result
+     */
+    public void clearDiagnosticFlag(String scooterId, boolean declined, Callback<Void> callback) {
+        executor.execute(() -> {
+            try {
+                JsonObject body = new JsonObject();
+                body.addProperty("action", "clear-diagnostic");
+                body.addProperty("scooter_id", scooterId);
+                body.addProperty("declined", declined);
+
+                Log.d(TAG, "Clearing diagnostic flag for scooter: " + scooterId
+                        + " (declined=" + declined + ")");
+                callEdgeFunction("update-scooter", body);
+                Log.d(TAG, "Diagnostic flag cleared successfully");
+                postSuccess(callback, null);
+
+            } catch (Exception e) {
+                Log.e(TAG, "clearDiagnosticFlag error: " + e.getMessage());
+                postError(callback, formatError(e));
+            }
+        });
+    }
+
+    /**
      * Get registration status for a scooter - check if it's registered to a customer.
      * Looks up scooter ID by serial first — use getScooterRegistrationStatusById if you
      * already have the scooter ID to save a network round-trip.
