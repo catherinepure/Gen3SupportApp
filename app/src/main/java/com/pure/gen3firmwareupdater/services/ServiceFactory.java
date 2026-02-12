@@ -32,6 +32,7 @@ public class ServiceFactory {
     private static PinCacheManager pinCacheManager;
     private static UserSettingsManager userSettingsManager;
     private static TelemetryQueueManager telemetryQueueManager;
+    private static RideRecordingManager rideRecordingManager;
 
     // Shared BLE connection service (persists across activity transitions)
     private static ScooterConnectionService sharedConnectionService;
@@ -64,6 +65,9 @@ public class ServiceFactory {
         }
         if (telemetryQueueManager == null) {
             telemetryQueueManager = new TelemetryQueueManager(appContext);
+        }
+        if (rideRecordingManager == null) {
+            rideRecordingManager = new RideRecordingManager(appContext);
         }
     }
 
@@ -164,6 +168,19 @@ public class ServiceFactory {
                     "ServiceFactory.init(context) must be called before getTelemetryQueueManager()");
         }
         return telemetryQueueManager;
+    }
+
+    /**
+     * Get the shared RideRecordingManager instance.
+     *
+     * @throws IllegalStateException if init() hasn't been called yet
+     */
+    public static RideRecordingManager getRideRecordingManager() {
+        if (rideRecordingManager == null) {
+            throw new IllegalStateException(
+                    "ServiceFactory.init(context) must be called before getRideRecordingManager()");
+        }
+        return rideRecordingManager;
     }
 
     /**

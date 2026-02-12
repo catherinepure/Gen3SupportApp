@@ -23,11 +23,13 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.firebase.messaging.FirebaseMessaging;
 
+import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import com.google.gson.JsonObject;
 import com.pure.gen3firmwareupdater.services.DeviceTokenManager;
 import com.pure.gen3firmwareupdater.services.PermissionHelper;
+import com.pure.gen3firmwareupdater.services.RideRecordingManager;
 import com.pure.gen3firmwareupdater.services.ScooterConnectionService;
 import com.pure.gen3firmwareupdater.services.ServiceFactory;
 import com.pure.gen3firmwareupdater.services.SessionManager;
@@ -58,6 +60,9 @@ public class UserDashboardActivity extends AppCompatActivity
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 301;
     private static final int REQUEST_CODE_TERMS = 1002;
     private static final long TELEMETRY_POLL_INTERVAL_MS = 2000;
+    private static final long RECORDING_POLL_INTERVAL_MS = 1000;
+    private static final int DEFAULT_RECORDING_DURATION_SECONDS = 300; // 5 minutes
+    private static final long FAULT_DEDUP_INTERVAL_MS = 30_000; // 30 seconds
 
     private enum State { DISCONNECTED, CONNECTING, CONNECTED }
 
@@ -100,6 +105,14 @@ public class UserDashboardActivity extends AppCompatActivity
     private String scooterDbId;         // UUID from scooters table (looked up on connect)
     private boolean scooterHasPin;      // Whether this scooter has a PIN set
 
+    // Fault capture state
+    private int lastReportedFaultCode = 0;
+    private long lastFaultReportTimeMs = 0;
+    private boolean faultCaptureEnabled = true;
+
+    // Recording poll interval (switches between 2s and 1s during recording)
+    private long currentPollInterval = TELEMETRY_POLL_INTERVAL_MS;
+
     // UI - Header
     private View statusDot;
     private TextView tvConnectionStatus;
@@ -126,6 +139,24 @@ public class UserDashboardActivity extends AppCompatActivity
     private MaterialButton btnScooterDetails;
     private MaterialButton btnDisconnect;
 
+    // UI - Recording
+    private View cardRecording;
+    private View layoutRecordIdle;
+    private View layoutRecordActive;
+    private MaterialButton btnRecordGo;
+    private MaterialButton btnRecordStop;
+    private TextView tvRecordTitle;
+    private TextView tvRecordSubtitle;
+    private TextView tvRecordingTimer;
+    private TextView tvSampleCount;
+    private ProgressBar progressRecording;
+
+    // Diagnostic recording state
+    private boolean diagnosticActive = false;
+    private String diagnosticConfigJson = null;
+    private int diagnosticRecordingCount = 0;
+    private int diagnosticMaxRecordings = 1;
+
     // Telemetry polling runnable
     private final Runnable telemetryPoller = new Runnable() {
         @Override
@@ -146,7 +177,7 @@ public class UserDashboardActivity extends AppCompatActivity
                 }
             }
             if (pollingActive.get()) {
-                handler.postDelayed(this, TELEMETRY_POLL_INTERVAL_MS);
+                handler.postDelayed(this, currentPollInterval);
             }
         }
     };
@@ -395,6 +426,18 @@ public class UserDashboardActivity extends AppCompatActivity
         switchLock = findViewById(R.id.switchLock);
         btnScooterDetails = findViewById(R.id.btnScooterDetails);
         btnDisconnect = findViewById(R.id.btnDisconnect);
+
+        // Recording
+        cardRecording = findViewById(R.id.cardRecording);
+        layoutRecordIdle = findViewById(R.id.layoutRecordIdle);
+        layoutRecordActive = findViewById(R.id.layoutRecordActive);
+        btnRecordGo = findViewById(R.id.btnRecordGo);
+        btnRecordStop = findViewById(R.id.btnRecordStop);
+        tvRecordTitle = findViewById(R.id.tvRecordTitle);
+        tvRecordSubtitle = findViewById(R.id.tvRecordSubtitle);
+        tvRecordingTimer = findViewById(R.id.tvRecordingTimer);
+        tvSampleCount = findViewById(R.id.tvSampleCount);
+        progressRecording = findViewById(R.id.progressRecording);
     }
 
     private void setupListeners() {
@@ -403,6 +446,9 @@ public class UserDashboardActivity extends AppCompatActivity
         btnDisconnect.setOnClickListener(v -> disconnectScooter());
         btnSettings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         btnLogout.setOnClickListener(v -> logout());
+
+        btnRecordGo.setOnClickListener(v -> onRecordGoTapped());
+        btnRecordStop.setOnClickListener(v -> stopRideRecording());
 
         switchHeadlight.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (!updatingToggles.get()) {
@@ -510,6 +556,10 @@ public class UserDashboardActivity extends AppCompatActivity
     }
 
     private void disconnectScooter() {
+        // Auto-stop recording if active
+        if (ServiceFactory.getRideRecordingManager().isRecording()) {
+            stopRideRecording();
+        }
         stopTelemetryPolling();
         // Create stop telemetry BEFORE releasing connection service
         // (releaseConnectionService nulls scooterDbId and connectionService)
@@ -520,6 +570,14 @@ public class UserDashboardActivity extends AppCompatActivity
         scooterHasPin = false;
         autoConnectAttempted = false;
         devicePickerShown = false;
+
+        // Reset diagnostic state and hide recording card
+        diagnosticActive = false;
+        diagnosticConfigJson = null;
+        diagnosticRecordingCount = 0;
+        diagnosticMaxRecordings = 1;
+        cardRecording.setVisibility(View.GONE);
+
         setState(State.DISCONNECTED);
 
         // Reset gauges
@@ -696,8 +754,14 @@ public class UserDashboardActivity extends AppCompatActivity
                         scooterDbId = scooter.has("id") ? scooter.get("id").getAsString() : null;
                         scooterHasPin = scooter.has("pin_encrypted")
                                 && !scooter.get("pin_encrypted").isJsonNull();
+                        // Read fault_capture_disabled flag
+                        faultCaptureEnabled = !(scooter.has("fault_capture_disabled")
+                                && !scooter.get("fault_capture_disabled").isJsonNull()
+                                && scooter.get("fault_capture_disabled").getAsBoolean());
+
                         Log.d(TAG, "Scooter DB lookup: id=" + scooterDbId
-                                + " hasPin=" + scooterHasPin);
+                                + " hasPin=" + scooterHasPin
+                                + " faultCapture=" + faultCaptureEnabled);
 
                         // Check if CS team has requested diagnostics for this scooter
                         boolean diagRequested = scooter.has("diagnostic_requested")
@@ -951,6 +1015,9 @@ public class UserDashboardActivity extends AppCompatActivity
         // Upload any queued offline telemetry from previous disconnects
         drainTelemetryQueue();
 
+        // Upload any pending ride recording sessions
+        ServiceFactory.getRideRecordingManager().uploadPendingSessions();
+
         // Save last connected scooter for auto-connect
         if (deviceName != null) {
             userSettings.setLastConnectedName(deviceName);
@@ -1029,6 +1096,12 @@ public class UserDashboardActivity extends AppCompatActivity
         lastCruiseSpeed = data.cruiseSpeed;
         lastMaxSpeed = data.maxSpeed;
 
+        // Feed data to ride recorder
+        ServiceFactory.getRideRecordingManager().onRunningDataReceived(data);
+
+        // Always-on fault capture
+        checkForFault(data);
+
         runOnUiThread(() -> {
             speedGauge.setSpeed(data.currentSpeed);
             if (data.maxSpeed > 0) {
@@ -1052,6 +1125,9 @@ public class UserDashboardActivity extends AppCompatActivity
         storedBMSData = data;
         savedBMSData = data; // Keep snapshot current for stop telemetry
 
+        // Feed BMS data to ride recorder
+        ServiceFactory.getRideRecordingManager().onBmsDataReceived(data);
+
         runOnUiThread(() -> batteryGauge.setBatteryPercent(data.batteryPercent));
     }
 
@@ -1070,11 +1146,23 @@ public class UserDashboardActivity extends AppCompatActivity
         Log.d(TAG, "Disconnected (expected=" + wasExpected + ")");
         stopTelemetryPolling();
 
+        // Auto-stop recording if active
+        if (ServiceFactory.getRideRecordingManager().isRecording()) {
+            stopRideRecording();
+        }
+
         // For unexpected disconnects, create stop telemetry here
         // (for expected disconnects, it's already called in disconnectScooter() before release)
         if (!wasExpected) {
             createStopTelemetry();
         }
+
+        // Reset diagnostic state and hide recording card
+        diagnosticActive = false;
+        diagnosticConfigJson = null;
+        diagnosticRecordingCount = 0;
+        diagnosticMaxRecordings = 1;
+        runOnUiThread(() -> cardRecording.setVisibility(View.GONE));
 
         setState(State.DISCONNECTED);
     }
@@ -1271,10 +1359,26 @@ public class UserDashboardActivity extends AppCompatActivity
                 .setMessage(message.toString())
                 .setPositiveButton("Accept", (dialog, which) -> {
                     Log.d(TAG, "User accepted diagnostic request");
-                    // Store consent locally (Phase 3 will use this to start collection)
-                    ServiceFactory.getUserSettingsManager()
-                            .getClass(); // Placeholder — Phase 3 will add diagnostic consent storage
-                    Toast.makeText(this, "Diagnostic collection accepted", Toast.LENGTH_SHORT).show();
+                    diagnosticActive = true;
+                    diagnosticConfigJson = config.toString();
+                    diagnosticRecordingCount = 0;
+
+                    // Parse max_recordings from config (default 1)
+                    diagnosticMaxRecordings = 1;
+                    if (config.has("max_recordings") && !config.get("max_recordings").isJsonNull()) {
+                        int maxRec = config.get("max_recordings").getAsInt();
+                        if (maxRec > 0) diagnosticMaxRecordings = maxRec;
+                    }
+
+                    // Show recording card so user can tap Go
+                    cardRecording.setVisibility(View.VISIBLE);
+                    layoutRecordIdle.setVisibility(View.VISIBLE);
+                    layoutRecordActive.setVisibility(View.GONE);
+                    tvRecordSubtitle.setText("Tap Go to start recording");
+                    btnRecordGo.setEnabled(true);
+                    btnRecordGo.setAlpha(1f);
+                    btnRecordGo.setText("Go");
+                    Toast.makeText(this, "Diagnostic ready — tap Go to start recording", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("Decline", (dialog, which) -> {
                     Log.d(TAG, "User declined diagnostic request");
@@ -1296,5 +1400,291 @@ public class UserDashboardActivity extends AppCompatActivity
                 })
                 .setCancelable(false)
                 .show();
+    }
+
+    // ==================================================================================
+    // RIDE RECORDING
+    // ==================================================================================
+
+    /**
+     * Called when user taps the "Go" button on the recording card.
+     * Deletes any previous ride sessions for this scooter (local + remote) before starting.
+     * This allows the user to re-record multiple times during a diagnostic, keeping only the latest.
+     */
+    private void onRecordGoTapped() {
+        if (!diagnosticActive) {
+            Log.w(TAG, "Go tapped but no diagnostic active");
+            return;
+        }
+
+        // Reset UI state (in case re-recording after a completed session)
+        tvRecordSubtitle.setText("Preparing to record...");
+        btnRecordGo.setEnabled(false);
+        btnRecordGo.setAlpha(0.5f);
+
+        RideRecordingManager recorder = ServiceFactory.getRideRecordingManager();
+
+        // Stop current recording if running (user tapping Go again)
+        if (recorder.isRecording()) {
+            recorder.stopRecording();
+        }
+
+        // Parse duration from diagnostic config
+        int durationSec = DEFAULT_RECORDING_DURATION_SECONDS;
+        if (diagnosticConfigJson != null) {
+            try {
+                JsonObject config = com.google.gson.JsonParser.parseString(diagnosticConfigJson).getAsJsonObject();
+                if (config.has("max_duration_minutes") && !config.get("max_duration_minutes").isJsonNull()) {
+                    int mins = config.get("max_duration_minutes").getAsInt();
+                    if (mins > 0) durationSec = mins * 60;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Could not parse diagnostic config duration: " + e.getMessage());
+            }
+        }
+
+        // Delete previous sessions for this scooter (local + remote), then start new recording
+        final int finalDuration = durationSec;
+        deletePreviousSessionsAndRecord(finalDuration);
+    }
+
+    /**
+     * Delete all previous ride sessions for this scooter (both local Room DB and remote Supabase),
+     * then start a new diagnostic recording.
+     */
+    private void deletePreviousSessionsAndRecord(int durationSec) {
+        final String serial = connectedDeviceName;
+        final String dbId = scooterDbId;
+
+        RideRecordingManager recorder = ServiceFactory.getRideRecordingManager();
+
+        // Delete local sessions in background, then start recording
+        recorder.deleteSessionsForScooter(serial, () -> {
+            // Local sessions deleted — now delete remote sessions (fire-and-forget)
+            if (dbId != null) {
+                deleteRemoteRideSessions(dbId);
+            }
+
+            // Start new recording
+            runOnUiThread(() -> startRideRecording("diagnostic", durationSec, diagnosticConfigJson));
+        });
+    }
+
+    /**
+     * Delete all remote ride sessions for a scooter (fire-and-forget).
+     */
+    private void deleteRemoteRideSessions(String scooterDbId) {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("action", "delete-ride-sessions");
+            body.addProperty("scooter_id", scooterDbId);
+            ServiceFactory.scooterRepo().callEdgeFunctionFireAndForget("update-scooter", body);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to delete remote ride sessions: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Start a ride recording session.
+     *
+     * @param triggerType "manual" or "diagnostic"
+     * @param durationSeconds maximum recording duration
+     * @param diagnosticConfigJson JSON config if diagnostic (null for manual)
+     */
+    private void startRideRecording(String triggerType, int durationSeconds,
+                                     String diagnosticConfigJson) {
+        RideRecordingManager recorder = ServiceFactory.getRideRecordingManager();
+        if (recorder.isRecording()) {
+            Toast.makeText(this, "Already recording", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String serial = connectedDeviceName;
+        recorder.setListener(recordingListener);
+        recorder.startRecording(triggerType, durationSeconds, serial, scooterDbId,
+                diagnosticConfigJson);
+
+        // Switch to fast polling (1Hz)
+        currentPollInterval = RECORDING_POLL_INTERVAL_MS;
+        restartTelemetryPolling();
+
+        // Update UI
+        runOnUiThread(() -> {
+            // Reset Go button state (in case greyed from previous completion)
+            btnRecordGo.setEnabled(true);
+            btnRecordGo.setAlpha(1f);
+            btnRecordGo.setText("Go");
+
+            layoutRecordIdle.setVisibility(View.GONE);
+            layoutRecordActive.setVisibility(View.VISIBLE);
+            progressRecording.setMax(durationSeconds);
+            progressRecording.setProgress(0);
+            tvRecordingTimer.setText("Recording 0:00 / " + formatDuration(durationSeconds));
+            tvSampleCount.setText("0 samples");
+        });
+    }
+
+    /**
+     * Stop the current ride recording.
+     */
+    private void stopRideRecording() {
+        RideRecordingManager recorder = ServiceFactory.getRideRecordingManager();
+        recorder.stopRecording();
+
+        // Revert to normal polling (2Hz)
+        currentPollInterval = TELEMETRY_POLL_INTERVAL_MS;
+        restartTelemetryPolling();
+
+        // Update UI
+        runOnUiThread(() -> {
+            layoutRecordIdle.setVisibility(View.VISIBLE);
+            layoutRecordActive.setVisibility(View.GONE);
+        });
+    }
+
+    private void restartTelemetryPolling() {
+        if (pollingActive.get()) {
+            handler.removeCallbacks(telemetryPoller);
+            handler.post(telemetryPoller);
+        }
+    }
+
+    private final RideRecordingManager.RecordingListener recordingListener =
+            new RideRecordingManager.RecordingListener() {
+                @Override
+                public void onRecordingStarted(String sessionId) {
+                    Log.d(TAG, "Recording started: " + sessionId);
+                }
+
+                @Override
+                public void onRecordingTick(int elapsedSeconds, int maxSeconds, int sampleCount) {
+                    runOnUiThread(() -> {
+                        if (isDestroyed() || isFinishing()) return;
+                        tvRecordingTimer.setText("Recording " + formatDuration(elapsedSeconds)
+                                + " / " + formatDuration(maxSeconds));
+                        tvSampleCount.setText(sampleCount + " samples");
+                        progressRecording.setMax(maxSeconds);
+                        progressRecording.setProgress(elapsedSeconds);
+                    });
+                }
+
+                @Override
+                public void onRecordingStopped(String sessionId, int totalSamples) {
+                    diagnosticRecordingCount++;
+
+                    runOnUiThread(() -> {
+                        if (isDestroyed() || isFinishing()) return;
+                        layoutRecordIdle.setVisibility(View.VISIBLE);
+                        layoutRecordActive.setVisibility(View.GONE);
+
+                        boolean limitReached = diagnosticRecordingCount >= diagnosticMaxRecordings;
+
+                        // Show completion state
+                        btnRecordGo.setEnabled(false);
+                        btnRecordGo.setAlpha(0.5f);
+                        btnRecordGo.setText("Done");
+
+                        if (limitReached) {
+                            // Limit reached — stay greyed out permanently
+                            tvRecordSubtitle.setText("Complete — " + totalSamples + " samples captured");
+                            Toast.makeText(UserDashboardActivity.this,
+                                    "Recording complete: " + totalSamples + " samples",
+                                    Toast.LENGTH_SHORT).show();
+                        } else {
+                            // Still have recordings left — re-enable after 3 seconds
+                            int remaining = diagnosticMaxRecordings - diagnosticRecordingCount;
+                            tvRecordSubtitle.setText("Complete — " + totalSamples + " samples captured");
+
+                            handler.postDelayed(() -> {
+                                if (isDestroyed() || isFinishing()) return;
+                                btnRecordGo.setEnabled(true);
+                                btnRecordGo.setAlpha(1f);
+                                btnRecordGo.setText("Go");
+                                tvRecordSubtitle.setText("Tap Go to re-record (" + remaining + " left)");
+                            }, 3000);
+
+                            Toast.makeText(UserDashboardActivity.this,
+                                    "Recording complete — " + remaining + " recording(s) remaining",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    });
+
+                    // Revert to normal polling
+                    currentPollInterval = TELEMETRY_POLL_INTERVAL_MS;
+                    restartTelemetryPolling();
+
+                    // Auto-upload if online
+                    ServiceFactory.getRideRecordingManager().uploadPendingSessions();
+                }
+
+                @Override
+                public void onUploadComplete(String sessionId, boolean success) {
+                    Log.d(TAG, "Ride session upload: " + sessionId + " success=" + success);
+                }
+            };
+
+    private static String formatDuration(int totalSeconds) {
+        int min = totalSeconds / 60;
+        int sec = totalSeconds % 60;
+        return String.format(java.util.Locale.US, "%d:%02d", min, sec);
+    }
+
+    // ==================================================================================
+    // FAULT CAPTURE (always-on)
+    // ==================================================================================
+
+    /**
+     * Check for non-zero fault codes and create a fault record.
+     * Deduplicates: same fault code within 30 seconds is ignored.
+     * Uses existing scooter_telemetry table (not ride_telemetry).
+     */
+    private void checkForFault(RunningDataInfo data) {
+        if (data.faultCode == 0 || !faultCaptureEnabled) return;
+
+        long now = System.currentTimeMillis();
+        if (data.faultCode == lastReportedFaultCode
+                && (now - lastFaultReportTimeMs) < FAULT_DEDUP_INTERVAL_MS) {
+            return; // Deduplicate
+        }
+
+        lastReportedFaultCode = data.faultCode;
+        lastFaultReportTimeMs = now;
+
+        Log.w(TAG, "Fault detected: 0x" + String.format("%04X", data.faultCode));
+
+        // Build fault record using existing telemetry fields
+        JsonObject record = new JsonObject();
+        record.addProperty("record_type", "fault");
+        record.addProperty("scan_type", "user_dashboard");
+        record.addProperty("fault_code", data.faultCode);
+        record.addProperty("speed_kmh", data.currentSpeed);
+        record.addProperty("motor_temp", data.motorTemp);
+        record.addProperty("controller_temp", data.controllerTemp);
+        record.addProperty("gear_level", data.gearLevel);
+        record.addProperty("motor_rpm", data.motorRPM);
+        record.addProperty("current_limit", data.currentLimit);
+        record.addProperty("trip_distance_km", data.tripDistance);
+        record.addProperty("odometer_km", data.totalDistance);
+        record.addProperty("remaining_range_km", data.remainingRange);
+
+        // Add BMS data if available
+        BMSDataInfo bms = storedBMSData;
+        if (bms != null) {
+            record.addProperty("voltage", bms.batteryVoltage);
+            record.addProperty("current", bms.batteryCurrent);
+            record.addProperty("battery_soc", bms.batteryPercent);
+            record.addProperty("battery_temp", bms.batteryTemperature);
+        }
+
+        if (connectedDeviceName != null) {
+            record.addProperty("scooter_serial", connectedDeviceName);
+        }
+
+        // Upload or queue
+        if (ServiceFactory.isNetworkAvailable()) {
+            ServiceFactory.telemetryRepo().uploadQueuedTelemetry(record);
+        } else {
+            ServiceFactory.getTelemetryQueueManager().enqueue(record);
+        }
     }
 }

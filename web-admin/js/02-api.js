@@ -163,6 +163,7 @@ const API = (() => {
         isLoggedIn,
         getSessionToken,
         baseUrl: `${CONFIG.supabaseUrl}/functions/v1`,
+        supabaseUrl: CONFIG.supabaseUrl,
         anonKey: CONFIG.anonKey
     };
 })();

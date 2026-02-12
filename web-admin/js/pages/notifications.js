@@ -319,6 +319,7 @@ const NotificationsPage = (() => {
                         <option value="scooter_status" ${t.trigger_type === 'scooter_status' ? 'selected' : ''}>Scooter Status Change</option>
                         <option value="user_event" ${t.trigger_type === 'user_event' ? 'selected' : ''}>User Event</option>
                         <option value="scheduled" ${t.trigger_type === 'scheduled' ? 'selected' : ''}>Scheduled</option>
+                        <option value="diagnostic_request" ${t.trigger_type === 'diagnostic_request' ? 'selected' : ''}>Diagnostic Request</option>
                         <option value="manual" ${t.trigger_type === 'manual' ? 'selected' : ''}>Manual Only</option>
                     </select>
                 </div>
@@ -333,6 +334,7 @@ const NotificationsPage = (() => {
                         <option value="all" ${t.target_type === 'all' ? 'selected' : ''}>All Users</option>
                         <option value="role" ${t.target_type === 'role' ? 'selected' : ''}>Users by Role</option>
                         <option value="hw_version" ${t.target_type === 'hw_version' ? 'selected' : ''}>Users by HW Version</option>
+                        <option value="scooter_owner" ${t.target_type === 'scooter_owner' ? 'selected' : ''}>Scooter Owner</option>
                     </select>
                 </div>
                 <div class="form-group" id="tpl-target-value-group" style="display:none">
@@ -387,6 +389,16 @@ const NotificationsPage = (() => {
                     <option value="scooter_registered" ${existingConfig.event === 'scooter_registered' ? 'selected' : ''}>Scooter Registered</option>
                 </select>
             `;
+        } else if (triggerType === 'diagnostic_request') {
+            group.style.display = 'block';
+            fields.innerHTML = `
+                <label style="font-size:0.85em">Event</label>
+                <select id="tpl-config-event">
+                    <option value="requested" ${existingConfig.event === 'requested' ? 'selected' : ''}>Diagnostic Requested</option>
+                    <option value="cancelled" ${existingConfig.event === 'cancelled' ? 'selected' : ''}>Diagnostic Cancelled</option>
+                </select>
+                <p style="font-size:0.8em;color:var(--text-secondary);margin-top:4px">Fires automatically when CS requests or cancels a diagnostic. Target should be "Auto" to notify the scooter owner.</p>
+            `;
         } else if (triggerType === 'scheduled') {
             group.style.display = 'block';
             fields.innerHTML = `
@@ -415,6 +427,10 @@ const NotificationsPage = (() => {
             valueGroup.style.display = 'block';
             valueLabel.textContent = 'Hardware Version';
             valueInput.placeholder = 'e.g. V0.3';
+        } else if (targetType === 'scooter_owner') {
+            valueGroup.style.display = 'block';
+            valueLabel.textContent = 'Scooter ID';
+            valueInput.placeholder = 'UUID of the scooter (auto-filled by trigger)';
         } else {
             valueGroup.style.display = 'none';
             valueInput.value = '';
@@ -444,6 +460,8 @@ const NotificationsPage = (() => {
             if (to) triggerConfig.to = to;
         } else if (triggerType === 'user_event') {
             triggerConfig.event = document.querySelector('#tpl-config-event')?.value || 'first_login';
+        } else if (triggerType === 'diagnostic_request') {
+            triggerConfig.event = document.querySelector('#tpl-config-event')?.value || 'requested';
         } else if (triggerType === 'scheduled') {
             triggerConfig.interval_days = parseInt(document.querySelector('#tpl-config-interval')?.value) || 7;
         }
@@ -752,6 +770,7 @@ const NotificationsPage = (() => {
             scooter_status: '<span class="badge badge-warning">Status Change</span>',
             user_event: '<span class="badge badge-secondary">User Event</span>',
             scheduled: '<span class="badge badge-primary">Scheduled</span>',
+            diagnostic_request: '<span class="badge badge-warning">Diagnostic Request</span>',
             manual: '<span class="badge">Manual</span>',
         };
         return labels[type] || type;

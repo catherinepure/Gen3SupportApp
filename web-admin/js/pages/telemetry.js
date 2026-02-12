@@ -45,7 +45,12 @@ const TelemetryPage = (() => {
             }},
             { key: 'speed_kmh', label: 'Speed', format: (val) => val !== undefined ? `${val} km/h` : '-' },
             { key: 'odometer_km', label: 'Odometer', format: (val) => val !== undefined ? `${val.toLocaleString()} km` : '-' },
-            { key: 'scan_type', label: 'Type', format: (val) => val ? `<span class="badge badge-primary">${val.replace(/_/g, ' ')}</span>` : '-' }
+            { key: 'record_type', label: 'Record', format: (val) => {
+                if (!val) return '<span class="badge badge-inactive">legacy</span>';
+                const colors = { start: 'badge-active', stop: 'badge-warning', fault: 'badge-danger', riding: 'badge-primary' };
+                return `<span class="badge ${colors[val] || 'badge-inactive'}">${val}</span>`;
+            }},
+            { key: 'scan_type', label: 'Source', format: (val) => val ? `<span class="badge badge-primary">${val.replace(/_/g, ' ')}</span>` : '-' }
         ], {
             onRowClick: showTelemetryDetail,
             pagination: totalPages > 1 ? {
@@ -71,7 +76,8 @@ const TelemetryPage = (() => {
                     { label: 'Scooter', value: scooterLabel },
                     { label: 'Scooter ID', value: t.scooter_id, type: 'code' },
                     { label: 'Scanned At', value: t.scanned_at, type: 'date' },
-                    { label: 'Scan Type', value: t.scan_type ? t.scan_type.replace(/_/g, ' ') : 'N/A' },
+                    { label: 'Record Type', value: t.record_type || 'legacy' },
+                    { label: 'Source', value: t.scan_type ? t.scan_type.replace(/_/g, ' ') : 'N/A' },
                     { label: 'HW Version', value: t.hw_version || 'N/A' },
                     { label: 'SW Version', value: t.sw_version || 'N/A' }
                 ]

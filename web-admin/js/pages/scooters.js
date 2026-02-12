@@ -224,9 +224,13 @@ const ScootersPage = (() => {
             const pinSection = await buildPINSection(fullScooter);
             sections.push(pinSection);
 
-            // Diagnostics section
+            // Diagnostics section (includes fault capture toggle)
             const diagSection = buildDiagnosticSection(fullScooter);
             sections.push(diagSection);
+
+            // Ride Sessions section
+            const rideSection = await buildRideSessionsSection(fullScooter);
+            if (rideSection) sections.push(rideSection);
 
             // Metadata
             sections.push(DetailModal.metadataSection(fullScooter));
@@ -623,6 +627,23 @@ const ScootersPage = (() => {
         const diagConfig = scooter.diagnostic_config;
         const diagDeclinedAt = scooter.diagnostic_declined_at;
 
+        // Fault capture toggle
+        const faultDisabled = scooter.fault_capture_disabled || false;
+        const faultToggleHtml = `
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="faultCaptureToggle" ${faultDisabled ? 'checked' : ''}
+                    onchange="ScootersPage.toggleFaultCapture('${scooter.id}', this.checked)" />
+                Disable fault capture
+            </label>
+        `;
+        fields.push({
+            label: 'Fault Capture',
+            value: faultDisabled
+                ? '<span class="badge badge-inactive">DISABLED</span> ' + faultToggleHtml
+                : '<span class="badge badge-active">ENABLED</span> ' + faultToggleHtml,
+            type: 'html'
+        });
+
         if (diagRequested && diagConfig) {
             fields.push({
                 label: 'Status',
@@ -697,59 +718,21 @@ const ScootersPage = (() => {
         };
     }
 
-    async function requestDiagnostic(scooterId) {
-        const reason = prompt('Reason for diagnostic request:\n\n(e.g., "Investigating battery drain reported by customer")');
-        if (!reason) return;
-
-        const frequencyStr = prompt('Data collection frequency in seconds (default: 10):', '10');
-        const frequency = parseInt(frequencyStr) || 10;
-
-        const durationStr = prompt('Maximum collection duration in minutes (default: 30):', '30');
-        const duration = parseInt(durationStr) || 30;
-
-        try {
-            const response = await fetch(`${API.baseUrl}/functions/v1/update-scooter`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${API.anonKey}`,
-                    'apikey': API.anonKey,
-                },
-                body: JSON.stringify({
-                    action: 'request-diagnostic',
-                    session_token: API.getSessionToken(),
-                    scooter_id: scooterId,
-                    diagnostic_config: {
-                        reason: reason,
-                        frequency_seconds: frequency,
-                        max_duration_minutes: duration,
-                        data_types: ['telemetry', 'battery_history']
-                    }
-                })
-            });
-
-            const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to request diagnostic');
-            }
-
-            toast('Diagnostic requested successfully', 'success');
-
-            // Reload detail view
+    function requestDiagnostic(scooterId) {
+        DiagnosticHelper.showRequestForm(scooterId, () => {
+            // Reload detail view after request
             setTimeout(() => {
                 const scooter = currentScooters.find(s => s.id === scooterId);
                 if (scooter) showScooterDetail(scooter);
             }, 500);
-        } catch (err) {
-            toast(err.message, 'error');
-        }
+        });
     }
 
     async function cancelDiagnostic(scooterId) {
         if (!confirm('Cancel the diagnostic request for this scooter?')) return;
 
         try {
-            const response = await fetch(`${API.baseUrl}/functions/v1/update-scooter`, {
+            const response = await fetch(`${API.baseUrl}/update-scooter`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -806,6 +789,115 @@ const ScootersPage = (() => {
         }
     }
 
+    // ========================================================================
+    // Ride Sessions
+    // ========================================================================
+
+    async function buildRideSessionsSection(scooter) {
+        try {
+            const response = await fetch(
+                `${API.supabaseUrl}/rest/v1/ride_sessions?scooter_id=eq.${scooter.id}&select=*&order=started_at.desc&limit=10`,
+                {
+                    headers: {
+                        'apikey': API.anonKey,
+                        'Authorization': `Bearer ${API.anonKey}`,
+                    }
+                }
+            );
+
+            if (!response.ok) return null;
+            const sessions = await response.json();
+            if (!sessions || sessions.length === 0) {
+                return {
+                    title: 'Ride Sessions',
+                    fields: [{ label: 'Status', value: 'No ride sessions recorded', type: 'text' }]
+                };
+            }
+
+            let tableHtml = `
+                <table style="width:100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <th style="text-align:left; padding:6px;">Trigger</th>
+                            <th style="text-align:left; padding:6px;">Started</th>
+                            <th style="text-align:right; padding:6px;">Duration</th>
+                            <th style="text-align:right; padding:6px;">Samples</th>
+                            <th style="text-align:left; padding:6px;">Status</th>
+                            <th style="padding:6px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+            sessions.forEach(s => {
+                const duration = s.started_at && s.ended_at
+                    ? Math.round((new Date(s.ended_at) - new Date(s.started_at)) / 1000)
+                    : '-';
+                const durationStr = typeof duration === 'number'
+                    ? `${Math.floor(duration / 60)}m ${duration % 60}s`
+                    : duration;
+                const statusBadge = s.status === 'uploaded'
+                    ? '<span class="badge badge-active">uploaded</span>'
+                    : `<span class="badge badge-warning">${s.status}</span>`;
+                const triggerBadge = s.trigger_type === 'diagnostic'
+                    ? '<span class="badge badge-warning">diagnostic</span>'
+                    : '<span class="badge badge-inactive">manual</span>';
+
+                tableHtml += `
+                    <tr style="border-bottom: 1px solid #eee; cursor:pointer;" onclick="ScootersPage.showRideSession('${s.id}')">
+                        <td style="padding:6px;">${triggerBadge}</td>
+                        <td style="padding:6px;">${formatDate(s.started_at)}</td>
+                        <td style="text-align:right; padding:6px;">${durationStr}</td>
+                        <td style="text-align:right; padding:6px;">${s.sample_count || 0}</td>
+                        <td style="padding:6px;">${statusBadge}</td>
+                        <td style="padding:6px;"><button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ScootersPage.showRideSession('${s.id}')">View</button></td>
+                    </tr>`;
+            });
+
+            tableHtml += '</tbody></table>';
+
+            return {
+                title: `Ride Sessions (${sessions.length})`,
+                html: tableHtml
+            };
+        } catch (err) {
+            console.error('Failed to load ride sessions:', err);
+            return null;
+        }
+    }
+
+    async function showRideSession(sessionId) {
+        RideSessionViewer.show(sessionId);
+    }
+
+    async function toggleFaultCapture(scooterId, disabled) {
+        try {
+            const response = await fetch(
+                `${API.supabaseUrl}/rest/v1/scooters?id=eq.${scooterId}`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'apikey': API.anonKey,
+                        'Authorization': `Bearer ${API.anonKey}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=minimal',
+                    },
+                    body: JSON.stringify({ fault_capture_disabled: disabled })
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error('Failed to update fault capture setting');
+            }
+
+            toast(disabled ? 'Fault capture disabled' : 'Fault capture enabled', 'success');
+        } catch (err) {
+            toast(err.message, 'error');
+            // Revert checkbox
+            const toggle = document.getElementById('faultCaptureToggle');
+            if (toggle) toggle.checked = !disabled;
+        }
+    }
+
     function applyFilters() {
         const filters = {
             search: $('#scooters-search')?.value.trim() || undefined,
@@ -851,5 +943,5 @@ const ScootersPage = (() => {
         RefreshController.detach();
     }
 
-    return { init, onNavigate, onLeave, viewPIN, setPIN, resetPIN, unlinkOwner, requestDiagnostic, cancelDiagnostic };
+    return { init, onNavigate, onLeave, viewPIN, setPIN, resetPIN, unlinkOwner, requestDiagnostic, cancelDiagnostic, showRideSession, toggleFaultCapture };
 })();

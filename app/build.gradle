@@ -55,6 +55,10 @@ dependencies {
     // JSON parsing
     implementation 'com.google.code.gson:gson:2.10.1'
 
+    // Room database (ride recording local storage)
+    implementation 'androidx.room:room-runtime:2.6.1'
+    annotationProcessor 'androidx.room:room-compiler:2.6.1'
+
     // Location services for registration
     implementation 'com.google.android.gms:play-services-location:21.0.1'
 

@@ -9,8 +9,8 @@
 //   update-version      — update firmware versions, model, embedded_serial, last_connected_at
 //   create-telemetry    — insert scooter_telemetry record + update scooter version info
 //   create-scan-record  — insert firmware_uploads record (scan tracking)
-//   request-diagnostic  — (admin/manager) set diagnostic flag + config on a scooter
-//   clear-diagnostic    — clear diagnostic flag, optionally record decline timestamp
+//   request-diagnostic  — (admin/manager) set diagnostic flag + config on a scooter + notify owner
+//   clear-diagnostic    — clear diagnostic flag, optionally record decline timestamp + notify owner
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -54,6 +54,88 @@ async function authenticateUser(supabase: any, sessionToken: string) {
   if (!user || !user.is_active) return null
 
   return user
+}
+
+/**
+ * Fire diagnostic notification templates for a scooter owner.
+ * Finds active templates with trigger_type='diagnostic_request' and matching event,
+ * creates a push_notification record, and invokes send-notification fire-and-forget.
+ */
+async function fireDiagnosticNotification(
+  supabase: any,
+  scooterId: string,
+  event: 'requested' | 'cancelled',
+  adminUserId: string
+) {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+    // Find active diagnostic_request templates matching this event
+    const { data: templates } = await supabase
+      .from('notification_templates')
+      .select('*')
+      .eq('trigger_type', 'diagnostic_request')
+      .eq('is_active', true)
+
+    if (!templates || templates.length === 0) {
+      console.log(`No active diagnostic_request templates for event: ${event}`)
+      return
+    }
+
+    for (const template of templates) {
+      // Filter by trigger_config.event if set
+      const configEvent = template.trigger_config?.event
+      if (configEvent && configEvent !== event) continue
+
+      // For trigger_match target, resolve to scooter_owner
+      let targetType = template.target_type
+      let targetValue = template.target_value
+      if (targetType === 'trigger_match') {
+        targetType = 'scooter_owner'
+        targetValue = scooterId
+      }
+
+      // Create push_notifications record
+      const { data: notification, error } = await supabase
+        .from('push_notifications')
+        .insert({
+          title: template.title_template,
+          body: template.body_template,
+          action: template.tap_action || 'none',
+          target_type: targetType,
+          target_value: targetValue,
+          sent_by: adminUserId,
+          status: 'pending',
+          template_id: template.id,
+          template_data: { scooter_id: scooterId, event },
+        })
+        .select()
+        .single()
+
+      if (error || !notification) {
+        console.error('Failed to create diagnostic notification:', error?.message)
+        continue
+      }
+
+      // Fire-and-forget
+      fetch(`${supabaseUrl}/functions/v1/send-notification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ notification_id: notification.id }),
+      }).catch(err => {
+        console.error('Failed to invoke send-notification for diagnostic:', err)
+      })
+    }
+
+    console.log(`Fired diagnostic notification templates for event: ${event}, scooter: ${scooterId}`)
+  } catch (err) {
+    // Non-fatal — don't fail the main request
+    console.error('fireDiagnosticNotification error:', err)
+  }
 }
 
 serve(async (req) => {
@@ -392,6 +474,9 @@ serve(async (req) => {
         return errorResponse('Failed to set diagnostic flag: ' + diagError.message, 500)
       }
 
+      // Notify scooter owner (fire-and-forget)
+      fireDiagnosticNotification(supabase, scooter_id, 'requested', user.id)
+
       return respond({ success: true, message: 'Diagnostic requested' })
     }
 
@@ -429,7 +514,152 @@ serve(async (req) => {
         return errorResponse('Failed to clear diagnostic flag: ' + clearError.message, 500)
       }
 
+      // Notify scooter owner of cancellation (only if admin cancelled, not user decline)
+      if (!declined) {
+        fireDiagnosticNotification(supabase, scooter_id, 'cancelled', user.id)
+      }
+
       return respond({ success: true, message: 'Diagnostic cleared' })
+    }
+
+    // ================================================================
+    // ACTION: create-ride-session — Upload ride recording with samples
+    // ================================================================
+    if (action === 'create-ride-session') {
+      const { scooter_id, trigger_type, started_at, ended_at,
+              sample_count, max_duration_seconds, diagnostic_config, samples } = body
+
+      if (!scooter_id) {
+        return errorResponse('scooter_id required')
+      }
+      if (!samples || !Array.isArray(samples)) {
+        return errorResponse('samples array required')
+      }
+
+      // Look up user_id from user_scooters
+      let rideUserId = null
+      try {
+        const { data: ownership } = await supabase
+          .from('user_scooters')
+          .select('user_id')
+          .eq('scooter_id', scooter_id)
+          .order('registered_at', { ascending: false })
+          .limit(1)
+          .single()
+        if (ownership) rideUserId = ownership.user_id
+      } catch (_) {
+        // No owner — normal for unregistered scooters
+      }
+
+      // Insert ride_sessions row
+      const sessionData: any = {
+        scooter_id,
+        user_id: rideUserId,
+        trigger_type: trigger_type || 'manual',
+        started_at,
+        ended_at: ended_at || null,
+        sample_count: sample_count || samples.length,
+        max_duration_seconds: max_duration_seconds || 300,
+        status: 'uploaded',
+        diagnostic_config: diagnostic_config || null,
+      }
+
+      const { data: sessionRow, error: sessionError } = await supabase
+        .from('ride_sessions')
+        .insert(sessionData)
+        .select('id')
+        .single()
+
+      if (sessionError) {
+        console.error('create-ride-session session error:', sessionError)
+        return errorResponse('Failed to create ride session: ' + sessionError.message, 500)
+      }
+
+      const rideSessionId = sessionRow.id
+
+      // Batch insert ride_telemetry samples (chunks of 500)
+      let insertedCount = 0
+      for (let i = 0; i < samples.length; i += 500) {
+        const chunk = samples.slice(i, i + 500).map((s: any) => ({
+          ride_session_id: rideSessionId,
+          sample_index: s.sample_index,
+          recorded_at: s.recorded_at,
+          speed_kmh: s.speed_kmh,
+          motor_temp: s.motor_temp,
+          controller_temp: s.controller_temp,
+          fault_code: s.fault_code,
+          gear_level: s.gear_level,
+          trip_distance_km: s.trip_distance_km,
+          total_distance_km: s.total_distance_km,
+          remaining_range_km: s.remaining_range_km,
+          motor_rpm: s.motor_rpm,
+          current_limit: s.current_limit,
+          control_flags: s.control_flags,
+          battery_voltage: s.battery_voltage,
+          battery_current: s.battery_current,
+          battery_percent: s.battery_percent,
+          battery_temp: s.battery_temp,
+        }))
+
+        const { error: samplesError } = await supabase
+          .from('ride_telemetry')
+          .insert(chunk)
+
+        if (samplesError) {
+          console.error('create-ride-session samples error (batch ' + i + '):', samplesError)
+          return errorResponse('Failed to insert samples: ' + samplesError.message, 500)
+        }
+        insertedCount += chunk.length
+      }
+
+      // If diagnostic trigger: auto-clear diagnostic flag on scooter
+      if (trigger_type === 'diagnostic') {
+        try {
+          await supabase
+            .from('scooters')
+            .update({
+              diagnostic_requested: false,
+              diagnostic_config: null,
+              diagnostic_requested_by: null,
+              diagnostic_requested_at: null,
+              diagnostic_declined_at: null,
+            })
+            .eq('id', scooter_id)
+        } catch (e) {
+          console.warn('Non-fatal: failed to clear diagnostic flag after session upload:', e)
+        }
+      }
+
+      return respond({
+        id: rideSessionId,
+        sample_count: insertedCount,
+      })
+    }
+
+    // ================================================================
+    // ACTION: delete-ride-sessions — Delete all ride sessions for a scooter
+    // Called when user re-records during a diagnostic (replace old data)
+    // ================================================================
+    if (action === 'delete-ride-sessions') {
+      const { scooter_id } = body
+
+      if (!scooter_id) {
+        return errorResponse('scooter_id required')
+      }
+
+      // ride_telemetry has ON DELETE CASCADE from ride_sessions, so deleting
+      // sessions automatically removes their samples
+      const { error, count } = await supabase
+        .from('ride_sessions')
+        .delete()
+        .eq('scooter_id', scooter_id)
+
+      if (error) {
+        return errorResponse('Failed to delete ride sessions: ' + error.message, 500)
+      }
+
+      console.log(`Deleted ride sessions for scooter ${scooter_id}, count=${count}`)
+      return respond({ success: true, deleted: count || 0 })
     }
 
     return errorResponse('Unknown action: ' + action)

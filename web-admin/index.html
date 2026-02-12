@@ -110,6 +110,9 @@
                 <li class="nav-item" data-page="telemetry">
                     <span class="nav-icon">&#9881;</span> Telemetry
                 </li>
+                <li class="nav-item" data-page="live-runs">
+                    <span class="nav-icon">&#9654;</span> Live Runs
+                </li>
                 <li class="nav-item" data-page="logs">
                     <span class="nav-icon">&#9776;</span> Upload Logs
                 </li>
@@ -374,6 +377,35 @@
             <!-- Consent History Page -->
             <div id="consent-history-page" class="page-content hidden"></div>
 
+            <!-- Live Runs Page -->
+            <div id="live-runs-page" class="page-content hidden">
+                <div class="page-header">
+                    <h2>Live Runs</h2>
+                    <div class="page-actions">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button id="tab-sessions" class="btn btn-primary">Ride Sessions</button>
+                            <button id="tab-diagnostics" class="btn btn-secondary">Diagnostic Requests</button>
+                        </div>
+                        <input type="text" id="live-runs-search" placeholder="Search by scooter serial..." class="search-input">
+                        <select id="live-runs-trigger-filter" class="filter-select">
+                            <option value="">All Triggers</option>
+                            <option value="manual">Manual</option>
+                            <option value="diagnostic">Diagnostic</option>
+                        </select>
+                        <select id="live-runs-status-filter" class="filter-select">
+                            <option value="">All Status</option>
+                            <option value="recording">Recording</option>
+                            <option value="completed">Completed</option>
+                            <option value="uploaded">Uploaded</option>
+                        </select>
+                        <button class="btn btn-primary" id="live-runs-new-request">New Diagnostic Request</button>
+                        <button class="btn btn-secondary" id="live-runs-export-btn">Export CSV</button>
+                    </div>
+                </div>
+                <div id="live-runs-sessions"></div>
+                <div id="live-runs-diagnostics" style="display: none;"></div>
+            </div>
+
             <!-- Notifications Page -->
             <div id="notifications-page" class="page-content hidden"></div>
         </main>
@@ -400,7 +432,7 @@
     <!-- Core Scripts (load order matters!) -->
     <script src="js/00-utils.js?v=20260210-07"></script>
     <script src="js/01-state.js?v=20260209-14"></script>
-    <script src="js/02-api.js?v=20260211-01"></script>
+    <script src="js/02-api.js?v=20260212-01"></script>
     <script src="js/03-auth.js?v=20260209-14"></script>
     <script src="js/04-router.js?v=20260210-02"></script>
 
@@ -414,25 +446,28 @@
     <script src="js/components/pagination-controller.js?v=20260210-07"></script>
     <script src="js/components/refresh-controller.js?v=20260210-02"></script>
     <script src="js/components/reference-data.js?v=20260210-03"></script>
+    <script src="js/components/ride-session-viewer.js?v=20260212-02"></script>
+    <script src="js/components/diagnostic-helper.js?v=20260212-05"></script>
 
     <!-- Pages -->
     <script src="js/pages/dashboard.js?v=20260210-02"></script>
     <script src="js/pages/users.js?v=20260211-03"></script>
-    <script src="js/pages/scooters.js?v=20260211-01"></script>
+    <script src="js/pages/scooters.js?v=20260212-03"></script>
     <script src="js/pages/distributors.js?v=20260210-02"></script>
     <script src="js/pages/workshops.js?v=20260210-02"></script>
     <script src="js/pages/service-jobs.js?v=20260210-02"></script>
     <script src="js/pages/firmware.js?v=20260211-05"></script>
-    <script src="js/pages/telemetry.js?v=20260210-02"></script>
+    <script src="js/pages/telemetry.js?v=20260212-04"></script>
     <script src="js/pages/logs.js?v=20260210-02"></script>
     <script src="js/pages/events.js?v=20260210-02"></script>
     <script src="js/pages/validation.js?v=20260210-02"></script>
     <script src="js/pages/terms-management.js?v=20260210-40"></script>
     <script src="js/pages/consent-history.js?v=20260210-20"></script>
-    <script src="js/pages/notifications.js?v=20260211-06"></script>
+    <script src="js/pages/live-runs.js?v=20260212-04"></script>
+    <script src="js/pages/notifications.js?v=20260212-02"></script>
     <script src="js/pages/settings.js?v=20260210-05"></script>
 
     <!-- Main App Init -->
-    <script src="js/app-init.js?v=20260210-10"></script>
+    <script src="js/app-init.js?v=20260212-01"></script>
 </body>
 </html>

@@ -294,6 +294,30 @@ public class SupabaseScooterRepository extends SupabaseBaseRepository {
     }
 
     /**
+     * Upload a ride session with samples to Supabase via Edge Function.
+     * Synchronous — must be called from a background thread.
+     *
+     * @param body JSON body with action "create-ride-session", session metadata, and samples array
+     */
+    public void uploadRideSession(JsonObject body) throws IOException {
+        callEdgeFunction("update-scooter", body);
+    }
+
+    /**
+     * Fire-and-forget Edge Function call on a background thread.
+     * Errors are logged but not propagated.
+     */
+    public void callEdgeFunctionFireAndForget(String functionName, JsonObject body) {
+        executor.execute(() -> {
+            try {
+                callEdgeFunction(functionName, body);
+            } catch (IOException e) {
+                Log.w(TAG, "Fire-and-forget Edge Function call failed: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
      * Fallback PIN check for unregistered scooters (no user_scooters row so no JOIN available).
      */
     private void checkPinStatusFallback(String scooterId, ScooterRegistrationInfo info) {
