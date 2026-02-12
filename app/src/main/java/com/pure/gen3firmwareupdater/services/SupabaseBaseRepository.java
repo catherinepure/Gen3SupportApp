@@ -8,6 +8,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.pure.gen3firmwareupdater.services.ServiceFactory;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
@@ -95,6 +96,38 @@ public abstract class SupabaseBaseRepository {
             return resultArray.get(0).getAsJsonObject().get("id").getAsString();
         }
         return "";
+    }
+
+    /**
+     * Call an Edge Function with a JSON body. Adds session_token automatically.
+     * Returns the parsed JSON response. Throws IOException on failure.
+     * Must be called from a background thread.
+     */
+    protected JsonObject callEdgeFunction(String functionName, JsonObject body) throws IOException {
+        // Add session token from SessionManager
+        String sessionToken = ServiceFactory.getSessionManager().getSessionToken();
+        if (sessionToken != null) {
+            body.addProperty("session_token", sessionToken);
+        }
+
+        String url = supabaseUrl + "/functions/v1/" + functionName;
+        RequestBody requestBody = RequestBody.create(body.toString(), JSON_MEDIA_TYPE);
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("apikey", supabaseKey)
+                .addHeader("Authorization", "Bearer " + supabaseKey)
+                .addHeader("Content-Type", "application/json")
+                .post(requestBody)
+                .build();
+
+        Response response = httpClient.newCall(request).execute();
+        String responseStr = getResponseBody(response);
+
+        if (!response.isSuccessful()) {
+            throw new IOException("Edge function " + functionName + " failed: HTTP " + response.code() + " - " + responseStr);
+        }
+
+        return JsonParser.parseString(responseStr).getAsJsonObject();
     }
 
     /**

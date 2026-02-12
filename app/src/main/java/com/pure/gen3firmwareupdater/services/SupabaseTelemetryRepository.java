@@ -50,7 +50,7 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
 
     /**
      * Create a scan record when a scooter is scanned/connected with telemetry data.
-     * Posts to firmware_uploads table with status "scanned".
+     * Uses Edge Function for writes (service_role). Firmware version lookup done server-side.
      */
     public void createScanRecord(String scooterSerial, String distributorId,
                                   String hwVersion, String swVersion,
@@ -60,36 +60,19 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
             try {
                 String scooterId = scooterRepo.getOrCreateScooterId(scooterSerial, distributorId, hwVersion, swVersion);
 
-                // Get the latest firmware version ID (needed for the foreign key constraint)
-                String firmwareUrl = supabaseUrl + "/rest/v1/firmware_versions?limit=1&select=id&order=created_at.desc";
-                Request firmwareRequest = buildGetRequest(firmwareUrl);
-                Response firmwareResponse = httpClient.newCall(firmwareRequest).execute();
-                String firmwareBody = getResponseBody(firmwareResponse);
-
-                if (!firmwareResponse.isSuccessful()) {
-                    postError(callback, "Failed to get firmware version: HTTP " + firmwareResponse.code());
-                    return;
-                }
-
-                JsonArray firmwareArray = JsonParser.parseString(firmwareBody).getAsJsonArray();
-                if (firmwareArray.size() == 0) {
-                    postError(callback, "No firmware versions found in database");
-                    return;
-                }
-
-                String firmwareVersionId = firmwareArray.get(0).getAsJsonObject().get("id").getAsString();
-
-                // Build scan record JSON
+                // Build Edge Function request — firmware version lookup done server-side
                 JsonObject body = new JsonObject();
+                body.addProperty("action", "create-scan-record");
                 body.addProperty("scooter_id", scooterId);
-                body.addProperty("distributor_id", distributorId);
-                body.addProperty("firmware_version_id", firmwareVersionId);
-                body.addProperty("old_hw_version", hwVersion);
-                body.addProperty("old_sw_version", swVersion);
-                body.addProperty("status", "scanned");
+                if (distributorId != null) body.addProperty("distributor_id", distributorId);
+                if (hwVersion != null) body.addProperty("old_hw_version", hwVersion);
+                if (swVersion != null) body.addProperty("old_sw_version", swVersion);
                 addTelemetryFields(body, runningData, bmsData, embeddedSerial);
 
-                String recordId = postAndExtractId(supabaseUrl + "/rest/v1/firmware_uploads", body, "createScanRecord");
+                Log.d(TAG, "createScanRecord via Edge Function for scooter: " + scooterId);
+                JsonObject result = callEdgeFunction("update-scooter", body);
+
+                String recordId = result.has("id") ? result.get("id").getAsString() : "";
                 postSuccess(callback, recordId);
 
             } catch (Exception e) {
@@ -114,7 +97,7 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
 
     /**
      * Create a telemetry record and update the static scooter record with version info.
-     * Also updates the scooters table with firmware versions, model, and last_connected_at.
+     * Uses Edge Function for all writes (service_role), keeping user_id lookup server-side.
      */
     public void createTelemetryRecord(String scooterSerial, String distributorId,
                                        String hwVersion, String swVersion,
@@ -126,45 +109,33 @@ public class SupabaseTelemetryRepository extends SupabaseBaseRepository {
             try {
                 String scooterId = scooterRepo.getOrCreateScooterId(scooterSerial, distributorId, hwVersion, swVersion);
 
-                // Update the static scooter record with latest version info
-                try {
-                    scooterRepo.updateScooterRecord(scooterId, versionInfo, embeddedSerial, model);
-                } catch (Exception e) {
-                    Log.w(TAG, "Failed to update scooter record (non-fatal): " + e.getMessage());
-                }
-
-                // Get user_id if scooter is registered
-                String userId = null;
-                try {
-                    String userUrl = supabaseUrl + "/rest/v1/user_scooters"
-                            + "?scooter_id=eq." + scooterId
-                            + "&select=user_id"
-                            + "&order=registered_at.desc"
-                            + "&limit=1";
-                    Request userRequest = buildGetRequest(userUrl);
-                    Response userResponse = httpClient.newCall(userRequest).execute();
-                    String userBody = getResponseBody(userResponse);
-                    JsonArray userArray = JsonParser.parseString(userBody).getAsJsonArray();
-                    if (userArray.size() > 0) {
-                        userId = userArray.get(0).getAsJsonObject().get("user_id").getAsString();
-                    }
-                } catch (Exception e) {
-                    Log.d(TAG, "No user registration found for scooter (normal for unregistered scooters)");
-                }
-
-                // Build telemetry record JSON
+                // Build Edge Function request — handles scooter update + user lookup + telemetry insert
                 JsonObject body = new JsonObject();
+                body.addProperty("action", "create-telemetry");
                 body.addProperty("scooter_id", scooterId);
-                body.addProperty("distributor_id", distributorId);
-                if (userId != null) {
-                    body.addProperty("user_id", userId);
+                if (distributorId != null) body.addProperty("distributor_id", distributorId);
+                if (hwVersion != null) body.addProperty("hw_version", hwVersion);
+                if (swVersion != null) body.addProperty("sw_version", swVersion);
+                if (scanType != null) body.addProperty("scan_type", scanType);
+
+                // Version info for scooter record update
+                if (versionInfo != null) {
+                    if (versionInfo.controllerHwVersion != null) body.addProperty("controller_hw_version", versionInfo.controllerHwVersion);
+                    if (versionInfo.controllerSwVersion != null) body.addProperty("controller_sw_version", versionInfo.controllerSwVersion);
+                    if (versionInfo.meterHwVersion != null) body.addProperty("meter_hw_version", versionInfo.meterHwVersion);
+                    if (versionInfo.meterSwVersion != null) body.addProperty("meter_sw_version", versionInfo.meterSwVersion);
+                    if (versionInfo.bmsHwVersion != null) body.addProperty("bms_hw_version", versionInfo.bmsHwVersion);
+                    if (versionInfo.bmsSwVersion != null) body.addProperty("bms_sw_version", versionInfo.bmsSwVersion);
                 }
-                body.addProperty("hw_version", hwVersion);
-                body.addProperty("sw_version", swVersion);
-                body.addProperty("scan_type", scanType);
+                if (model != null) body.addProperty("model", model);
+
+                // Add telemetry sensor data
                 addTelemetryFields(body, runningData, bmsData, embeddedSerial);
 
-                String recordId = postAndExtractId(supabaseUrl + "/rest/v1/scooter_telemetry", body, "createTelemetryRecord");
+                Log.d(TAG, "createTelemetryRecord via Edge Function for scooter: " + scooterId);
+                JsonObject result = callEdgeFunction("update-scooter", body);
+
+                String recordId = result.has("id") ? result.get("id").getAsString() : "";
                 postSuccess(callback, recordId);
 
             } catch (Exception e) {

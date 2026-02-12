@@ -12,15 +12,10 @@ import com.pure.gen3firmwareupdater.ScooterRegistrationInfo;
 import com.pure.gen3firmwareupdater.VersionInfo;
 
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
-import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.RequestBody;
 import okhttp3.Response;
 
 /**
@@ -106,52 +101,39 @@ public class SupabaseScooterRepository extends SupabaseBaseRepository {
     }
 
     /**
-     * Create a scooter record in the database.
+     * Create a scooter record via Edge Function (service_role writes).
      * Returns the new scooter's UUID.
      * This is a synchronous call - must be called from a background thread.
      */
     public String createScooterRecord(String scooterSerial, String distributorId,
                                        String hwVersion, String swVersion) throws IOException {
-        JsonObject scooterBody = new JsonObject();
-        scooterBody.addProperty("zyd_serial", scooterSerial);
-        scooterBody.addProperty("distributor_id", distributorId);
+        JsonObject body = new JsonObject();
+        body.addProperty("action", "get-or-create");
+        body.addProperty("zyd_serial", scooterSerial);
+        if (distributorId != null) body.addProperty("distributor_id", distributorId);
 
-        String url = supabaseUrl + "/rest/v1/scooters";
-        RequestBody requestBody = RequestBody.create(scooterBody.toString(), JSON_MEDIA_TYPE);
-        Request request = new Request.Builder()
-                .url(url)
-                .addHeader("apikey", supabaseKey)
-                .addHeader("Authorization", "Bearer " + supabaseKey)
-                .addHeader("Content-Type", "application/json")
-                .addHeader("Prefer", "return=representation")
-                .post(requestBody)
-                .build();
+        Log.d(TAG, "Creating scooter record via Edge Function: " + scooterSerial);
+        JsonObject result = callEdgeFunction("update-scooter", body);
 
-        Log.d(TAG, "Creating scooter record: " + scooterBody);
-        Response response = httpClient.newCall(request).execute();
-        String responseBody = getResponseBody(response);
-        Log.d(TAG, "createScooterRecord HTTP " + response.code() + ": " + responseBody);
-
-        if (!response.isSuccessful()) {
-            throw new IOException("Failed to create scooter: HTTP " + response.code() + " - " + responseBody);
-        }
-
-        JsonArray resultArray = JsonParser.parseString(responseBody).getAsJsonArray();
-        if (resultArray.size() > 0) {
-            return resultArray.get(0).getAsJsonObject().get("id").getAsString();
+        if (result.has("id")) {
+            String id = result.get("id").getAsString();
+            Log.d(TAG, "createScooterRecord success: " + id);
+            return id;
         } else {
             throw new IOException("No ID returned when creating scooter");
         }
     }
 
     /**
-     * Update a scooter record with version info from the latest BLE connection.
-     * PATCHes the scooters row with firmware versions, model, embedded serial, and last_connected_at.
+     * Update a scooter record with version info via Edge Function (service_role writes).
+     * Updates firmware versions, model, embedded serial, and last_connected_at.
      * This is a synchronous call - must be called from a background thread.
      */
     public void updateScooterRecord(String scooterId, VersionInfo version,
                                      String embeddedSerial, String model) throws IOException {
         JsonObject body = new JsonObject();
+        body.addProperty("action", "update-version");
+        body.addProperty("scooter_id", scooterId);
 
         if (version != null) {
             if (version.controllerHwVersion != null) body.addProperty("controller_hw_version", version.controllerHwVersion);
@@ -170,30 +152,12 @@ public class SupabaseScooterRepository extends SupabaseBaseRepository {
             body.addProperty("model", model);
         }
 
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
-        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-        body.addProperty("last_connected_at", sdf.format(new Date()));
-
-        String url = supabaseUrl + "/rest/v1/scooters?id=eq." + scooterId;
-        RequestBody requestBody = RequestBody.create(body.toString(), JSON_MEDIA_TYPE);
-        Request request = new Request.Builder()
-                .url(url)
-                .addHeader("apikey", supabaseKey)
-                .addHeader("Authorization", "Bearer " + supabaseKey)
-                .addHeader("Content-Type", "application/json")
-                .addHeader("Prefer", "return=minimal")
-                .patch(requestBody)
-                .build();
-
-        Log.d(TAG, "updateScooterRecord PATCH: " + body);
-        Response response = httpClient.newCall(request).execute();
-
-        if (!response.isSuccessful()) {
-            String responseBody = getResponseBody(response);
-            Log.w(TAG, "updateScooterRecord failed: HTTP " + response.code() + " - " + responseBody);
-        } else {
+        Log.d(TAG, "updateScooterRecord via Edge Function: " + scooterId);
+        try {
+            callEdgeFunction("update-scooter", body);
             Log.d(TAG, "updateScooterRecord success for " + scooterId);
-            if (response.body() != null) response.body().close();
+        } catch (IOException e) {
+            Log.w(TAG, "updateScooterRecord failed: " + e.getMessage());
         }
     }
 
