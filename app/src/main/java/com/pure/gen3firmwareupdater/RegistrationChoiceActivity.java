@@ -121,6 +121,7 @@ public class RegistrationChoiceActivity extends AppCompatActivity {
                             session.clearSession();
                             if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
                                 Intercom.client().logout();
+                                Gen3FirmwareUpdaterApp.clearIntercomUserRegistered();
                             }
                             recreate();
                         })
@@ -177,6 +178,7 @@ public class RegistrationChoiceActivity extends AppCompatActivity {
                 session.clearSession();
                 if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
                     Intercom.client().logout();
+                    Gen3FirmwareUpdaterApp.clearIntercomUserRegistered();
                 }
                 recreate();
             });

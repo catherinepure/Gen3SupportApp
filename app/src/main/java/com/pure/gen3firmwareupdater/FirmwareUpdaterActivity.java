@@ -992,6 +992,7 @@ public class FirmwareUpdaterActivity extends AppCompatActivity
         session.clearSession();
         if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
             Intercom.client().logout();
+            Gen3FirmwareUpdaterApp.clearIntercomUserRegistered();
         }
         Intent intent = new Intent(FirmwareUpdaterActivity.this, RegistrationChoiceActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);

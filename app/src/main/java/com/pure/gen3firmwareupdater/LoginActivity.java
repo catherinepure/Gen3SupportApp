@@ -200,17 +200,27 @@ public class LoginActivity extends AppCompatActivity {
         session.clearSession();
         if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
             Intercom.client().logout();
+            Gen3FirmwareUpdaterApp.clearIntercomUserRegistered();
         }
     }
 
     private void registerIntercomUser(String userId, String email, String role) {
         if (!Gen3FirmwareUpdaterApp.isIntercomInitialized()) return;
+        doIntercomLogin(userId, email, role, true);
+    }
+
+    /**
+     * Attempt Intercom loginIdentifiedUser. If it fails with "user already exists",
+     * logout the stale SDK session and retry once cleanly.
+     */
+    private void doIntercomLogin(String userId, String email, String role, boolean canRetry) {
         try {
             Registration registration = Registration.create().withUserId(userId);
             Intercom.client().loginIdentifiedUser(registration, new io.intercom.android.sdk.IntercomStatusCallback() {
                 @Override
                 public void onSuccess() {
                     Log.d(TAG, "Intercom user registered: " + userId);
+                    Gen3FirmwareUpdaterApp.setIntercomUserRegistered(userId);
 
                     io.intercom.android.sdk.UserAttributes userAttributes =
                             new io.intercom.android.sdk.UserAttributes.Builder()
@@ -224,6 +234,17 @@ public class LoginActivity extends AppCompatActivity {
                 @Override
                 public void onFailure(io.intercom.android.sdk.IntercomError intercomError) {
                     Log.w(TAG, "Intercom registration failed: " + intercomError.getErrorMessage());
+
+                    if (canRetry) {
+                        // SDK has stale state — logout and retry once
+                        Log.d(TAG, "Clearing stale Intercom session and retrying login");
+                        Intercom.client().logout();
+                        doIntercomLogin(userId, email, role, false);
+                    } else {
+                        // Retry also failed — mark as registered anyway
+                        Log.w(TAG, "Intercom retry also failed");
+                        Gen3FirmwareUpdaterApp.setIntercomUserRegistered(userId);
+                    }
                 }
             });
         } catch (Exception e) {

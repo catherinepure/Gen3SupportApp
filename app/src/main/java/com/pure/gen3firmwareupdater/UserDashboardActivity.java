@@ -75,6 +75,7 @@ public class UserDashboardActivity extends AppCompatActivity
     private final AtomicBoolean updatingToggles = new AtomicBoolean(false); // Prevents toggle listener feedback loop
     private boolean autoConnectAttempted = false; // Only attempt auto-connect once per scan
     private boolean devicePickerShown = false; // Prevent duplicate device picker dialogs
+    private volatile boolean intercomUserReady = false; // True once loginIdentifiedUser succeeds
 
     // Stored BLE data for passing to ScooterDetailsActivity
     private String connectedDeviceName; // ZYD serial (BLE device name) — used as DB key
@@ -229,14 +230,41 @@ public class UserDashboardActivity extends AppCompatActivity
     private void ensureIntercomRegistered() {
         if (!Gen3FirmwareUpdaterApp.isIntercomInitialized()) return;
         String userId = session.getUserId();
-        if (userId == null) return;
+        if (userId == null) {
+            Log.w(TAG, "Intercom: no userId in session, skipping registration");
+            return;
+        }
 
+        // The Intercom SDK persists login state across app launches.
+        // Calling loginIdentifiedUser() when already registered causes a
+        // "user already exists" error. Track state in SharedPreferences.
+        boolean alreadyRegistered = Gen3FirmwareUpdaterApp.isIntercomUserRegistered(userId);
+
+        if (alreadyRegistered) {
+            Log.d(TAG, "Intercom user already registered, showing launcher");
+            intercomUserReady = true;
+            Intercom.client().setLauncherVisibility(Intercom.Visibility.VISIBLE);
+            return;
+        }
+
+        doIntercomLogin(userId, true);
+    }
+
+    /**
+     * Attempt Intercom loginIdentifiedUser. If it fails with "user already exists",
+     * logout the stale SDK session and retry once cleanly.
+     */
+    private void doIntercomLogin(String userId, boolean canRetry) {
         try {
             Registration registration = Registration.create().withUserId(userId);
             Intercom.client().loginIdentifiedUser(registration, new io.intercom.android.sdk.IntercomStatusCallback() {
                 @Override
                 public void onSuccess() {
                     Log.d(TAG, "Intercom user registered: " + userId);
+                    intercomUserReady = true;
+
+                    Gen3FirmwareUpdaterApp.setIntercomUserRegistered(userId);
+
                     io.intercom.android.sdk.UserAttributes userAttributes =
                             new io.intercom.android.sdk.UserAttributes.Builder()
                                     .withEmail(session.getUserEmail())
@@ -244,11 +272,39 @@ public class UserDashboardActivity extends AppCompatActivity
                                     .withCustomAttribute("app_version", BuildConfig.VERSION_NAME)
                                     .build();
                     Intercom.client().updateUser(userAttributes);
+
+                    runOnUiThread(() -> {
+                        if (!isDestroyed() && !isFinishing()) {
+                            Intercom.client().setLauncherVisibility(Intercom.Visibility.VISIBLE);
+                        }
+                    });
                 }
 
                 @Override
                 public void onFailure(io.intercom.android.sdk.IntercomError intercomError) {
                     Log.w(TAG, "Intercom registration failed: " + intercomError.getErrorMessage());
+
+                    if (canRetry) {
+                        // SDK has stale state — logout and retry once
+                        Log.d(TAG, "Clearing stale Intercom session and retrying login");
+                        Intercom.client().logout();
+                        runOnUiThread(() -> {
+                            if (!isDestroyed() && !isFinishing()) {
+                                doIntercomLogin(userId, false);
+                            }
+                        });
+                    } else {
+                        // Retry also failed — mark as registered anyway
+                        Log.w(TAG, "Intercom retry also failed, showing launcher anyway");
+                        intercomUserReady = true;
+                        Gen3FirmwareUpdaterApp.setIntercomUserRegistered(userId);
+
+                        runOnUiThread(() -> {
+                            if (!isDestroyed() && !isFinishing()) {
+                                Intercom.client().setLauncherVisibility(Intercom.Visibility.VISIBLE);
+                            }
+                        });
+                    }
                 }
             });
         } catch (Exception e) {
@@ -259,8 +315,9 @@ public class UserDashboardActivity extends AppCompatActivity
     @Override
     protected void onResume() {
         super.onResume();
-        // Show Intercom launcher (floating support button) on dashboard
-        if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
+        // Show Intercom launcher only if user registration has completed
+        // (prevents "no user registered" error if tapped before async login finishes)
+        if (Gen3FirmwareUpdaterApp.isIntercomInitialized() && intercomUserReady) {
             Intercom.client().setLauncherVisibility(Intercom.Visibility.VISIBLE);
         }
 
@@ -476,6 +533,7 @@ public class UserDashboardActivity extends AppCompatActivity
         session.clearSession();
         if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
             Intercom.client().logout();
+            Gen3FirmwareUpdaterApp.clearIntercomUserRegistered();
         }
 
         Intent intent = new Intent(this, RegistrationChoiceActivity.class);

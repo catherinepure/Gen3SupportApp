@@ -63,6 +63,7 @@ public class DistributorMenuActivity extends AppCompatActivity {
         com.pure.gen3firmwareupdater.services.ServiceFactory.getSessionManager().clearSession();
         if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
             Intercom.client().logout();
+            Gen3FirmwareUpdaterApp.clearIntercomUserRegistered();
         }
 
         Intent intent = new Intent(DistributorMenuActivity.this, RegistrationChoiceActivity.class);

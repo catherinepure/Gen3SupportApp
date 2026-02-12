@@ -22,6 +22,7 @@ import com.pure.gen3firmwareupdater.services.SessionManager;
 import com.pure.gen3firmwareupdater.services.UserSettingsManager;
 
 import io.intercom.android.sdk.Intercom;
+import io.intercom.android.sdk.identity.Registration;
 
 /**
  * Settings screen for user preferences.
@@ -127,7 +128,7 @@ public class SettingsActivity extends AppCompatActivity {
         // Contact Support (opens new conversation — Fin AI will respond first)
         findViewById(R.id.btnContactSupport).setOnClickListener(v -> {
             if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
-                Intercom.client().displayMessageComposer();
+                ensureIntercomRegisteredThen(() -> Intercom.client().displayMessageComposer());
             } else {
                 Toast.makeText(this, "Support chat not available — coming soon", Toast.LENGTH_SHORT).show();
             }
@@ -136,7 +137,7 @@ public class SettingsActivity extends AppCompatActivity {
         // Message History (opens past conversations list)
         findViewById(R.id.btnMessageHistory).setOnClickListener(v -> {
             if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
-                Intercom.client().displayConversationsList();
+                ensureIntercomRegisteredThen(() -> Intercom.client().displayConversationsList());
             } else {
                 Toast.makeText(this, "Support chat not available — coming soon", Toast.LENGTH_SHORT).show();
             }
@@ -259,6 +260,93 @@ public class SettingsActivity extends AppCompatActivity {
         dialog.show(getSupportFragmentManager(), "pin_change");
     }
 
+    /**
+     * Ensures the current user is registered with Intercom, then runs the action.
+     * The Intercom SDK persists login state across app launches, so we must NOT
+     * call loginIdentifiedUser() if the user is already registered — doing so
+     * triggers a "user already exists" error that puts the SDK in a bad state.
+     */
+    private void ensureIntercomRegisteredThen(Runnable onReady) {
+        String userId = session.getUserId();
+        if (userId == null) {
+            Toast.makeText(this, "Please log in to use support chat", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        boolean alreadyRegistered = Gen3FirmwareUpdaterApp.isIntercomUserRegistered(userId);
+
+        if (alreadyRegistered) {
+            // User already registered — safe to present immediately
+            Log.d(TAG, "Intercom user already registered, opening messenger directly");
+            onReady.run();
+            return;
+        }
+
+        // Not yet tracked as registered — register now
+        Log.d(TAG, "Intercom user not tracked, attempting registration for: " + userId);
+        doIntercomLogin(userId, onReady, true);
+    }
+
+    /**
+     * Attempt Intercom loginIdentifiedUser. If it fails with "user already exists",
+     * logout the stale SDK session and retry once cleanly.
+     */
+    private void doIntercomLogin(String userId, Runnable onReady, boolean canRetry) {
+        try {
+            Registration registration = Registration.create().withUserId(userId);
+            Intercom.client().loginIdentifiedUser(registration, new io.intercom.android.sdk.IntercomStatusCallback() {
+                @Override
+                public void onSuccess() {
+                    Log.d(TAG, "Intercom user registered: " + userId);
+                    Gen3FirmwareUpdaterApp.setIntercomUserRegistered(userId);
+
+                    io.intercom.android.sdk.UserAttributes userAttributes =
+                            new io.intercom.android.sdk.UserAttributes.Builder()
+                                    .withEmail(session.getUserEmail())
+                                    .withCustomAttribute("role", session.getUserRole() != null ? session.getUserRole() : "normal")
+                                    .withCustomAttribute("app_version", BuildConfig.VERSION_NAME)
+                                    .build();
+                    Intercom.client().updateUser(userAttributes);
+
+                    // Small delay to let Intercom SDK fully set up the session
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        if (!isDestroyed() && !isFinishing()) {
+                            onReady.run();
+                        }
+                    }, 500);
+                }
+
+                @Override
+                public void onFailure(io.intercom.android.sdk.IntercomError intercomError) {
+                    Log.w(TAG, "Intercom registration failed: " + intercomError.getErrorMessage());
+
+                    if (canRetry) {
+                        // SDK has stale state — logout and retry once
+                        Log.d(TAG, "Clearing stale Intercom session and retrying login");
+                        Intercom.client().logout();
+                        runOnUiThread(() -> {
+                            if (!isDestroyed() && !isFinishing()) {
+                                doIntercomLogin(userId, onReady, false);
+                            }
+                        });
+                    } else {
+                        // Retry also failed — mark as registered anyway and proceed
+                        Log.w(TAG, "Intercom retry also failed, proceeding anyway");
+                        Gen3FirmwareUpdaterApp.setIntercomUserRegistered(userId);
+                        runOnUiThread(() -> {
+                            if (!isDestroyed() && !isFinishing()) {
+                                onReady.run();
+                            }
+                        });
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "Intercom registration error", e);
+            onReady.run();
+        }
+    }
+
     private void confirmLogout() {
         new AlertDialog.Builder(this)
                 .setTitle("Logout")
@@ -272,6 +360,7 @@ public class SettingsActivity extends AppCompatActivity {
                     pinCache.clearAllCachedPins();
                     if (Gen3FirmwareUpdaterApp.isIntercomInitialized()) {
                         Intercom.client().logout();
+                        Gen3FirmwareUpdaterApp.clearIntercomUserRegistered();
                     }
 
                     Intent intent = new Intent(this, RegistrationChoiceActivity.class);
