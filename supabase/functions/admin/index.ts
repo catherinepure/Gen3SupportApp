@@ -2761,7 +2761,7 @@ const VALID_SCOPES = [
   'users:read', 'users:write',
   'workshops:read', 'workshops:write',
   'service-jobs:read', 'service-jobs:write',
-  'notifications:send',
+  'notifications:send', 'notifications:read',
   'analytics:read',
   'components:read',
   'faults:read',
@@ -2772,7 +2772,7 @@ const VALID_SCOPES = [
 const SCOPE_PRESETS: Record<string, string[]> = {
   manufacturer: [...VALID_SCOPES],
   distributor: ['scooters:read', 'scooters:telemetry', 'rides:read', 'firmware:read', 'users:read', 'workshops:read', 'service-jobs:read', 'analytics:read', 'components:read', 'faults:read', 'events:read', 'webhooks:read', 'webhooks:write'],
-  workshop: ['scooters:read', 'scooters:telemetry', 'scooters:diagnostics', 'rides:read', 'service-jobs:read', 'service-jobs:write', 'components:read', 'faults:read', 'events:read', 'events:write', 'webhooks:read', 'webhooks:write'],
+  workshop: ['scooters:read', 'scooters:telemetry', 'scooters:diagnostics', 'rides:read', 'service-jobs:read', 'service-jobs:write', 'components:read', 'faults:read', 'events:read', 'events:write', 'webhooks:read', 'webhooks:write', 'notifications:read'],
   custom: []
 }
 

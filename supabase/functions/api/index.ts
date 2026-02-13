@@ -289,6 +289,9 @@ const SCOPE_MAP: Record<string, string> = {
   'webhooks:test': 'webhooks:write',
   'webhooks:pause': 'webhooks:write',
   'webhooks:resume': 'webhooks:write',
+  // Notifications (user notification log)
+  'notifications:list': 'notifications:read',
+  'notifications:mark-read': 'notifications:read',
 }
 
 function checkScope(scopes: string[], resource: string, action: string): boolean {
@@ -1527,6 +1530,73 @@ async function handleAnalytics(supabase: any, action: string, body: any, territo
 }
 
 // ============================================================================
+// User Notification Log (per-user push notification history)
+// ============================================================================
+
+async function handleNotifications(supabase: any, action: string, body: any) {
+  if (action === 'list') {
+    const userId = body.user_id
+    if (!userId) return { error: 'user_id is required', status: 400 }
+
+    let query = supabase
+      .from('user_notification_log')
+      .select('id, notification_id, title, body, tap_action, delivered, read_at, created_at', { count: 'exact' })
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+
+    const limit = Math.min(body.limit || 50, 100)
+    const offset = body.offset || 0
+    query = query.range(offset, offset + limit - 1)
+
+    const { data, error, count } = await query
+    if (error) return { error: error.message }
+
+    // Count unread
+    const { count: unreadCount } = await supabase
+      .from('user_notification_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .is('read_at', null)
+
+    return {
+      data: data || [],
+      unread_count: unreadCount || 0,
+      pagination: { total: count, limit, offset },
+    }
+  }
+
+  if (action === 'mark-read') {
+    const { id, user_id } = body
+
+    // Mark single notification as read
+    if (id) {
+      const { error } = await supabase
+        .from('user_notification_log')
+        .update({ read_at: new Date().toISOString() })
+        .eq('id', id)
+        .is('read_at', null)
+      if (error) return { error: error.message }
+      return { data: { marked: true } }
+    }
+
+    // Mark all notifications for user as read
+    if (user_id) {
+      const { error } = await supabase
+        .from('user_notification_log')
+        .update({ read_at: new Date().toISOString() })
+        .eq('user_id', user_id)
+        .is('read_at', null)
+      if (error) return { error: error.message }
+      return { data: { marked_all: true } }
+    }
+
+    return { error: 'id or user_id is required', status: 400 }
+  }
+
+  return { error: `Unknown notifications action: ${action}`, status: 400 }
+}
+
+// ============================================================================
 // Webhooks (self-service for API key holders)
 // ============================================================================
 
@@ -1854,6 +1924,7 @@ serve(async (req) => {
       case 'events':           result = await handleEvents(supabase, action, body, territory); break
       case 'ownership':        result = await handleOwnership(supabase, action, body, territory); break
       case 'webhooks':         result = await handleWebhooks(supabase, action, body, territory, keyData); break
+      case 'notifications':   result = await handleNotifications(supabase, action, body); break
       default:
         return errorRespond('INVALID_REQUEST', `Unknown resource: ${resource}`, 400, rateLimitHeaders)
     }
@@ -1913,6 +1984,7 @@ serve(async (req) => {
       },
     }
     if (result.pagination) responseBody.pagination = result.pagination
+    if (result.unread_count !== undefined) responseBody.unread_count = result.unread_count
 
     return respond(responseBody, responseStatus, rateLimitHeaders)
 

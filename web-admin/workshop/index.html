@@ -169,6 +169,14 @@
     @keyframes fadeHighlight { from{background:var(--primary-light)} to{background:transparent} }
     .activity-new { animation: fadeHighlight 2s ease; }
 
+    /* Notification log */
+    .notification-unread { background: var(--primary-light); }
+    .notification-unread td { font-weight: 600; }
+    .unread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--primary); }
+    table tr.notification-row { cursor: pointer; }
+    table tr.notification-row:hover { background: var(--gray-50); }
+    table tr.notification-unread:hover { background: #c7d8f5; }
+
     /* Toast notification */
     .toast-container { position: fixed; top: 70px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
     .toast { padding: 12px 20px; border-radius: var(--radius); box-shadow: var(--shadow-lg); font-size: 0.875rem; font-weight: 500; animation: slideIn 0.3s ease; max-width: 360px; }
@@ -251,6 +259,7 @@
   <div class="tab" data-page="components">Components</div>
   <div class="tab" data-page="updates">Firmware Updates</div>
   <div class="tab" data-page="webhooks">&#128279; Webhooks</div>
+  <div class="tab" data-page="notifications">&#128276; Notifications</div>
 </div>
 
 <div class="main">
@@ -404,6 +413,21 @@
       <div class="table-container" id="webhook-deliveries-table"><div class="empty">No deliveries yet</div></div>
     </div>
   </div>
+
+  <!-- Notifications -->
+  <div id="page-notifications" class="page">
+    <div class="stats-grid" id="notifications-stats"></div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Notification History</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="Notifications.markAllRead()">Mark All Read</button>
+          <button class="btn btn-secondary btn-sm" onclick="Notifications.load()">Refresh</button>
+        </div>
+      </div>
+      <div class="table-container" id="notifications-table"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+  </div>
 </div>
 
 <!-- Toast container -->
@@ -531,6 +555,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (page === 'battery') Battery.load();
     if (page === 'updates') Updates.load();
     if (page === 'webhooks') Webhooks.load();
+    if (page === 'notifications') Notifications.load();
   });
 });
 
@@ -1429,6 +1454,107 @@ function setStatus(ok, msg) {
     text.textContent = msg || 'Connection error';
   }
 }
+
+// ── Notifications Module ──
+const Notifications = {
+  data: [],
+  unreadCount: 0,
+
+  async load() {
+    document.getElementById('notifications-table').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const user = JSON.parse(sessionStorage.getItem('workshop_user'));
+      if (!user?.id) throw new Error('Not logged in');
+
+      const res = await api('notifications', 'list', { user_id: user.id, limit: 50 });
+      this.data = res.data || [];
+      this.unreadCount = res.unread_count || 0;
+      this.renderStats();
+      this.render();
+    } catch (err) {
+      document.getElementById('notifications-table').innerHTML =
+        `<div class="empty" style="color:var(--danger)">${err.message}</div>`;
+      document.getElementById('notifications-stats').innerHTML = '';
+    }
+  },
+
+  renderStats() {
+    const total = this.data.length;
+    const unread = this.unreadCount;
+    const delivered = this.data.filter(n => n.delivered).length;
+    document.getElementById('notifications-stats').innerHTML = `
+      <div class="stat-card"><div class="stat-label">Total Received</div><div class="stat-value">${total}</div></div>
+      <div class="stat-card"><div class="stat-label">Unread</div><div class="stat-value" style="color:${unread > 0 ? 'var(--primary)' : 'var(--gray-400)'}">${unread}</div></div>
+      <div class="stat-card"><div class="stat-label">Successfully Delivered</div><div class="stat-value" style="color:var(--success)">${delivered}</div></div>
+    `;
+  },
+
+  render() {
+    if (this.data.length === 0) {
+      document.getElementById('notifications-table').innerHTML =
+        '<div class="empty">No notifications received yet</div>';
+      return;
+    }
+    document.getElementById('notifications-table').innerHTML = `
+      <table>
+        <thead><tr><th style="width:30px"></th><th>Title</th><th>Message</th><th>Status</th><th>Received</th></tr></thead>
+        <tbody>${this.data.map(n => `
+          <tr class="notification-row ${!n.read_at ? 'notification-unread' : ''}"
+              onclick="Notifications.showDetail('${n.id}')">
+            <td>${!n.read_at ? '<span class="unread-dot"></span>' : ''}</td>
+            <td>${escapeHtml(n.title)}</td>
+            <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(n.body)}</td>
+            <td>${n.delivered
+              ? '<span class="badge badge-success">Delivered</span>'
+              : '<span class="badge badge-danger">Failed</span>'}</td>
+            <td>${timeAgo(n.created_at)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  },
+
+  async showDetail(id) {
+    const n = this.data.find(x => x.id === id);
+    if (!n) return;
+
+    // Mark as read if unread
+    if (!n.read_at) {
+      try {
+        await api('notifications', 'mark-read', { id });
+        n.read_at = new Date().toISOString();
+        this.unreadCount = Math.max(0, this.unreadCount - 1);
+        this.renderStats();
+        this.render();
+      } catch (_) {}
+    }
+
+    showDetail('Notification', `
+      <div class="detail-section">
+        <h4>Notification</h4>
+        <div class="detail-row"><span class="detail-label">Title</span><span class="detail-value">${escapeHtml(n.title)}</span></div>
+        <div class="detail-row"><span class="detail-label">Message</span><span class="detail-value" style="font-size:0.85rem;max-width:70%;white-space:pre-wrap">${escapeHtml(n.body)}</span></div>
+        <div class="detail-row"><span class="detail-label">Action</span><span class="detail-value">${n.tap_action || 'none'}</span></div>
+        <div class="detail-row"><span class="detail-label">Delivery</span><span class="detail-value">${n.delivered
+          ? '<span class="badge badge-success">Delivered</span>'
+          : '<span class="badge badge-danger">Failed</span>'}</span></div>
+        <div class="detail-row"><span class="detail-label">Received</span><span class="detail-value">${fmtDateTime(n.created_at)}</span></div>
+        <div class="detail-row"><span class="detail-label">Read</span><span class="detail-value">${n.read_at ? fmtDateTime(n.read_at) : '<span style="color:var(--primary)">Unread</span>'}</span></div>
+      </div>
+    `);
+  },
+
+  async markAllRead() {
+    try {
+      const user = JSON.parse(sessionStorage.getItem('workshop_user'));
+      if (!user?.id) return;
+      await api('notifications', 'mark-read', { user_id: user.id });
+      showToast('All notifications marked as read', 'success');
+      this.load();
+    } catch (err) {
+      showToast('Failed: ' + err.message, 'error');
+    }
+  }
+};
 
 // ── Init ──
 document.getElementById('login-form').addEventListener('submit', handleLoginSubmit);

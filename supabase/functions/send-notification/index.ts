@@ -363,6 +363,14 @@ serve(async (req: Request) => {
     let failureCount = 0
     const invalidTokenIds: string[] = []
 
+    // Per-user delivery tracking: deduplicate by user_id (one log entry per user, not per device token)
+    const userDeliveryMap = new Map<string, {
+      userId: string
+      delivered: boolean
+      title: string
+      body: string
+    }>()
+
     for (const tokenRecord of tokens) {
       // Resolve per-user placeholders for this recipient
       let finalTitle = globalTitle
@@ -397,6 +405,48 @@ serve(async (req: Request) => {
         if (result.unregistered) {
           invalidTokenIds.push(tokenRecord.id)
         }
+      }
+
+      // Track per-user delivery (user counts as delivered if ANY of their device tokens succeeded)
+      if (tokenRecord.user_id) {
+        const existing = userDeliveryMap.get(tokenRecord.user_id)
+        if (!existing) {
+          userDeliveryMap.set(tokenRecord.user_id, {
+            userId: tokenRecord.user_id,
+            delivered: result.success,
+            title: finalTitle,
+            body: finalBody,
+          })
+        } else if (result.success && !existing.delivered) {
+          // Upgrade to delivered if this token succeeded
+          existing.delivered = true
+        }
+      }
+    }
+
+    // Insert per-user notification log entries (fire-and-forget — don't break send flow on failure)
+    if (userDeliveryMap.size > 0) {
+      try {
+        const logEntries = Array.from(userDeliveryMap.values()).map(entry => ({
+          notification_id: notification.id,
+          user_id: entry.userId,
+          title: entry.title,
+          body: entry.body,
+          tap_action: notification.action || 'none',
+          delivered: entry.delivered,
+        }))
+
+        // Insert in batches of 500 to avoid payload limits
+        for (let i = 0; i < logEntries.length; i += 500) {
+          const batch = logEntries.slice(i, i + 500)
+          const { error: logError } = await supabase.from('user_notification_log').insert(batch)
+          if (logError) {
+            console.error(`Failed to log user notifications (batch ${i / 500 + 1}):`, logError.message)
+          }
+        }
+        console.log(`Logged ${userDeliveryMap.size} user notification entries`)
+      } catch (logErr: any) {
+        console.error('Failed to log user notifications:', logErr.message || logErr)
       }
     }
 
