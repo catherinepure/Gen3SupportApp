@@ -20,6 +20,8 @@ window.Pages = {
     'consent-history': ConsentHistoryPage,
     'live-runs': LiveRunsPage,
     notifications: NotificationsPage,
+    'api-keys': ApiKeysPage,
+    webhooks: WebhooksPage,
     settings: SettingsPage
 };
 

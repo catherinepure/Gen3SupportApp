@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pure Workshop Portal</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #dbeafe;
+      --success: #16a34a;
+      --success-light: #dcfce7;
+      --warning: #d97706;
+      --warning-light: #fef3c7;
+      --danger: #dc2626;
+      --danger-light: #fee2e2;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-300: #d1d5db;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-600: #4b5563;
+      --gray-700: #374151;
+      --gray-800: #1f2937;
+      --gray-900: #111827;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.1);
+      --shadow-lg: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--gray-50); color: var(--gray-800); }
+
+    /* Header */
+    .header { background: var(--gray-900); color: white; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .header-brand { display: flex; align-items: center; gap: 12px; }
+    .header-brand h1 { font-size: 1.125rem; font-weight: 600; }
+    .header-brand .logo { width: 28px; height: 28px; background: var(--primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+    .header-status { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--gray-400); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+    .status-dot.error { background: var(--danger); }
+
+    /* Tabs */
+    .tabs { background: white; border-bottom: 1px solid var(--gray-200); padding: 0 24px; display: flex; gap: 0; overflow-x: auto; }
+    .tab { padding: 12px 20px; font-size: 0.875rem; font-weight: 500; color: var(--gray-500); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.15s; }
+    .tab:hover { color: var(--gray-700); background: var(--gray-50); }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    /* Main content */
+    .main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* Cards */
+    .card { background: white; border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .card-title { font-size: 1rem; font-weight: 600; color: var(--gray-800); }
+
+    /* Stats grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: white; border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 20px; }
+    .stat-label { font-size: 0.75rem; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .stat-value { font-size: 1.75rem; font-weight: 700; color: var(--gray-900); }
+    .stat-sub { font-size: 0.8rem; color: var(--gray-500); margin-top: 2px; }
+
+    /* Tables */
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th { text-align: left; padding: 10px 12px; background: var(--gray-50); border-bottom: 2px solid var(--gray-200); color: var(--gray-600); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--gray-100); }
+    tr:hover td { background: var(--gray-50); }
+    tr { cursor: pointer; }
+
+    /* Badges */
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+    .badge-success { background: var(--success-light); color: var(--success); }
+    .badge-warning { background: var(--warning-light); color: var(--warning); }
+    .badge-danger { background: var(--danger-light); color: var(--danger); }
+    .badge-info { background: var(--primary-light); color: var(--primary); }
+    .badge-gray { background: var(--gray-100); color: var(--gray-600); }
+
+    /* Buttons */
+    .btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary { background: var(--gray-100); color: var(--gray-700); border: 1px solid var(--gray-300); }
+    .btn-secondary:hover { background: var(--gray-200); }
+    .btn-success { background: var(--success); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+
+    /* Health bar */
+    .health-bar { width: 80px; height: 8px; background: var(--gray-200); border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 6px; }
+    .health-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .health-good { background: var(--success); }
+    .health-fair { background: var(--warning); }
+    .health-poor { background: var(--danger); }
+
+    /* Fault chip */
+    .fault-chip { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 500; background: var(--danger-light); color: var(--danger); margin: 1px 2px; }
+    .no-faults { color: var(--success); font-weight: 500; }
+
+    /* Detail panel */
+    .detail-panel { position: fixed; right: 0; top: 56px; bottom: 0; width: 480px; background: white; border-left: 1px solid var(--gray-200); box-shadow: var(--shadow-lg); z-index: 50; overflow-y: auto; transform: translateX(100%); transition: transform 0.25s ease; }
+    .detail-panel.open { transform: translateX(0); }
+    .detail-header { padding: 16px 20px; border-bottom: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: white; z-index: 1; }
+    .detail-header h3 { font-size: 1rem; }
+    .detail-close { width: 32px; height: 32px; border-radius: 6px; border: none; background: var(--gray-100); cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
+    .detail-body { padding: 20px; }
+    .detail-section { margin-bottom: 20px; }
+    .detail-section h4 { font-size: 0.8rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--gray-100); }
+    .detail-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.875rem; }
+    .detail-label { color: var(--gray-500); }
+    .detail-value { font-weight: 500; text-align: right; max-width: 60%; }
+
+    /* Loading */
+    .loading { text-align: center; padding: 40px; color: var(--gray-400); }
+    .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid var(--gray-200); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 40px; color: var(--gray-400); font-size: 0.9rem; }
+
+    /* Overlay */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 40; display: none; }
+    .overlay.active { display: block; }
+
+    /* Login */
+    .login-container { display:flex; align-items:center; justify-content:center; min-height:100vh; background:var(--gray-100); }
+    .login-card { background:white; border-radius:var(--radius); box-shadow:var(--shadow-lg); padding:40px; width:100%; max-width:400px; }
+    .login-logo { text-align:center; margin-bottom:24px; }
+    .login-logo h1 { font-size:1.25rem; margin-top:12px; }
+    .login-logo p { color:var(--gray-500); font-size:0.875rem; margin-top:4px; }
+    .login-logo .logo { width:48px; height:48px; margin:0 auto; font-size:20px; }
+    .form-group { margin-bottom:16px; }
+    .form-group label { display:block; font-size:0.875rem; font-weight:500; margin-bottom:4px; color:var(--gray-700); }
+    .form-group input { width:100%; padding:10px 12px; border:1px solid var(--gray-300); border-radius:6px; font-size:0.875rem; }
+    .form-group input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,0.1); }
+    .login-error { color:var(--danger); font-size:0.875rem; text-align:center; margin-top:12px; }
+
+    /* Notification bell */
+    .event-bell { position: relative; cursor: pointer; padding: 4px 8px; margin-right: 8px; }
+    .bell-icon { font-size: 1.2rem; }
+    .bell-badge { position: absolute; top: -4px; right: 0; background: var(--danger); color: white; border-radius: 10px; font-size: 0.6rem; font-weight: 700; padding: 1px 5px; min-width: 16px; text-align: center; line-height: 1.3; }
+    @keyframes bellPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.2)} }
+    .bell-badge.pulse { animation: bellPulse 0.5s ease; }
+
+    /* Pipeline visualizer */
+    .pipeline { display: flex; align-items: stretch; gap: 0; margin: 20px 0; }
+    .pipeline-step { flex: 1; background: white; border: 2px solid var(--gray-200); border-radius: var(--radius); padding: 16px; text-align: center; transition: border-color 0.3s, box-shadow 0.3s; }
+    .pipeline-step.success { border-color: var(--success); box-shadow: 0 0 0 2px rgba(22,163,74,0.1); }
+    .pipeline-step.fail { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(220,38,38,0.1); }
+    .pipeline-step.pending { border-color: var(--warning); }
+    .pipeline-arrow { width: 40px; display: flex; align-items: center; justify-content: center; color: var(--gray-300); font-size: 1.5rem; flex-shrink: 0; }
+    .pipeline-label { font-size: 0.7rem; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; font-weight: 600; }
+    .pipeline-value { font-size: 0.9rem; font-weight: 600; color: var(--gray-800); }
+    .pipeline-sub { font-size: 0.75rem; color: var(--gray-500); margin-top: 4px; }
+
+    /* Code block */
+    .code-block { background: var(--gray-900); color: #e5e7eb; border-radius: var(--radius); padding: 16px; font-family: 'SFMono-Regular',Consolas,'Liberation Mono',monospace; font-size: 0.75rem; overflow-x: auto; max-height: 260px; overflow-y: auto; white-space: pre; line-height: 1.5; }
+
+    /* Activity feed */
+    .activity-item { display: flex; align-items: center; gap: 12px; padding: 8px 4px; border-bottom: 1px solid var(--gray-100); }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-icon { width: 30px; height: 30px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; flex-shrink: 0; }
+    .activity-text { flex: 1; font-size: 0.85rem; line-height: 1.3; }
+    .activity-time { font-size: 0.7rem; color: var(--gray-400); white-space: nowrap; }
+    @keyframes fadeHighlight { from{background:var(--primary-light)} to{background:transparent} }
+    .activity-new { animation: fadeHighlight 2s ease; }
+
+    /* Toast notification */
+    .toast-container { position: fixed; top: 70px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+    .toast { padding: 12px 20px; border-radius: var(--radius); box-shadow: var(--shadow-lg); font-size: 0.875rem; font-weight: 500; animation: slideIn 0.3s ease; max-width: 360px; }
+    .toast-success { background: var(--success); color: white; }
+    .toast-error { background: var(--danger); color: white; }
+    .toast-info { background: var(--primary); color: white; }
+    @keyframes slideIn { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
+
+    /* Webhook form */
+    .webhook-form { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; display: none; }
+    .webhook-form.visible { display: block; }
+    .form-row { display: flex; gap: 12px; margin-bottom: 12px; }
+    .form-row .form-group { flex: 1; margin-bottom: 0; }
+    .event-type-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .event-type-checkbox { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; padding: 3px 8px; background: white; border: 1px solid var(--gray-200); border-radius: 4px; cursor: pointer; }
+    .event-type-checkbox:hover { border-color: var(--primary); }
+    .event-type-checkbox.selected { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .detail-panel { width: 100%; }
+      .main { padding: 16px; }
+      .pipeline { flex-direction: column; }
+      .pipeline-arrow { transform: rotate(90deg); width: auto; height: 30px; }
+      .form-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen" class="login-container">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo">P</div>
+      <h1>Pure Workshop Portal</h1>
+      <p>Sign in to access your workshop dashboard</p>
+    </div>
+    <form id="login-form">
+      <div class="form-group">
+        <label for="login-email">Email</label>
+        <input type="email" id="login-email" required autocomplete="email" placeholder="workshop@pureelectric.com">
+      </div>
+      <div class="form-group">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" required autocomplete="current-password" placeholder="Password">
+      </div>
+      <button type="submit" class="btn btn-primary" id="login-btn" style="width:100%">Sign In</button>
+      <div id="login-error" class="login-error" style="display:none"></div>
+    </form>
+  </div>
+</div>
+
+<!-- App Content (hidden until logged in) -->
+<div id="app-content" style="display:none">
+
+<div class="header">
+  <div class="header-brand">
+    <div class="logo">P</div>
+    <h1>Pure Workshop Portal</h1>
+  </div>
+  <div class="header-status">
+    <div class="event-bell" id="event-bell" onclick="switchTab('webhooks')" title="Recent events">
+      <span class="bell-icon">&#128276;</span>
+      <span class="bell-badge" id="bell-badge" style="display:none">0</span>
+    </div>
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Connecting...</span>
+    <button class="btn btn-secondary btn-sm" id="logout-btn" style="margin-left:12px" onclick="handleLogout()">Logout</button>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-page="dashboard">Dashboard</div>
+  <div class="tab" data-page="scooters">Scooters in Service</div>
+  <div class="tab" data-page="jobs">Service Jobs</div>
+  <div class="tab" data-page="faults">Fault Diagnostics</div>
+  <div class="tab" data-page="battery">Battery Health</div>
+  <div class="tab" data-page="components">Components</div>
+  <div class="tab" data-page="updates">Firmware Updates</div>
+  <div class="tab" data-page="webhooks">&#128279; Webhooks</div>
+</div>
+
+<div class="main">
+  <!-- Dashboard -->
+  <div id="page-dashboard" class="page active">
+    <div class="stats-grid" id="dashboard-stats">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Recent Service Jobs</div>
+      </div>
+      <div class="table-container" id="dashboard-jobs"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Active Fault Alerts</div>
+      </div>
+      <div id="dashboard-faults"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Recent Fleet Activity <span class="badge badge-info" id="live-indicator" style="font-size:0.65rem;vertical-align:middle">LIVE</span></div>
+        <button class="btn btn-secondary btn-sm" onclick="LiveFeed.refresh()">Refresh</button>
+      </div>
+      <div id="dashboard-activity"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+  <!-- Scooters -->
+  <div id="page-scooters" class="page">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Scooters</div>
+        <button class="btn btn-secondary btn-sm" onclick="Scooters.load()">Refresh</button>
+      </div>
+      <div class="table-container" id="scooters-table"></div>
+    </div>
+  </div>
+
+  <!-- Service Jobs -->
+  <div id="page-jobs" class="page">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Service Jobs</div>
+        <button class="btn btn-secondary btn-sm" onclick="Jobs.load()">Refresh</button>
+      </div>
+      <div class="table-container" id="jobs-table"></div>
+    </div>
+  </div>
+
+  <!-- Fault Diagnostics -->
+  <div id="page-faults" class="page">
+    <div class="stats-grid" id="faults-summary"></div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Scooter Fault Status</div>
+      </div>
+      <div class="table-container" id="faults-table"></div>
+    </div>
+  </div>
+
+  <!-- Battery Health -->
+  <div id="page-battery" class="page">
+    <div class="stats-grid" id="battery-fleet-stats"></div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Battery Health by Scooter</div>
+      </div>
+      <div class="table-container" id="battery-table"></div>
+    </div>
+  </div>
+
+  <!-- Components -->
+  <div id="page-components" class="page">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Component Lookup</div>
+      </div>
+      <p style="margin-bottom:12px;font-size:0.875rem;color:var(--gray-500)">Select a scooter from the Scooters tab to view its component history, or search below.</p>
+      <div id="components-content" class="empty">Select a scooter to view components</div>
+    </div>
+  </div>
+
+  <!-- Firmware Updates -->
+  <div id="page-updates" class="page">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Firmware Update History</div>
+        <button class="btn btn-secondary btn-sm" onclick="Updates.load()">Refresh</button>
+      </div>
+      <div class="table-container" id="updates-table"></div>
+    </div>
+  </div>
+
+  <!-- Webhooks -->
+  <div id="page-webhooks" class="page">
+    <!-- Section A: Subscriptions -->
+    <div class="stats-grid" id="webhook-stats"></div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Webhook Subscriptions</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="Webhooks.load()">Refresh</button>
+          <button class="btn btn-primary btn-sm" id="create-webhook-btn" onclick="Webhooks.toggleForm()">+ Create Webhook</button>
+        </div>
+      </div>
+      <!-- Create form (hidden by default) -->
+      <div class="webhook-form" id="webhook-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Callback URL</label>
+            <input type="url" id="wh-url" placeholder="https://webhook.site/your-uuid" required>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" id="wh-description" placeholder="e.g. Workshop notification endpoint">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Event Types <span style="font-size:0.75rem;color:var(--gray-400)">(leave all unchecked for all events)</span></label>
+          <div class="event-type-grid" id="wh-event-types"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary btn-sm" onclick="Webhooks.create()">Create Subscription</button>
+          <button class="btn btn-secondary btn-sm" onclick="Webhooks.toggleForm()">Cancel</button>
+        </div>
+      </div>
+      <div class="table-container" id="webhook-subs-table"><div class="empty">Loading...</div></div>
+    </div>
+
+    <!-- Section B: Pipeline Visualizer -->
+    <div class="card" id="pipeline-card">
+      <div class="card-header">
+        <div class="card-title">Delivery Pipeline</div>
+      </div>
+      <div id="pipeline-content">
+        <div class="empty" style="padding:20px">Create a webhook subscription and trigger a test or simulate an event to see the delivery pipeline.</div>
+      </div>
+    </div>
+
+    <!-- Section C: Simulate + Delivery Log -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Delivery Log</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-success btn-sm" onclick="Webhooks.simulate()">&#9889; Simulate Event</button>
+          <button class="btn btn-secondary btn-sm" onclick="Webhooks.loadDeliveries()">Refresh</button>
+        </div>
+      </div>
+      <div class="table-container" id="webhook-deliveries-table"><div class="empty">No deliveries yet</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Detail side panel -->
+<div class="overlay" id="overlay" onclick="closeDetail()"></div>
+<div class="detail-panel" id="detail-panel">
+  <div class="detail-header">
+    <h3 id="detail-title">Details</h3>
+    <button class="detail-close" onclick="closeDetail()">&times;</button>
+  </div>
+  <div class="detail-body" id="detail-body"></div>
+</div>
+
+</div><!-- /app-content -->
+
+<script>
+// ── Auth Config ──
+const SUPABASE_URL = 'https://hhpxmlrpdharhhzwjxuc.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocHhtbHJwZGhhcmhoendqeHVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMDgwNTQsImV4cCI6MjA4NTc4NDA1NH0.w_9rkrz6Mw12asETIAk7jenY-yjVVxrLeWz642k3PVM';
+
+function checkSession() {
+  const token = sessionStorage.getItem('workshop_session');
+  const user = sessionStorage.getItem('workshop_user');
+  if (token && user) return JSON.parse(user);
+  return null;
+}
+
+async function handleLoginSubmit(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+  const btn = document.getElementById('login-btn');
+  const errorEl = document.getElementById('login-error');
+
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  errorEl.style.display = 'none';
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ANON_KEY}`,
+        'apikey': ANON_KEY,
+      },
+      body: JSON.stringify({ email, password, device_info: 'Workshop Portal' }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+
+    sessionStorage.setItem('workshop_session', data.session_token);
+    sessionStorage.setItem('workshop_user', JSON.stringify(data.user));
+    showApp();
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+function handleLogout() {
+  LiveFeed.stopPolling();
+  const token = sessionStorage.getItem('workshop_session');
+  if (token) {
+    fetch(`${SUPABASE_URL}/functions/v1/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ANON_KEY}`,
+        'apikey': ANON_KEY,
+        'X-Session-Token': token,
+      },
+      body: JSON.stringify({}),
+    }).catch(() => {});
+  }
+  sessionStorage.removeItem('workshop_session');
+  sessionStorage.removeItem('workshop_user');
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app-content').style.display = 'none';
+}
+
+function showApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-content').style.display = 'block';
+  Dashboard.load();
+  LiveFeed.startPolling();
+}
+
+// ── Config ──
+const API_URL = 'https://hhpxmlrpdharhhzwjxuc.supabase.co/functions/v1/api';
+const API_KEY = 'pk_live_f157545f3eee3bef72e55b2b6c46a03a439c0baa59548c7c08164bf3';
+
+// ── API Helper ──
+async function api(resource, action, params = {}) {
+  const body = { resource, action, ...params };
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error?.message || 'API error');
+  return data;
+}
+
+// ── Tab Navigation ──
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    const page = tab.dataset.page;
+    document.getElementById(`page-${page}`).classList.add('active');
+    closeDetail();
+    // Load data for the tab
+    if (page === 'dashboard') Dashboard.load();
+    if (page === 'scooters') Scooters.load();
+    if (page === 'jobs') Jobs.load();
+    if (page === 'faults') Faults.load();
+    if (page === 'battery') Battery.load();
+    if (page === 'updates') Updates.load();
+    if (page === 'webhooks') Webhooks.load();
+  });
+});
+
+function switchTab(page) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const tab = document.querySelector(`.tab[data-page="${page}"]`);
+  if (tab) tab.classList.add('active');
+  document.getElementById(`page-${page}`).classList.add('active');
+  closeDetail();
+  if (page === 'webhooks') Webhooks.load();
+}
+
+// ── Utilities ──
+function statusBadge(status) {
+  const map = {
+    active: 'success', in_service: 'info', completed: 'success', booked: 'info',
+    in_progress: 'warning', awaiting_parts: 'warning', ready_for_collection: 'success',
+    cancelled: 'gray', failed: 'danger', started: 'info', scanned: 'gray',
+    decommissioned: 'gray', stolen: 'danger',
+  };
+  return `<span class="badge badge-${map[status] || 'gray'}">${status.replace(/_/g, ' ')}</span>`;
+}
+
+function healthBar(pct) {
+  if (pct == null) return '<span style="color:var(--gray-400)">N/A</span>';
+  const cls = pct >= 80 ? 'health-good' : pct >= 60 ? 'health-fair' : 'health-poor';
+  return `<div class="health-bar"><div class="health-fill ${cls}" style="width:${pct}%"></div></div>${pct}%`;
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function fmtDateTime(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+// ── Detail Panel ──
+function showDetail(title, html) {
+  document.getElementById('detail-title').textContent = title;
+  document.getElementById('detail-body').innerHTML = html;
+  document.getElementById('detail-panel').classList.add('open');
+  document.getElementById('overlay').classList.add('active');
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+  document.getElementById('overlay').classList.remove('active');
+}
+
+// ── Dashboard ──
+const Dashboard = {
+  async load() {
+    try {
+      const [scooters, jobs, fleetFaults] = await Promise.all([
+        api('scooters', 'list', { limit: 100 }),
+        api('service-jobs', 'list', { limit: 10 }),
+        api('faults', 'fleet-summary'),
+      ]);
+
+      const scooterData = scooters.data || [];
+      const jobData = jobs.data || [];
+      const faultData = fleetFaults.data || {};
+
+      const inService = scooterData.filter(s => s.status === 'in_service').length;
+      const activeJobs = jobData.filter(j => !['completed','cancelled'].includes(j.status)).length;
+
+      document.getElementById('dashboard-stats').innerHTML = `
+        <div class="stat-card">
+          <div class="stat-label">Scooters Visible</div>
+          <div class="stat-value">${scooters.pagination?.total || scooterData.length}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Currently In Service</div>
+          <div class="stat-value">${inService}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Active Jobs</div>
+          <div class="stat-value">${activeJobs}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Scooters with Faults</div>
+          <div class="stat-value" style="color:${faultData.scooters_with_faults > 0 ? 'var(--danger)' : 'var(--success)'}">${faultData.scooters_with_faults || 0}</div>
+          <div class="stat-sub">of ${faultData.total_scooters_checked || 0} checked</div>
+        </div>
+      `;
+
+      // Recent jobs table
+      if (jobData.length > 0) {
+        document.getElementById('dashboard-jobs').innerHTML = `
+          <table>
+            <thead><tr><th>Scooter</th><th>Issue</th><th>Status</th><th>Booked</th></tr></thead>
+            <tbody>${jobData.slice(0, 5).map(j => `
+              <tr onclick="Jobs.showDetail('${j.id}')">
+                <td>${j.scooters?.zyd_serial || '—'}</td>
+                <td>${(j.issue_description || '').substring(0, 50)}</td>
+                <td>${statusBadge(j.status)}</td>
+                <td>${fmtDate(j.booked_date)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>`;
+      } else {
+        document.getElementById('dashboard-jobs').innerHTML = '<div class="empty">No service jobs found</div>';
+      }
+
+      // Fault alerts
+      const faultFreq = faultData.fault_frequency || [];
+      if (faultFreq.length > 0) {
+        document.getElementById('dashboard-faults').innerHTML = `
+          <div style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 0;">
+            ${faultFreq.map(f => `<div class="fault-chip">${f.fault.replace(/_/g, ' ')} (${f.affected_scooters})</div>`).join('')}
+          </div>`;
+      } else {
+        document.getElementById('dashboard-faults').innerHTML = '<div class="no-faults" style="padding:12px;">No active faults detected across fleet</div>';
+      }
+
+      setStatus(true);
+    } catch (err) {
+      setStatus(false, err.message);
+      document.getElementById('dashboard-stats').innerHTML = `<div class="empty" style="color:var(--danger)">Failed to load: ${err.message}</div>`;
+    }
+  }
+};
+
+// ── Scooters ──
+const Scooters = {
+  data: [],
+  async load() {
+    document.getElementById('scooters-table').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const res = await api('scooters', 'list', { limit: 100 });
+      this.data = res.data || [];
+      this.render();
+    } catch (err) {
+      document.getElementById('scooters-table').innerHTML = `<div class="empty" style="color:var(--danger)">${err.message}</div>`;
+    }
+  },
+  render() {
+    if (this.data.length === 0) {
+      document.getElementById('scooters-table').innerHTML = '<div class="empty">No scooters found</div>';
+      return;
+    }
+    document.getElementById('scooters-table').innerHTML = `
+      <table>
+        <thead><tr><th>Serial</th><th>Model</th><th>Status</th><th>Country</th><th>PIN</th></tr></thead>
+        <tbody>${this.data.map(s => `
+          <tr onclick="Scooters.showDetail('${s.id}')">
+            <td><strong>${s.zyd_serial || '—'}</strong></td>
+            <td>${s.model || '—'}</td>
+            <td>${statusBadge(s.status || 'unknown')}</td>
+            <td>${s.country_of_registration || '—'}</td>
+            <td>${s.has_pin ? '<span class="badge badge-success">Set</span>' : '<span class="badge badge-gray">None</span>'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  },
+  async showDetail(id) {
+    const s = this.data.find(x => x.id === id);
+    if (!s) return;
+
+    // Load battery health + active faults + components in parallel
+    let batteryHtml = '', faultHtml = '', compHtml = '';
+    try {
+      const [battery, faults, components] = await Promise.all([
+        api('battery-health', 'summary', { id }).catch(() => null),
+        api('faults', 'active', { id }).catch(() => null),
+        api('components', 'list', { id }).catch(() => null),
+      ]);
+
+      if (battery?.data?.latest_reading) {
+        const b = battery.data.latest_reading;
+        batteryHtml = `
+          <div class="detail-section">
+            <h4>Battery Health</h4>
+            <div class="detail-row"><span class="detail-label">Health</span><span class="detail-value">${healthBar(b.health_percent)}</span></div>
+            <div class="detail-row"><span class="detail-label">State of Charge</span><span class="detail-value">${b.soc_percent ?? '—'}%</span></div>
+            <div class="detail-row"><span class="detail-label">Charge Cycles</span><span class="detail-value">${b.charge_cycles ?? '—'}</span></div>
+            <div class="detail-row"><span class="detail-label">Temperature</span><span class="detail-value">${b.temperature_c ?? '—'}&deg;C</span></div>
+            <div class="detail-row"><span class="detail-label">Capacity</span><span class="detail-value">${b.remaining_capacity_mah ?? '—'} / ${b.full_capacity_mah ?? '—'} mAh</span></div>
+            <div class="detail-row"><span class="detail-label">Last Reading</span><span class="detail-value">${fmtDateTime(b.recorded_at)}</span></div>
+          </div>`;
+      } else {
+        batteryHtml = '<div class="detail-section"><h4>Battery Health</h4><div class="empty">No telemetry data</div></div>';
+      }
+
+      if (faults?.data) {
+        const f = faults.data;
+        faultHtml = `
+          <div class="detail-section">
+            <h4>Active Faults</h4>
+            ${f.has_active_faults
+              ? `<div style="margin-bottom:8px">${f.faults.map(x => `<span class="fault-chip">${x.replace(/_/g,' ')}</span>`).join('')}</div>
+                 <div class="detail-row"><span class="detail-label">Raw Code</span><span class="detail-value">0x${f.fault_code.toString(16).toUpperCase()}</span></div>`
+              : '<div class="no-faults">No active faults</div>'}
+            <div class="detail-row"><span class="detail-label">Last Checked</span><span class="detail-value">${fmtDateTime(f.last_checked)}</span></div>
+          </div>`;
+      }
+
+      if (components?.data && components.data.length > 0) {
+        compHtml = `
+          <div class="detail-section">
+            <h4>Current Components</h4>
+            ${components.data.filter(c => c.is_current !== false).map(c => `
+              <div style="background:var(--gray-50);border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:0.8rem">
+                <strong style="text-transform:capitalize">${c.component_type}</strong>
+                <span style="color:var(--gray-500);margin-left:6px">${c.battery_serial || c.motor_serial || c.frame_serial || c.controller_serial || ''}</span>
+                ${c.manufacturer ? `<br><span style="color:var(--gray-500)">${c.manufacturer} ${c.model || ''}</span>` : ''}
+              </div>`).join('')}
+          </div>`;
+      }
+    } catch (_) {}
+
+    showDetail(s.zyd_serial || 'Scooter', `
+      <div class="detail-section">
+        <h4>Scooter Info</h4>
+        <div class="detail-row"><span class="detail-label">Serial</span><span class="detail-value">${s.zyd_serial || '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Model</span><span class="detail-value">${s.model || '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${statusBadge(s.status || 'unknown')}</span></div>
+        <div class="detail-row"><span class="detail-label">Country</span><span class="detail-value">${s.country_of_registration || '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">HW Version</span><span class="detail-value">${s.controller_hw_version || '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">SW Version</span><span class="detail-value">${s.controller_sw_version || '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">PIN Set</span><span class="detail-value">${s.has_pin ? 'Yes' : 'No'}</span></div>
+      </div>
+      ${batteryHtml}
+      ${faultHtml}
+      ${compHtml}
+      <div class="detail-section">
+        <button class="btn btn-primary btn-sm" onclick="Scooters.requestDiagnostic('${s.id}')">Request Diagnostic</button>
+      </div>
+    `);
+  },
+  async requestDiagnostic(id) {
+    try {
+      await api('scooters', 'request-diagnostic', { id });
+      alert('Diagnostic requested. The rider will be prompted on next app connection.');
+    } catch (err) {
+      alert('Failed: ' + err.message);
+    }
+  }
+};
+
+// ── Service Jobs ──
+const Jobs = {
+  data: [],
+  async load() {
+    document.getElementById('jobs-table').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const res = await api('service-jobs', 'list', { limit: 50 });
+      this.data = res.data || [];
+      this.render();
+    } catch (err) {
+      document.getElementById('jobs-table').innerHTML = `<div class="empty" style="color:var(--danger)">${err.message}</div>`;
+    }
+  },
+  render() {
+    if (this.data.length === 0) {
+      document.getElementById('jobs-table').innerHTML = '<div class="empty">No service jobs found</div>';
+      return;
+    }
+    document.getElementById('jobs-table').innerHTML = `
+      <table>
+        <thead><tr><th>Scooter</th><th>Issue</th><th>Status</th><th>Booked</th><th>Technician Notes</th></tr></thead>
+        <tbody>${this.data.map(j => `
+          <tr onclick="Jobs.showDetail('${j.id}')">
+            <td><strong>${j.scooters?.zyd_serial || '—'}</strong><br><span style="font-size:0.75rem;color:var(--gray-500)">${j.scooters?.model || ''}</span></td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${j.issue_description || '—'}</td>
+            <td>${statusBadge(j.status)}</td>
+            <td>${fmtDate(j.booked_date)}</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${j.technician_notes || '—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  },
+  async showDetail(id) {
+    const j = this.data.find(x => x.id === id);
+    if (!j) return;
+    showDetail('Service Job', `
+      <div class="detail-section">
+        <h4>Job Details</h4>
+        <div class="detail-row"><span class="detail-label">Scooter</span><span class="detail-value">${j.scooters?.zyd_serial || '—'} (${j.scooters?.model || ''})</span></div>
+        <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${statusBadge(j.status)}</span></div>
+        <div class="detail-row"><span class="detail-label">Issue</span><span class="detail-value" style="font-size:0.8rem;max-width:70%">${j.issue_description || '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Booked</span><span class="detail-value">${fmtDate(j.booked_date)}</span></div>
+        <div class="detail-row"><span class="detail-label">Started</span><span class="detail-value">${fmtDate(j.started_date)}</span></div>
+        <div class="detail-row"><span class="detail-label">Completed</span><span class="detail-value">${fmtDate(j.completed_date)}</span></div>
+      </div>
+      <div class="detail-section">
+        <h4>Technician</h4>
+        <div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value" style="font-size:0.8rem;max-width:70%">${j.technician_notes || '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Parts Used</span><span class="detail-value">${j.parts_used || '—'}</span></div>
+      </div>
+      <div class="detail-section">
+        <h4>Customer</h4>
+        <div class="detail-row"><span class="detail-label">Name</span><span class="detail-value">${j.users?.first_name || ''} ${j.users?.last_name || ''}</span></div>
+        <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value">${j.users?.email || '—'}</span></div>
+      </div>
+    `);
+  }
+};
+
+// ── Faults ──
+const Faults = {
+  async load() {
+    document.getElementById('faults-table').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const [summary, scooters] = await Promise.all([
+        api('faults', 'fleet-summary'),
+        api('scooters', 'list', { limit: 100 }),
+      ]);
+
+      const faultData = summary.data || {};
+      const freq = faultData.fault_frequency || [];
+
+      document.getElementById('faults-summary').innerHTML = `
+        <div class="stat-card">
+          <div class="stat-label">Scooters Checked</div>
+          <div class="stat-value">${faultData.total_scooters_checked || 0}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">With Active Faults</div>
+          <div class="stat-value" style="color:${faultData.scooters_with_faults > 0 ? 'var(--danger)' : 'var(--success)'}">${faultData.scooters_with_faults || 0}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Fault Types Detected</div>
+          <div class="stat-value">${freq.length}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Most Common</div>
+          <div class="stat-value" style="font-size:1rem">${freq.length > 0 ? freq[0].fault.replace(/_/g,' ') : 'None'}</div>
+        </div>
+      `;
+
+      // Check active faults for each scooter
+      const scooterList = scooters.data || [];
+      const faultChecks = await Promise.all(
+        scooterList.slice(0, 30).map(s =>
+          api('faults', 'active', { id: s.id }).then(r => ({ scooter: s, faults: r.data })).catch(() => ({ scooter: s, faults: null }))
+        )
+      );
+
+      // Sort: faulted first
+      faultChecks.sort((a, b) => {
+        const af = a.faults?.has_active_faults ? 1 : 0;
+        const bf = b.faults?.has_active_faults ? 1 : 0;
+        return bf - af;
+      });
+
+      document.getElementById('faults-table').innerHTML = `
+        <table>
+          <thead><tr><th>Serial</th><th>Model</th><th>Status</th><th>Faults</th><th>Last Checked</th></tr></thead>
+          <tbody>${faultChecks.map(({ scooter: s, faults: f }) => `
+            <tr onclick="Scooters.data=[]; Scooters.data.push(${JSON.stringify(s).replace(/"/g, '&quot;')}); Scooters.showDetail('${s.id}')">
+              <td><strong>${s.zyd_serial || '—'}</strong></td>
+              <td>${s.model || '—'}</td>
+              <td>${statusBadge(s.status || 'unknown')}</td>
+              <td>${f?.has_active_faults ? f.faults.map(x => `<span class="fault-chip">${x.replace(/_/g,' ')}</span>`).join('') : '<span class="no-faults">Clear</span>'}</td>
+              <td>${f ? fmtDateTime(f.last_checked) : '—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+    } catch (err) {
+      document.getElementById('faults-table').innerHTML = `<div class="empty" style="color:var(--danger)">${err.message}</div>`;
+    }
+  }
+};
+
+// ── Battery Health ──
+const Battery = {
+  async load() {
+    document.getElementById('battery-table').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const [fleet, scooters] = await Promise.all([
+        api('battery-health', 'fleet'),
+        api('scooters', 'list', { limit: 100 }),
+      ]);
+
+      const fd = fleet.data || {};
+      const dist = fd.health_distribution || {};
+
+      document.getElementById('battery-fleet-stats').innerHTML = `
+        <div class="stat-card">
+          <div class="stat-label">Avg Health</div>
+          <div class="stat-value">${healthBar(fd.avg_health_percent)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Avg Charge Cycles</div>
+          <div class="stat-value">${fd.avg_charge_cycles ?? '—'}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Below 70% Health</div>
+          <div class="stat-value" style="color:${fd.scooters_below_70_percent > 0 ? 'var(--danger)' : 'var(--success)'}">${fd.scooters_below_70_percent || 0}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Health Distribution</div>
+          <div style="font-size:0.8rem;margin-top:4px">
+            <div>90-100%: <strong>${dist['90-100'] || 0}</strong></div>
+            <div>80-89%: <strong>${dist['80-89'] || 0}</strong></div>
+            <div>70-79%: <strong>${dist['70-79'] || 0}</strong></div>
+            <div>&lt;70%: <strong>${(dist['60-69'] || 0) + (dist['below_60'] || 0)}</strong></div>
+          </div>
+        </div>
+      `;
+
+      // Per-scooter battery summaries
+      const scooterList = scooters.data || [];
+      const batteryChecks = await Promise.all(
+        scooterList.slice(0, 30).map(s =>
+          api('battery-health', 'summary', { id: s.id }).then(r => ({ scooter: s, battery: r.data })).catch(() => ({ scooter: s, battery: null }))
+        )
+      );
+
+      // Sort by health ascending (worst first)
+      batteryChecks.sort((a, b) => {
+        const ah = a.battery?.latest_reading?.health_percent ?? 999;
+        const bh = b.battery?.latest_reading?.health_percent ?? 999;
+        return ah - bh;
+      });
+
+      document.getElementById('battery-table').innerHTML = `
+        <table>
+          <thead><tr><th>Serial</th><th>Model</th><th>Health</th><th>SOC</th><th>Cycles</th><th>Capacity</th><th>Temp</th></tr></thead>
+          <tbody>${batteryChecks.map(({ scooter: s, battery: b }) => {
+            const r = b?.latest_reading;
+            return `
+            <tr onclick="Scooters.data=[]; Scooters.data.push(${JSON.stringify(s).replace(/"/g, '&quot;')}); Scooters.showDetail('${s.id}')">
+              <td><strong>${s.zyd_serial || '—'}</strong></td>
+              <td>${s.model || '—'}</td>
+              <td>${r ? healthBar(r.health_percent) : '—'}</td>
+              <td>${r?.soc_percent != null ? r.soc_percent + '%' : '—'}</td>
+              <td>${r?.charge_cycles ?? '—'}</td>
+              <td>${r?.remaining_capacity_mah != null ? Math.round(r.remaining_capacity_mah/1000*10)/10 + ' Ah' : '—'}</td>
+              <td>${r?.temperature_c != null ? r.temperature_c + '&deg;C' : '—'}</td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table>`;
+    } catch (err) {
+      document.getElementById('battery-table').innerHTML = `<div class="empty" style="color:var(--danger)">${err.message}</div>`;
+    }
+  }
+};
+
+// ── Firmware Updates ──
+const Updates = {
+  data: [],
+  async load() {
+    document.getElementById('updates-table').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const res = await api('firmware-updates', 'list', { limit: 50 });
+      this.data = res.data || [];
+      this.render();
+    } catch (err) {
+      document.getElementById('updates-table').innerHTML = `<div class="empty" style="color:var(--danger)">${err.message}</div>`;
+    }
+  },
+  render() {
+    if (this.data.length === 0) {
+      document.getElementById('updates-table').innerHTML = '<div class="empty">No firmware updates recorded</div>';
+      return;
+    }
+    document.getElementById('updates-table').innerHTML = `
+      <table>
+        <thead><tr><th>Scooter</th><th>Firmware</th><th>Old Version</th><th>Status</th><th>Started</th><th>Error</th></tr></thead>
+        <tbody>${this.data.map(u => `
+          <tr>
+            <td><strong>${u.scooters?.zyd_serial || '—'}</strong><br><span style="font-size:0.75rem;color:var(--gray-500)">${u.scooters?.model || ''}</span></td>
+            <td>${u.firmware_versions?.version_label || '—'}</td>
+            <td>${u.old_sw_version || '—'} / ${u.old_hw_version || '—'}</td>
+            <td>${statusBadge(u.status || 'unknown')}</td>
+            <td>${fmtDateTime(u.started_at)}</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.8rem;color:var(--danger)">${u.error_message || ''}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+};
+
+// ── Toast Notifications ──
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+}
+
+// ── Relative Time ──
+function timeAgo(d) {
+  if (!d) return '—';
+  const seconds = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
+  if (seconds < 10) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds/60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds/3600)}h ago`;
+  return `${Math.floor(seconds/86400)}d ago`;
+}
+
+// ── Event Type Icons ──
+function eventIcon(type) {
+  const icons = {
+    scooter_registered: '&#128756;', scooter_status_changed: '&#128260;', scooter_decommissioned: '&#128683;',
+    service_job_created: '&#128295;', service_job_completed: '&#9989;', service_job_cancelled: '&#10060;',
+    firmware_update_started: '&#128190;', firmware_update_completed: '&#9989;', firmware_update_failed: '&#9888;',
+    user_registered: '&#128100;', user_scooter_linked: '&#128279;', user_scooter_unlinked: '&#128268;',
+    'webhook.test': '&#128277;',
+  };
+  return icons[type] || '&#128196;';
+}
+
+function eventColor(type) {
+  if (type.includes('completed') || type.includes('registered') || type.includes('linked')) return 'var(--success-light)';
+  if (type.includes('failed') || type.includes('cancelled') || type.includes('decommissioned') || type.includes('unlinked')) return 'var(--danger-light)';
+  return 'var(--primary-light)';
+}
+
+// ── Live Activity Feed ──
+const LiveFeed = {
+  events: [],
+  lastTimestamp: null,
+  newEventCount: 0,
+  pollTimer: null,
+
+  async refresh() {
+    try {
+      const res = await api('events', 'list', { limit: 10 });
+      const events = res.data || [];
+      if (this.lastTimestamp) {
+        const newOnes = events.filter(e => new Date(e.timestamp) > new Date(this.lastTimestamp));
+        this.newEventCount += newOnes.length;
+        this.updateBellBadge();
+      }
+      if (events.length > 0) this.lastTimestamp = events[0].timestamp;
+      this.events = events;
+      this.render();
+    } catch (err) {
+      document.getElementById('dashboard-activity').innerHTML = `<div class="empty" style="color:var(--gray-400)">Unable to load events</div>`;
+    }
+  },
+
+  render() {
+    const el = document.getElementById('dashboard-activity');
+    if (this.events.length === 0) {
+      el.innerHTML = '<div class="empty">No recent events</div>';
+      return;
+    }
+    el.innerHTML = this.events.slice(0, 8).map((e, i) => `
+      <div class="activity-item ${i === 0 && this.newEventCount > 0 ? 'activity-new' : ''}">
+        <div class="activity-icon" style="background:${eventColor(e.event_type)}">${eventIcon(e.event_type)}</div>
+        <div class="activity-text">
+          <strong>${e.event_type.replace(/_/g, ' ')}</strong>
+          ${e.scooter_id ? `<span style="color:var(--gray-500);font-size:0.8rem"> &middot; scooter</span>` : ''}
+        </div>
+        <div class="activity-time">${timeAgo(e.timestamp)}</div>
+      </div>`).join('');
+  },
+
+  updateBellBadge() {
+    const badge = document.getElementById('bell-badge');
+    if (this.newEventCount > 0) {
+      badge.textContent = this.newEventCount > 99 ? '99+' : this.newEventCount;
+      badge.style.display = 'block';
+      badge.classList.remove('pulse');
+      void badge.offsetWidth; // force reflow
+      badge.classList.add('pulse');
+    } else {
+      badge.style.display = 'none';
+    }
+  },
+
+  startPolling() {
+    this.refresh();
+    this.pollTimer = setInterval(() => this.refresh(), 15000);
+  },
+
+  stopPolling() {
+    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+  }
+};
+
+// ── Webhooks Module ──
+const PARTNER_EVENT_LIST = [
+  'scooter_registered', 'scooter_status_changed', 'scooter_decommissioned',
+  'service_job_created', 'service_job_completed', 'service_job_cancelled',
+  'firmware_update_started', 'firmware_update_completed', 'firmware_update_failed',
+  'user_registered', 'user_scooter_linked', 'user_scooter_unlinked',
+];
+
+const Webhooks = {
+  subscriptions: [],
+  deliveries: [],
+  selectedEventTypes: new Set(),
+
+  async load() {
+    try {
+      const [subsRes] = await Promise.all([
+        api('webhooks', 'list'),
+      ]);
+      this.subscriptions = subsRes.data || [];
+      this.renderStats();
+      this.renderSubscriptions();
+      this.loadDeliveries();
+    } catch (err) {
+      document.getElementById('webhook-subs-table').innerHTML = `<div class="empty" style="color:var(--danger)">${err.message}</div>`;
+    }
+  },
+
+  renderStats() {
+    const active = this.subscriptions.filter(s => s.is_active && !s.paused_at).length;
+    const paused = this.subscriptions.filter(s => s.paused_at).length;
+    const total = this.subscriptions.length;
+    document.getElementById('webhook-stats').innerHTML = `
+      <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" style="color:var(--success)">${active}</div></div>
+      <div class="stat-card"><div class="stat-label">Paused</div><div class="stat-value" style="color:var(--warning)">${paused}</div></div>
+      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${total}</div></div>
+      <div class="stat-card"><div class="stat-label">Event Types Available</div><div class="stat-value">${PARTNER_EVENT_LIST.length}</div></div>
+    `;
+  },
+
+  renderSubscriptions() {
+    if (this.subscriptions.length === 0) {
+      document.getElementById('webhook-subs-table').innerHTML = '<div class="empty">No webhook subscriptions. Click "Create Webhook" to add one.</div>';
+      return;
+    }
+    document.getElementById('webhook-subs-table').innerHTML = `
+      <table>
+        <thead><tr><th>URL</th><th>Event Types</th><th>Status</th><th>Failures</th><th>Last Success</th><th>Actions</th></tr></thead>
+        <tbody>${this.subscriptions.map(s => `
+          <tr>
+            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.url}"><strong>${s.url.replace('https://','')}</strong></td>
+            <td>${s.event_types && s.event_types.length > 0 ? s.event_types.map(t => `<span class="badge badge-info" style="margin:1px">${t.replace(/_/g,' ').substring(0,20)}</span>`).join('') : '<span class="badge badge-gray">All events</span>'}</td>
+            <td>${s.paused_at ? '<span class="badge badge-warning">Paused</span>' : s.is_active ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-gray">Inactive</span>'}</td>
+            <td>${s.consecutive_failures || 0}</td>
+            <td>${timeAgo(s.last_success_at)}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-primary btn-sm" onclick="Webhooks.test('${s.id}')" title="Send test webhook">Test</button>
+              ${s.is_active ? `<button class="btn btn-secondary btn-sm" onclick="Webhooks.pause('${s.id}')" title="Pause">Pause</button>` : `<button class="btn btn-secondary btn-sm" onclick="Webhooks.resume('${s.id}')" title="Resume">Resume</button>`}
+              <button class="btn btn-danger btn-sm" onclick="Webhooks.delete('${s.id}')" title="Delete">Del</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  },
+
+  toggleForm() {
+    const form = document.getElementById('webhook-form');
+    form.classList.toggle('visible');
+    if (form.classList.contains('visible') && document.getElementById('wh-event-types').innerHTML === '') {
+      document.getElementById('wh-event-types').innerHTML = PARTNER_EVENT_LIST.map(t =>
+        `<div class="event-type-checkbox" data-type="${t}" onclick="Webhooks.toggleEventType(this)">${t.replace(/_/g,' ')}</div>`
+      ).join('');
+    }
+  },
+
+  toggleEventType(el) {
+    const type = el.dataset.type;
+    if (this.selectedEventTypes.has(type)) {
+      this.selectedEventTypes.delete(type);
+      el.classList.remove('selected');
+    } else {
+      this.selectedEventTypes.add(type);
+      el.classList.add('selected');
+    }
+  },
+
+  async create() {
+    const url = document.getElementById('wh-url').value.trim();
+    if (!url) { showToast('URL is required', 'error'); return; }
+
+    try {
+      const res = await api('webhooks', 'create', {
+        url,
+        description: document.getElementById('wh-description').value.trim() || undefined,
+        event_types: this.selectedEventTypes.size > 0 ? Array.from(this.selectedEventTypes) : [],
+      });
+      showToast('Webhook created! Secret (save it): ' + res.data.secret, 'success');
+      document.getElementById('wh-url').value = '';
+      document.getElementById('wh-description').value = '';
+      this.selectedEventTypes.clear();
+      document.querySelectorAll('.event-type-checkbox').forEach(el => el.classList.remove('selected'));
+      document.getElementById('webhook-form').classList.remove('visible');
+      this.load();
+    } catch (err) {
+      showToast('Create failed: ' + err.message, 'error');
+    }
+  },
+
+  async test(id) {
+    showToast('Sending test webhook...', 'info');
+    try {
+      const res = await api('webhooks', 'test', { id });
+      const d = res.data;
+      if (d.success) {
+        showToast(`Test delivered! HTTP ${d.status_code} in ${d.response_time_ms}ms`, 'success');
+      } else {
+        showToast(`Test failed: HTTP ${d.status_code || 'timeout'} — ${d.error || ''}`, 'error');
+      }
+      // Refresh deliveries and pipeline after a moment
+      setTimeout(() => this.loadDeliveries(), 1500);
+    } catch (err) {
+      showToast('Test failed: ' + err.message, 'error');
+    }
+  },
+
+  async pause(id) {
+    try {
+      await api('webhooks', 'pause', { id });
+      showToast('Webhook paused', 'info');
+      this.load();
+    } catch (err) { showToast('Pause failed: ' + err.message, 'error'); }
+  },
+
+  async resume(id) {
+    try {
+      await api('webhooks', 'resume', { id });
+      showToast('Webhook resumed', 'success');
+      this.load();
+    } catch (err) { showToast('Resume failed: ' + err.message, 'error'); }
+  },
+
+  async delete(id) {
+    if (!confirm('Delete this webhook subscription? All delivery history will be lost.')) return;
+    try {
+      await api('webhooks', 'delete', { id });
+      showToast('Webhook deleted', 'info');
+      this.load();
+    } catch (err) { showToast('Delete failed: ' + err.message, 'error'); }
+  },
+
+  async simulate() {
+    showToast('Simulating scooter_status_changed event...', 'info');
+    try {
+      const res = await api('events', 'simulate', {
+        event_type: 'scooter_status_changed',
+        payload: { old_status: 'active', new_status: 'maintenance', reason: 'Workshop portal demo' },
+      });
+      showToast(`Event created (${res.data.event_type}). Webhook delivering...`, 'success');
+      // Auto-refresh after webhook has time to fire
+      setTimeout(() => {
+        this.loadDeliveries();
+        LiveFeed.refresh();
+      }, 3000);
+    } catch (err) {
+      showToast('Simulate failed: ' + err.message, 'error');
+    }
+  },
+
+  async loadDeliveries() {
+    try {
+      // Load deliveries for all subscriptions
+      let allDeliveries = [];
+      for (const sub of this.subscriptions) {
+        const res = await api('webhooks', 'deliveries', { id: sub.id, limit: 20 });
+        const deliveries = (res.data || []).map(d => ({ ...d, sub_url: sub.url }));
+        allDeliveries = allDeliveries.concat(deliveries);
+      }
+      // Sort by created_at desc
+      allDeliveries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      this.deliveries = allDeliveries;
+      this.renderDeliveries();
+      this.renderPipeline();
+    } catch (err) {
+      document.getElementById('webhook-deliveries-table').innerHTML = `<div class="empty">${err.message}</div>`;
+    }
+  },
+
+  renderDeliveries() {
+    if (this.deliveries.length === 0) {
+      document.getElementById('webhook-deliveries-table').innerHTML = '<div class="empty">No deliveries yet. Use "Test" or "Simulate Event" to trigger one.</div>';
+      return;
+    }
+    document.getElementById('webhook-deliveries-table').innerHTML = `
+      <table>
+        <thead><tr><th>URL</th><th>Status</th><th>HTTP</th><th>Latency</th><th>Attempt</th><th>Time</th><th></th></tr></thead>
+        <tbody>${this.deliveries.slice(0, 15).map(d => {
+          const sBadge = d.status === 'sent' ? 'success' : d.status === 'failed' ? 'danger' : d.status === 'retrying' ? 'warning' : 'info';
+          return `
+          <tr>
+            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(d.sub_url || d.request_url || '').replace('https://','')}</td>
+            <td><span class="badge badge-${sBadge}">${d.status}</span></td>
+            <td>${d.response_status || '—'}</td>
+            <td>${d.response_time_ms ? d.response_time_ms + 'ms' : '—'}</td>
+            <td>${d.attempt_number || 1}</td>
+            <td>${timeAgo(d.created_at)}</td>
+            <td><button class="btn btn-secondary btn-sm" onclick='Webhooks.showDeliveryDetail(${JSON.stringify(d).replace(/'/g, "&#39;")})'>Details</button></td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>`;
+  },
+
+  renderPipeline() {
+    const el = document.getElementById('pipeline-content');
+    if (this.deliveries.length === 0) {
+      el.innerHTML = '<div class="empty" style="padding:20px">Create a webhook subscription and trigger a test or simulate an event to see the delivery pipeline.</div>';
+      return;
+    }
+    const d = this.deliveries[0]; // Most recent delivery
+    const isSuccess = d.status === 'sent';
+    const isFail = d.status === 'failed';
+
+    // Parse request_payload if it's an object
+    let payload = d.request_payload;
+    if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch(e){} }
+    const payloadJson = payload ? JSON.stringify(payload, null, 2) : 'No payload data';
+
+    el.innerHTML = `
+      <div class="pipeline">
+        <div class="pipeline-step ${isSuccess || isFail ? 'success' : 'pending'}">
+          <div class="pipeline-label">1. Event Occurred</div>
+          <div class="pipeline-value">${payload?.event_type?.replace(/_/g, ' ') || 'Event'}</div>
+          <div class="pipeline-sub">${payload?.data?.scooter_id ? 'Scooter: ' + payload.data.scooter_id.substring(0,8) + '...' : ''}</div>
+          <div class="pipeline-sub">${timeAgo(d.created_at)}</div>
+        </div>
+        <div class="pipeline-arrow">&#10132;</div>
+        <div class="pipeline-step ${isSuccess || isFail ? 'success' : 'pending'}">
+          <div class="pipeline-label">2. Webhook Matched</div>
+          <div class="pipeline-value" style="font-size:0.8rem;word-break:break-all">${(d.sub_url || d.request_url || '').replace('https://','')}</div>
+          <div class="pipeline-sub">HMAC-SHA256 signed</div>
+        </div>
+        <div class="pipeline-arrow">&#10132;</div>
+        <div class="pipeline-step ${isSuccess ? 'success' : isFail ? 'fail' : 'pending'}">
+          <div class="pipeline-label">3. HTTP POST Delivered</div>
+          <div class="pipeline-value" style="color:${isSuccess ? 'var(--success)' : isFail ? 'var(--danger)' : 'var(--warning)'}">
+            ${isSuccess ? 'HTTP ' + d.response_status : isFail ? 'FAILED' : d.status.toUpperCase()}
+          </div>
+          <div class="pipeline-sub">${d.response_time_ms ? d.response_time_ms + 'ms response' : ''}</div>
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-size:0.8rem;font-weight:600;color:var(--gray-600);margin-bottom:8px">Payload Sent:</div>
+        <div class="code-block">${escapeHtml(payloadJson)}</div>
+      </div>
+      <div style="margin-top:12px">
+        <div style="font-size:0.8rem;font-weight:600;color:var(--gray-600);margin-bottom:8px">Headers Sent:</div>
+        <div class="code-block">Content-Type: application/json
+X-Webhook-Signature: sha256=&lt;hmac-sha256-hex&gt;
+X-Webhook-Timestamp: ${Math.floor(new Date(d.created_at).getTime()/1000)}
+X-Event-Type: ${payload?.event_type || 'unknown'}
+X-Webhook-Id: ${d.id || 'delivery-uuid'}</div>
+      </div>`;
+  },
+
+  showDeliveryDetail(d) {
+    let payload = d.request_payload;
+    if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch(e){} }
+    const payloadJson = payload ? JSON.stringify(payload, null, 2) : 'No payload';
+
+    let responseBody = d.response_body || 'No response body';
+    try {
+      const parsed = JSON.parse(responseBody);
+      responseBody = JSON.stringify(parsed, null, 2);
+    } catch(e) {}
+
+    showDetail('Delivery Details', `
+      <div class="detail-section">
+        <h4>Delivery Info</h4>
+        <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${statusBadge(d.status)}</span></div>
+        <div class="detail-row"><span class="detail-label">HTTP Status</span><span class="detail-value">${d.response_status || '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Response Time</span><span class="detail-value">${d.response_time_ms ? d.response_time_ms + 'ms' : '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Attempt</span><span class="detail-value">${d.attempt_number || 1}</span></div>
+        <div class="detail-row"><span class="detail-label">URL</span><span class="detail-value" style="font-size:0.75rem;word-break:break-all">${d.request_url || d.sub_url || '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Created</span><span class="detail-value">${fmtDateTime(d.created_at)}</span></div>
+        <div class="detail-row"><span class="detail-label">Delivered</span><span class="detail-value">${fmtDateTime(d.delivered_at)}</span></div>
+        ${d.error_message ? `<div class="detail-row"><span class="detail-label">Error</span><span class="detail-value" style="color:var(--danger)">${d.error_message}</span></div>` : ''}
+      </div>
+      <div class="detail-section">
+        <h4>Request Payload</h4>
+        <div class="code-block" style="font-size:0.7rem;max-height:200px">${escapeHtml(payloadJson)}</div>
+      </div>
+      <div class="detail-section">
+        <h4>Response Body</h4>
+        <div class="code-block" style="font-size:0.7rem;max-height:200px">${escapeHtml(responseBody.substring(0,1000))}</div>
+      </div>
+    `);
+  }
+};
+
+// ── HTML Escape ──
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Status indicator ──
+function setStatus(ok, msg) {
+  const dot = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  if (ok) {
+    dot.classList.remove('error');
+    text.textContent = 'Connected to Pure Fleet API';
+  } else {
+    dot.classList.add('error');
+    text.textContent = msg || 'Connection error';
+  }
+}
+
+// ── Init ──
+document.getElementById('login-form').addEventListener('submit', handleLoginSubmit);
+const savedUser = checkSession();
+if (savedUser) {
+  showApp();
+}
+</script>
+</body>
+</html>

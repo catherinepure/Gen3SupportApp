@@ -23,6 +23,7 @@
 //   sessions:     list, cleanup
 //   validation:   orphaned-scooters, expired-sessions, stale-jobs, run-all
 //   dashboard:    stats
+//   api-keys:     generate, list, get, revoke, rotate, update, usage, scopes
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -2750,6 +2751,498 @@ async function handleNotifications(supabase: any, action: string, body: any, adm
 }
 
 // ============================================================================
+// API KEY MANAGEMENT
+// ============================================================================
+
+const VALID_SCOPES = [
+  'scooters:read', 'scooters:write', 'scooters:telemetry', 'scooters:diagnostics',
+  'rides:read',
+  'firmware:read', 'firmware:manage',
+  'users:read', 'users:write',
+  'workshops:read', 'workshops:write',
+  'service-jobs:read', 'service-jobs:write',
+  'notifications:send',
+  'analytics:read',
+  'components:read',
+  'faults:read',
+  'events:read', 'events:write',
+  'webhooks:read', 'webhooks:write',
+]
+
+const SCOPE_PRESETS: Record<string, string[]> = {
+  manufacturer: [...VALID_SCOPES],
+  distributor: ['scooters:read', 'scooters:telemetry', 'rides:read', 'firmware:read', 'users:read', 'workshops:read', 'service-jobs:read', 'analytics:read', 'components:read', 'faults:read', 'events:read', 'webhooks:read', 'webhooks:write'],
+  workshop: ['scooters:read', 'scooters:telemetry', 'scooters:diagnostics', 'rides:read', 'service-jobs:read', 'service-jobs:write', 'components:read', 'faults:read', 'events:read', 'events:write', 'webhooks:read', 'webhooks:write'],
+  custom: []
+}
+
+async function handleApiKeys(supabase: any, action: string, body: any, admin: any) {
+  // Generate and rotate are manufacturer_admin only
+  if (['generate', 'rotate', 'revoke', 'update'].includes(action) && admin.territory.role !== 'manufacturer_admin') {
+    return errorResponse('Only manufacturer admins can manage API keys', 403)
+  }
+
+  if (action === 'generate') {
+    const { name, organisation_type, organisation_id, scopes: requestedScopes, rate_limit_per_minute, expires_at } = body
+    if (!name) return errorResponse('name is required')
+    if (!organisation_type || !['manufacturer', 'distributor', 'workshop', 'custom'].includes(organisation_type)) {
+      return errorResponse('organisation_type must be manufacturer, distributor, workshop, or custom')
+    }
+
+    // Validate organisation_id exists for non-manufacturer types
+    if (organisation_type === 'distributor') {
+      if (!organisation_id) return errorResponse('organisation_id is required for distributor keys')
+      const { data: dist } = await supabase.from('distributors').select('id').eq('id', organisation_id).single()
+      if (!dist) return errorResponse('Distributor not found', 404)
+    }
+    if (organisation_type === 'workshop') {
+      if (!organisation_id) return errorResponse('organisation_id is required for workshop keys')
+      const { data: ws } = await supabase.from('workshops').select('id').eq('id', organisation_id).single()
+      if (!ws) return errorResponse('Workshop not found', 404)
+    }
+
+    // Resolve scopes
+    let scopes: string[] = requestedScopes || SCOPE_PRESETS[organisation_type] || []
+    // Validate all scopes
+    const invalidScopes = scopes.filter((s: string) => !VALID_SCOPES.includes(s))
+    if (invalidScopes.length > 0) {
+      return errorResponse(`Invalid scopes: ${invalidScopes.join(', ')}`)
+    }
+
+    // Generate key: pk_live_ + 56 hex chars
+    const randomBytes = new Uint8Array(28) // 28 bytes = 56 hex chars
+    crypto.getRandomValues(randomBytes)
+    const hexPart = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('')
+    const fullKey = `pk_live_${hexPart}`
+    const keyPrefix = fullKey.substring(0, 16)
+
+    // SHA-256 hash
+    const encoder = new TextEncoder()
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(fullKey))
+    const keyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+
+    const { data: keyRecord, error } = await supabase.from('api_keys').insert({
+      key_hash: keyHash,
+      key_prefix: keyPrefix,
+      name,
+      organisation_type,
+      organisation_id: organisation_id || null,
+      created_by: admin.user.id,
+      scopes,
+      rate_limit_per_minute: rate_limit_per_minute || 60,
+      expires_at: expires_at || null,
+    }).select().single()
+
+    if (error) return errorResponse(error.message, 500)
+
+    await logAdminAction(supabase, admin, 'generate', 'api-keys', keyRecord.id, {
+      name, organisation_type, organisation_id, scopes
+    })
+
+    return respond({
+      success: true,
+      key: fullKey, // Shown ONCE only
+      key_record: {
+        id: keyRecord.id, key_prefix: keyPrefix, name, organisation_type,
+        organisation_id, scopes, rate_limit_per_minute: keyRecord.rate_limit_per_minute,
+        expires_at: keyRecord.expires_at, created_at: keyRecord.created_at,
+      }
+    }, 201)
+  }
+
+  if (action === 'list') {
+    let query = supabase.from('api_keys')
+      .select('id, key_prefix, name, organisation_type, organisation_id, scopes, rate_limit_per_minute, is_active, expires_at, last_used_at, request_count, created_at, created_by', { count: 'exact' })
+      .order('created_at', { ascending: false })
+
+    // Distributor staff can only see their org's keys
+    if (admin.territory.role === 'distributor_staff') {
+      query = query.eq('organisation_id', admin.territory.distributor_id)
+    } else if (admin.territory.role === 'workshop_staff') {
+      query = query.eq('organisation_id', admin.territory.workshop_id)
+    }
+
+    if (body.is_active !== undefined) query = query.eq('is_active', body.is_active)
+    if (body.organisation_type) query = query.eq('organisation_type', body.organisation_type)
+
+    const limit = body.limit || 50
+    const offset = body.offset || 0
+    query = query.range(offset, offset + limit - 1)
+
+    const { data, error, count } = await query
+    if (error) return errorResponse(error.message, 500)
+
+    // Enrich with organisation names
+    const enriched = await Promise.all((data || []).map(async (key: any) => {
+      let org_name = null
+      if (key.organisation_type === 'distributor' && key.organisation_id) {
+        const { data: d } = await supabase.from('distributors').select('name').eq('id', key.organisation_id).single()
+        org_name = d?.name
+      } else if (key.organisation_type === 'workshop' && key.organisation_id) {
+        const { data: w } = await supabase.from('workshops').select('name').eq('id', key.organisation_id).single()
+        org_name = w?.name
+      } else if (key.organisation_type === 'manufacturer') {
+        org_name = 'Pure (Manufacturer)'
+      }
+      return { ...key, org_name }
+    }))
+
+    return respond({ api_keys: enriched, total: count })
+  }
+
+  if (action === 'get') {
+    if (!body.id) return errorResponse('API key ID required')
+
+    const { data: key, error } = await supabase.from('api_keys')
+      .select('id, key_prefix, name, organisation_type, organisation_id, scopes, rate_limit_per_minute, is_active, expires_at, last_used_at, request_count, created_at, created_by, updated_at')
+      .eq('id', body.id).single()
+    if (error || !key) return errorResponse('API key not found', 404)
+
+    // Get usage summary (last 24h)
+    const oneDayAgo = new Date(Date.now() - 86400000).toISOString()
+    const { count: recentCount } = await supabase.from('api_key_usage_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('api_key_id', body.id).gte('created_at', oneDayAgo)
+    const { count: recentErrors } = await supabase.from('api_key_usage_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('api_key_id', body.id).gte('created_at', oneDayAgo)
+      .gte('response_status', 400)
+
+    // Enrich org name
+    let org_name = null
+    if (key.organisation_type === 'distributor' && key.organisation_id) {
+      const { data: d } = await supabase.from('distributors').select('name').eq('id', key.organisation_id).single()
+      org_name = d?.name
+    } else if (key.organisation_type === 'workshop' && key.organisation_id) {
+      const { data: w } = await supabase.from('workshops').select('name').eq('id', key.organisation_id).single()
+      org_name = w?.name
+    } else if (key.organisation_type === 'manufacturer') {
+      org_name = 'Pure (Manufacturer)'
+    }
+
+    return respond({
+      api_key: { ...key, org_name },
+      usage_24h: { requests: recentCount || 0, errors: recentErrors || 0, error_rate: recentCount ? ((recentErrors || 0) / recentCount * 100).toFixed(1) + '%' : '0%' }
+    })
+  }
+
+  if (action === 'revoke') {
+    if (!body.id) return errorResponse('API key ID required')
+    const { data, error } = await supabase.from('api_keys')
+      .update({ is_active: false }).eq('id', body.id).select('id, key_prefix, name').single()
+    if (error || !data) return errorResponse('API key not found', 404)
+
+    await logAdminAction(supabase, admin, 'revoke', 'api-keys', body.id, { key_prefix: data.key_prefix })
+    return respond({ success: true, message: `Key "${data.name}" (${data.key_prefix}...) has been revoked` })
+  }
+
+  if (action === 'rotate') {
+    if (!body.id) return errorResponse('API key ID required')
+
+    // Get existing key
+    const { data: existing } = await supabase.from('api_keys')
+      .select('*').eq('id', body.id).single()
+    if (!existing) return errorResponse('API key not found', 404)
+
+    // Deactivate old key
+    await supabase.from('api_keys').update({ is_active: false }).eq('id', body.id)
+
+    // Generate new key with same config
+    const randomBytes = new Uint8Array(28)
+    crypto.getRandomValues(randomBytes)
+    const hexPart = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('')
+    const fullKey = `pk_live_${hexPart}`
+    const keyPrefix = fullKey.substring(0, 16)
+
+    const encoder = new TextEncoder()
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(fullKey))
+    const keyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+
+    const { data: newKey, error } = await supabase.from('api_keys').insert({
+      key_hash: keyHash,
+      key_prefix: keyPrefix,
+      name: existing.name,
+      organisation_type: existing.organisation_type,
+      organisation_id: existing.organisation_id,
+      created_by: admin.user.id,
+      scopes: existing.scopes,
+      rate_limit_per_minute: existing.rate_limit_per_minute,
+      expires_at: existing.expires_at,
+    }).select().single()
+
+    if (error) return errorResponse(error.message, 500)
+
+    await logAdminAction(supabase, admin, 'rotate', 'api-keys', newKey.id, {
+      old_key_id: body.id, old_key_prefix: existing.key_prefix
+    })
+
+    return respond({
+      success: true,
+      key: fullKey, // Shown ONCE only
+      key_record: {
+        id: newKey.id, key_prefix: keyPrefix, name: newKey.name,
+        organisation_type: newKey.organisation_type, scopes: newKey.scopes,
+        created_at: newKey.created_at,
+      },
+      old_key_revoked: { id: body.id, key_prefix: existing.key_prefix }
+    }, 201)
+  }
+
+  if (action === 'update') {
+    if (!body.id) return errorResponse('API key ID required')
+
+    const updates: Record<string, any> = {}
+    if (body.name !== undefined) updates.name = body.name
+    if (body.scopes !== undefined) {
+      const invalidScopes = body.scopes.filter((s: string) => !VALID_SCOPES.includes(s))
+      if (invalidScopes.length > 0) return errorResponse(`Invalid scopes: ${invalidScopes.join(', ')}`)
+      updates.scopes = body.scopes
+    }
+    if (body.rate_limit_per_minute !== undefined) updates.rate_limit_per_minute = body.rate_limit_per_minute
+    if (body.expires_at !== undefined) updates.expires_at = body.expires_at
+
+    if (Object.keys(updates).length === 0) return errorResponse('No fields to update')
+
+    const { data, error } = await supabase.from('api_keys')
+      .update(updates).eq('id', body.id).select('id, key_prefix, name, scopes, rate_limit_per_minute, expires_at').single()
+    if (error || !data) return errorResponse('API key not found', 404)
+
+    await logAdminAction(supabase, admin, 'update', 'api-keys', body.id, updates)
+    return respond({ success: true, api_key: data })
+  }
+
+  if (action === 'usage') {
+    if (!body.api_key_id) return errorResponse('api_key_id required')
+
+    const from = body.from || new Date(Date.now() - 7 * 86400000).toISOString()
+    const to = body.to || new Date().toISOString()
+
+    // Aggregated daily stats
+    const { data: logs } = await supabase.from('api_key_usage_log')
+      .select('endpoint, response_status, response_time_ms, created_at')
+      .eq('api_key_id', body.api_key_id)
+      .gte('created_at', from).lte('created_at', to)
+      .order('created_at', { ascending: false })
+      .limit(1000)
+
+    const entries = logs || []
+    const totalRequests = entries.length
+    const errors = entries.filter((l: any) => l.response_status >= 400).length
+    const avgResponseTime = totalRequests > 0
+      ? Math.round(entries.reduce((sum: number, l: any) => sum + (l.response_time_ms || 0), 0) / totalRequests)
+      : 0
+
+    // Top endpoints
+    const endpointCounts: Record<string, number> = {}
+    for (const l of entries) {
+      endpointCounts[l.endpoint] = (endpointCounts[l.endpoint] || 0) + 1
+    }
+    const topEndpoints = Object.entries(endpointCounts)
+      .sort((a, b) => b[1] - a[1]).slice(0, 10)
+      .map(([endpoint, count]) => ({ endpoint, count }))
+
+    // Daily breakdown
+    const dailyCounts: Record<string, { requests: number; errors: number }> = {}
+    for (const l of entries) {
+      const day = l.created_at.substring(0, 10)
+      if (!dailyCounts[day]) dailyCounts[day] = { requests: 0, errors: 0 }
+      dailyCounts[day].requests++
+      if (l.response_status >= 400) dailyCounts[day].errors++
+    }
+
+    return respond({
+      usage: {
+        total_requests: totalRequests,
+        total_errors: errors,
+        error_rate: totalRequests > 0 ? ((errors / totalRequests) * 100).toFixed(1) + '%' : '0%',
+        avg_response_time_ms: avgResponseTime,
+        top_endpoints: topEndpoints,
+        daily: dailyCounts,
+        period: { from, to },
+      }
+    })
+  }
+
+  if (action === 'scopes') {
+    // Return master scope list and presets (for UI)
+    return respond({ valid_scopes: VALID_SCOPES, presets: SCOPE_PRESETS })
+  }
+
+  return errorResponse('Unknown api-keys action: ' + action + '. Available: generate, list, get, revoke, rotate, update, usage, scopes')
+}
+
+// ============================================================================
+// WEBHOOK MANAGEMENT (admin)
+// ============================================================================
+
+async function handleWebhooks(supabase: any, action: string, body: any, admin: any) {
+
+  if (action === 'list') {
+    let query = supabase
+      .from('webhook_subscriptions')
+      .select('id, api_key_id, url, description, event_types, is_active, consecutive_failures, failure_threshold, paused_at, paused_reason, created_at, updated_at, last_delivery_at, last_success_at, api_keys(name, key_prefix, organisation_type)')
+      .order('created_at', { ascending: false })
+
+    // Territory scoping — manufacturer sees all, others see only their org's keys
+    if (admin.territory.role === 'distributor_staff' && admin.territory.distributorId) {
+      const { data: keys } = await supabase.from('api_keys').select('id').eq('organisation_id', admin.territory.distributorId)
+      const keyIds = keys?.map((k: any) => k.id) || []
+      if (keyIds.length > 0) query = query.in('api_key_id', keyIds)
+      else return respond({ webhooks: [], total: 0 })
+    } else if (admin.territory.role === 'workshop_staff' && admin.territory.workshopId) {
+      const { data: keys } = await supabase.from('api_keys').select('id').eq('organisation_id', admin.territory.workshopId)
+      const keyIds = keys?.map((k: any) => k.id) || []
+      if (keyIds.length > 0) query = query.in('api_key_id', keyIds)
+      else return respond({ webhooks: [], total: 0 })
+    }
+
+    if (body.api_key_id) query = query.eq('api_key_id', body.api_key_id)
+    if (body.is_active !== undefined) query = query.eq('is_active', body.is_active)
+
+    const { data, error } = await query
+    if (error) return errorResponse(error.message)
+    return respond({ webhooks: data || [], total: (data || []).length })
+  }
+
+  if (action === 'get') {
+    if (!body.id) return errorResponse('id is required')
+
+    const { data: sub, error } = await supabase
+      .from('webhook_subscriptions')
+      .select('*, api_keys(name, key_prefix, organisation_type)')
+      .eq('id', body.id)
+      .single()
+
+    if (error || !sub) return errorResponse('Webhook not found', 404)
+
+    // Get recent delivery stats (24h)
+    const since = new Date(Date.now() - 86400000).toISOString()
+    const { data: deliveries } = await supabase
+      .from('webhook_deliveries')
+      .select('status, response_time_ms')
+      .eq('subscription_id', body.id)
+      .gte('created_at', since)
+
+    const stats = { sent: 0, failed: 0, retrying: 0, pending: 0, avg_response_ms: 0 }
+    let totalMs = 0
+    let countMs = 0
+    for (const d of (deliveries || [])) {
+      if (d.status in stats) stats[d.status as keyof typeof stats]++
+      if (d.response_time_ms) { totalMs += d.response_time_ms; countMs++ }
+    }
+    stats.avg_response_ms = countMs > 0 ? Math.round(totalMs / countMs) : 0
+
+    return respond({ webhook: { ...sub, delivery_stats_24h: stats } })
+  }
+
+  if (action === 'pause') {
+    if (!body.id) return errorResponse('id is required')
+
+    const { data, error } = await supabase
+      .from('webhook_subscriptions')
+      .update({
+        is_active: false,
+        paused_at: new Date().toISOString(),
+        paused_reason: body.reason || `Paused by admin (${admin.user.email})`,
+      })
+      .eq('id', body.id)
+      .select('id, is_active, paused_at, paused_reason')
+      .single()
+
+    if (error || !data) return errorResponse('Webhook not found', 404)
+
+    await logAdminAction(supabase, admin, 'pause', 'webhook', body.id, { reason: body.reason })
+    return respond({ webhook: data })
+  }
+
+  if (action === 'resume') {
+    if (!body.id) return errorResponse('id is required')
+
+    const { data, error } = await supabase
+      .from('webhook_subscriptions')
+      .update({ is_active: true, paused_at: null, paused_reason: null, consecutive_failures: 0 })
+      .eq('id', body.id)
+      .select('id, is_active, consecutive_failures')
+      .single()
+
+    if (error || !data) return errorResponse('Webhook not found', 404)
+
+    await logAdminAction(supabase, admin, 'resume', 'webhook', body.id, {})
+    return respond({ webhook: data })
+  }
+
+  if (action === 'deliveries') {
+    const subscriptionId = body.id || body.subscription_id
+
+    let query = supabase
+      .from('webhook_deliveries')
+      .select('id, subscription_id, event_id, request_url, request_payload, response_status, response_body, response_time_ms, error_message, attempt_number, status, created_at, delivered_at, next_retry_at', { count: 'exact' })
+      .order('created_at', { ascending: false })
+
+    // If subscription_id provided, filter to that subscription; otherwise return all recent deliveries
+    if (subscriptionId) {
+      query = query.eq('subscription_id', subscriptionId)
+    }
+
+    if (body.status) query = query.eq('status', body.status)
+    if (body.from) query = query.gte('created_at', body.from)
+    if (body.to) query = query.lte('created_at', body.to)
+
+    const limit = Math.min(body.limit || 50, 200)
+    const offset = body.offset || 0
+    query = query.range(offset, offset + limit - 1)
+
+    const { data, error, count } = await query
+    if (error) return errorResponse(error.message)
+    return respond({ deliveries: data || [], total: count || 0, limit, offset })
+  }
+
+  if (action === 'stats') {
+    // Global webhook stats
+    const { count: totalSubs } = await supabase
+      .from('webhook_subscriptions')
+      .select('id', { count: 'exact', head: true })
+
+    const { count: activeSubs } = await supabase
+      .from('webhook_subscriptions')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_active', true)
+      .is('paused_at', null)
+
+    const { count: pausedSubs } = await supabase
+      .from('webhook_subscriptions')
+      .select('id', { count: 'exact', head: true })
+      .not('paused_at', 'is', null)
+
+    const since24h = new Date(Date.now() - 86400000).toISOString()
+    const { data: recentDeliveries } = await supabase
+      .from('webhook_deliveries')
+      .select('status, response_time_ms')
+      .gte('created_at', since24h)
+
+    let sent = 0, failed = 0, totalMs = 0, countMs = 0
+    for (const d of (recentDeliveries || [])) {
+      if (d.status === 'sent') sent++
+      if (d.status === 'failed') failed++
+      if (d.response_time_ms) { totalMs += d.response_time_ms; countMs++ }
+    }
+
+    return respond({
+      stats: {
+        total_subscriptions: totalSubs || 0,
+        active_subscriptions: activeSubs || 0,
+        paused_subscriptions: pausedSubs || 0,
+        deliveries_24h: { sent, failed, total: sent + failed },
+        success_rate_24h: (sent + failed) > 0 ? Math.round(sent / (sent + failed) * 100) : 100,
+        avg_response_ms_24h: countMs > 0 ? Math.round(totalMs / countMs) : 0,
+      }
+    })
+  }
+
+  return errorResponse('Unknown webhooks action: ' + action + '. Available: list, get, pause, resume, deliveries, stats')
+}
+
+// ============================================================================
 // MAIN HANDLER
 // ============================================================================
 
@@ -2819,8 +3312,10 @@ serve(async (req) => {
       case 'dashboard':    return await handleDashboard(supabase, action, body, admin)
       case 'settings':     return await handleSettings(supabase, action, body, admin)
       case 'notifications': return await handleNotifications(supabase, action, body, admin)
+      case 'api-keys':      return await handleApiKeys(supabase, action, body, admin)
+      case 'webhooks':      return await handleWebhooks(supabase, action, body, admin)
       default:
-        return errorResponse('Unknown resource: ' + resource + '. Available: users, scooters, distributors, workshops, firmware, service-jobs, telemetry, logs, events, addresses, sessions, validation, dashboard, settings, notifications')
+        return errorResponse('Unknown resource: ' + resource + '. Available: users, scooters, distributors, workshops, firmware, service-jobs, telemetry, logs, events, addresses, sessions, validation, dashboard, settings, notifications, api-keys, webhooks')
     }
 
   } catch (error) {

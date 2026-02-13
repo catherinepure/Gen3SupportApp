@@ -151,6 +151,19 @@ serve(async (req) => {
         return respond({ error: 'Failed to insert events' }, 500)
       }
 
+      // Fire webhooks asynchronously (non-blocking — don't delay the response)
+      if (data && data.length > 0) {
+        const webhookUrl = `${supabaseUrl}/functions/v1/webhook-deliver`
+        fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ mode: 'event', event_ids: data.map((e: any) => e.id) }),
+        }).catch(err => console.error('Webhook trigger failed:', err))
+      }
+
       return respond({
         success: true,
         inserted: data?.length || 0,
